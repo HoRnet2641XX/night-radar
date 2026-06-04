@@ -1,6 +1,8 @@
 import { NightRadarConsole } from '@/components/night-radar-console'
 import { getDashboardState } from '@/lib/server/repository'
 
+export const dynamic = 'force-dynamic'
+
 export default async function Page() {
   const state = await getDashboardState()
 

@@ -506,12 +506,12 @@ async function saveBbsSourceWithAccess(access: Extract<WriteAccess, { mode: 'dat
 
 export async function getDashboardState(): Promise<DashboardState> {
   const supabase = await createSupabaseServerClient()
-  if (!supabase) return demoDashboardState('demo', 'Supabase env is not configured. Demo data is shown.')
+  if (!supabase) return demoDashboardState('demo', 'Supabase未接続')
 
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) return demoDashboardState('anonymous', 'ログインすると、自分の店舗データを保存できます。')
+  if (!user) return demoDashboardState('anonymous', 'ログイン待ち')
 
   const { data: storeRows, error: storeError } = await supabase
     .from('stores')

@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "NEXT_TEST_WASM=1 NEXT_TEST_WASM_DIR=\"$PWD/node_modules/@next/swc-wasm-nodejs\" next dev --webpack",
+    "build": "NEXT_TEST_WASM=1 NEXT_TEST_WASM_DIR=\"$PWD/node_modules/@next/swc-wasm-nodejs\" next build --webpack",
     "lint": "eslint .",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "start": "next start"
@@ -29,6 +29,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@next/swc-wasm-nodejs": "^16.2.6",
+    "@playwright/test": "^1.60.0",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
