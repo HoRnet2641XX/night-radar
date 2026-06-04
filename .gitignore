@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+dist
+.env
+.env.*
+.env*.local
+!.env.example
+!.env.*.example
+.playwright-cli
+output
+*.log
+.vercel
+*.tsbuildinfo
+AGENTS.md

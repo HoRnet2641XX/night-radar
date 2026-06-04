@@ -1,0 +1,335 @@
+create extension if not exists pgcrypto;
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  display_name text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.subscriptions (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  plan text not null default 'free' check (plan in ('free', 'light', 'standard', 'premium')),
+  status text not null default 'inactive',
+  stripe_customer_id text,
+  stripe_subscription_id text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.stores (
+  id text primary key default gen_random_uuid()::text,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  area text not null default '未設定',
+  has_daytime boolean not null default false,
+  has_night boolean not null default true,
+  opening_hour_day text not null default '13:00',
+  opening_hour_night text not null default '19:00',
+  pr_structure text not null default '未分類',
+  strong_days text[] not null default '{}',
+  strong_events text[] not null default '{}',
+  weak_events text[] not null default '{}',
+  trust_seed integer not null default 60 check (trust_seed between 0 and 100),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.events (
+  id text primary key default gen_random_uuid()::text,
+  store_id text not null references public.stores(id) on delete cascade,
+  date_label text not null default '今日',
+  weekday text not null default '未設定',
+  starts_at text not null default '19:00',
+  session text not null check (session in ('day', 'night')),
+  category text not null default '未分類',
+  title text not null,
+  source_url text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.posts (
+  id text primary key default gen_random_uuid()::text,
+  store_id text not null references public.stores(id) on delete cascade,
+  source text not null default 'manual' check (source in ('manual', 'csv', 'scrape', 'ai')),
+  source_url text,
+  posted_at timestamptz not null default now(),
+  body text not null,
+  body_hash text,
+  keywords text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists posts_store_hash_idx on public.posts (store_id, body_hash) where body_hash is not null;
+create index if not exists posts_store_posted_at_idx on public.posts (store_id, posted_at desc);
+
+create table if not exists public.store_situations (
+  id text primary key default gen_random_uuid()::text,
+  store_id text not null references public.stores(id) on delete cascade,
+  status text not null default 'watch' check (status in ('open', 'event', 'crowded', 'watch', 'closed')),
+  title text not null,
+  note text not null default '',
+  source_url text,
+  observed_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.bbs_sources (
+  id text primary key default gen_random_uuid()::text,
+  store_id text not null references public.stores(id) on delete cascade,
+  label text not null default 'BBS',
+  url text not null,
+  parser_type text not null default 'auto' check (parser_type in ('auto', 'body')),
+  active boolean not null default true,
+  crawl_interval_minutes integer not null default 360 check (crawl_interval_minutes between 15 and 10080),
+  last_fetched_at timestamptz,
+  last_status text not null default 'pending' check (last_status in ('ok', 'blocked', 'failed', 'pending')),
+  last_message text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (store_id, url)
+);
+
+create table if not exists public.crawl_runs (
+  id text primary key default gen_random_uuid()::text,
+  source_id text references public.bbs_sources(id) on delete set null,
+  store_id text not null references public.stores(id) on delete cascade,
+  url text not null,
+  status text not null check (status in ('ok', 'blocked', 'failed', 'pending')),
+  message text,
+  fetched_at timestamptz not null default now(),
+  post_id text references public.posts(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.exact_terms (
+  id text primary key default gen_random_uuid()::text,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  term_group text not null check (term_group in ('popularSingleMale', 'popularSingleFemale', 'negativePerson')),
+  term text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, term_group, term)
+);
+
+create table if not exists public.exact_matches (
+  id text primary key default gen_random_uuid()::text,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  term_id text references public.exact_terms(id) on delete cascade,
+  post_id text not null references public.posts(id) on delete cascade,
+  store_id text not null references public.stores(id) on delete cascade,
+  term_group text not null,
+  term text not null,
+  snippet text not null,
+  matched_at timestamptz not null default now(),
+  unique (user_id, term_group, term, post_id)
+);
+
+create table if not exists public.ai_analyses (
+  id text primary key default gen_random_uuid()::text,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  post_id text references public.posts(id) on delete set null,
+  source_text text not null,
+  result jsonb not null,
+  mode text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.score_snapshots (
+  id text primary key default gen_random_uuid()::text,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  event_id text references public.events(id) on delete set null,
+  score integer not null,
+  rank integer not null,
+  tone text not null,
+  metrics jsonb not null,
+  reasons text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.import_batches (
+  id text primary key default gen_random_uuid()::text,
+  user_id uuid references auth.users(id) on delete set null,
+  kind text not null check (kind in ('stores', 'events', 'posts')),
+  imported_count integer not null default 0,
+  error_count integer not null default 0,
+  errors text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.notification_jobs (
+  id text primary key default gen_random_uuid()::text,
+  user_id uuid references auth.users(id) on delete set null,
+  title text not null,
+  body text not null,
+  channel text not null check (channel in ('in_app', 'email', 'webhook')),
+  audience text not null default 'free' check (audience in ('free', 'light', 'standard', 'premium')),
+  scheduled_for timestamptz not null default now(),
+  status text not null default 'queued' check (status in ('queued', 'sent', 'dry_run', 'failed')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.notification_preferences (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  webhook_url text,
+  channel text not null default 'in_app' check (channel in ('in_app', 'email', 'webhook')),
+  audience text not null default 'light' check (audience in ('free', 'light', 'standard', 'premium')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.stripe_events (
+  id text primary key,
+  type text not null,
+  payload jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.profiles enable row level security;
+alter table public.subscriptions enable row level security;
+alter table public.stores enable row level security;
+alter table public.events enable row level security;
+alter table public.posts enable row level security;
+alter table public.store_situations enable row level security;
+alter table public.bbs_sources enable row level security;
+alter table public.crawl_runs enable row level security;
+alter table public.exact_terms enable row level security;
+alter table public.exact_matches enable row level security;
+alter table public.ai_analyses enable row level security;
+alter table public.score_snapshots enable row level security;
+alter table public.import_batches enable row level security;
+alter table public.notification_jobs enable row level security;
+alter table public.notification_preferences enable row level security;
+
+drop policy if exists "profiles owner read" on public.profiles;
+create policy "profiles owner read" on public.profiles
+  for select using (auth.uid() = id);
+
+drop policy if exists "profiles owner update" on public.profiles;
+create policy "profiles owner update" on public.profiles
+  for update using (auth.uid() = id) with check (auth.uid() = id);
+
+drop policy if exists "subscriptions owner read" on public.subscriptions;
+create policy "subscriptions owner read" on public.subscriptions
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "stores owner manage" on public.stores;
+create policy "stores owner manage" on public.stores
+  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+
+drop policy if exists "events owner manage through store" on public.events;
+create policy "events owner manage through store" on public.events
+  for all using (
+    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
+  ) with check (
+    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
+  );
+
+drop policy if exists "posts owner manage through store" on public.posts;
+create policy "posts owner manage through store" on public.posts
+  for all using (
+    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
+  ) with check (
+    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
+  );
+
+drop policy if exists "situations owner manage through store" on public.store_situations;
+create policy "situations owner manage through store" on public.store_situations
+  for all using (
+    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
+  ) with check (
+    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
+  );
+
+drop policy if exists "bbs sources owner manage through store" on public.bbs_sources;
+create policy "bbs sources owner manage through store" on public.bbs_sources
+  for all using (
+    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
+  ) with check (
+    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
+  );
+
+drop policy if exists "crawl runs owner read through store" on public.crawl_runs;
+create policy "crawl runs owner read through store" on public.crawl_runs
+  for select using (
+    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
+  );
+
+drop policy if exists "exact terms owner manage" on public.exact_terms;
+create policy "exact terms owner manage" on public.exact_terms
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "exact matches owner manage" on public.exact_matches;
+create policy "exact matches owner manage" on public.exact_matches
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "ai analyses owner manage" on public.ai_analyses;
+create policy "ai analyses owner manage" on public.ai_analyses
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "score snapshots owner manage" on public.score_snapshots;
+create policy "score snapshots owner manage" on public.score_snapshots
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "import batches owner manage" on public.import_batches;
+create policy "import batches owner manage" on public.import_batches
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "notification owner manage" on public.notification_jobs;
+create policy "notification owner manage" on public.notification_jobs
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "notification prefs owner manage" on public.notification_preferences;
+create policy "notification prefs owner manage" on public.notification_preferences
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop trigger if exists profiles_updated_at on public.profiles;
+create trigger profiles_updated_at before update on public.profiles
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists subscriptions_updated_at on public.subscriptions;
+create trigger subscriptions_updated_at before update on public.subscriptions
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists stores_updated_at on public.stores;
+create trigger stores_updated_at before update on public.stores
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists events_updated_at on public.events;
+create trigger events_updated_at before update on public.events
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists store_situations_updated_at on public.store_situations;
+create trigger store_situations_updated_at before update on public.store_situations
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists bbs_sources_updated_at on public.bbs_sources;
+create trigger bbs_sources_updated_at before update on public.bbs_sources
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists exact_terms_updated_at on public.exact_terms;
+create trigger exact_terms_updated_at before update on public.exact_terms
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists notification_jobs_updated_at on public.notification_jobs;
+create trigger notification_jobs_updated_at before update on public.notification_jobs
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists notification_preferences_updated_at on public.notification_preferences;
+create trigger notification_preferences_updated_at before update on public.notification_preferences
+  for each row execute function public.set_updated_at();
