@@ -177,7 +177,7 @@ export function NightRadarConsole({ initialState }: Props) {
   )
   const visibleWords = activeWords.length ? activeWords : wordCategories.slice(0, 5)
   const radarScore = featuredEvent?.score ?? 0
-  const busyLabel = busy ? 'processing' : apiState.message
+  const busyLabel = busy ? '処理中…' : apiState.message
   const modeLabel = mode === 'database' ? 'DB保存中' : mode === 'anonymous' ? 'ログイン待ち' : 'デモ'
 
   function flash(message: string, tone: ApiState['tone'] = 'good') {
@@ -329,6 +329,7 @@ export function NightRadarConsole({ initialState }: Props) {
   }
 
   async function deleteSituation(id: string) {
+    if (!window.confirm('この店舗状況を削除しますか？')) return
     setBusy('delete-situation')
     try {
       const result = await deleteJson<{ mode?: RuntimeMode; message?: string }>('/api/records', {
@@ -751,9 +752,9 @@ export function NightRadarConsole({ initialState }: Props) {
                       </option>
                     ))}
                   </select>
-                  <input autoComplete="off" name="title" placeholder="状況" />
-                  <textarea autoComplete="off" name="note" placeholder="メモ" rows={3} />
-                  <input autoComplete="off" name="sourceUrl" placeholder="URL" type="url" />
+                  <input aria-label="状況タイトル" autoComplete="off" name="title" placeholder="状況…" />
+                  <textarea aria-label="状況メモ" autoComplete="off" name="note" placeholder="メモ…" rows={3} />
+                  <input aria-label="状況ソースURL" autoComplete="off" name="sourceUrl" placeholder="URL…" type="url" />
                   <button type="submit">
                     <Plus size={17} weight="bold" />
                     追加
@@ -823,8 +824,8 @@ export function NightRadarConsole({ initialState }: Props) {
                   </option>
                 ))}
               </select>
-              <textarea name="body" placeholder="公開掲示板・店舗告知などの要約テキスト" rows={5} />
-              <input name="keywords" placeholder="キーワード 例: 昼,主婦,初参加" />
+              <textarea aria-label="投稿本文" name="body" placeholder="公開掲示板・店舗告知などの要約テキスト…" rows={5} />
+              <input aria-label="投稿キーワード" autoComplete="off" name="keywords" placeholder="キーワード 例: 昼,主婦,初参加…" />
               <button type="submit">
                 <Plus size={17} weight="bold" />
                 投稿追加
@@ -840,7 +841,7 @@ export function NightRadarConsole({ initialState }: Props) {
                   </option>
                 ))}
               </select>
-              <input name="title" placeholder="イベント名" />
+              <input aria-label="イベント名" autoComplete="off" name="title" placeholder="イベント名…" />
               <div className="inline-grid">
                 <select name="weekday" aria-label="曜日">
                   {weekdays.map((weekday) => (
@@ -854,8 +855,8 @@ export function NightRadarConsole({ initialState }: Props) {
                 </select>
               </div>
               <div className="inline-grid">
-                <input name="date" placeholder="日付 例: 今日" />
-                <input name="startsAt" placeholder="19:00" />
+                <input aria-label="イベント日付" autoComplete="off" name="date" placeholder="日付 例: 今日…" />
+                <input aria-label="開始時刻" autoComplete="off" name="startsAt" placeholder="19:00…" />
               </div>
               <select name="session" aria-label="時間帯">
                 <option value="day">昼</option>
@@ -869,12 +870,12 @@ export function NightRadarConsole({ initialState }: Props) {
 
             <form className="app-card form-card" onSubmit={addStore}>
               <FormTitle icon={<Storefront size={19} weight="bold" />} title="店舗プロファイル" />
-              <input name="name" placeholder="店舗名" />
-              <input name="area" placeholder="エリア" />
-              <input name="prStructure" placeholder="PR構造 例: 具体型" />
-              <input name="strongDays" placeholder="強い曜日 例: 火曜,金曜" />
-              <input name="strongEvents" placeholder="強いイベント 例: 昼主婦系,初心者系" />
-              <input name="weakEvents" placeholder="弱いイベント" />
+              <input aria-label="店舗名" autoComplete="off" name="name" placeholder="店舗名…" />
+              <input aria-label="エリア" autoComplete="off" name="area" placeholder="エリア…" />
+              <input aria-label="PR構造" autoComplete="off" name="prStructure" placeholder="PR構造 例: 具体型…" />
+              <input aria-label="強い曜日" autoComplete="off" name="strongDays" placeholder="強い曜日 例: 火曜,金曜…" />
+              <input aria-label="強いイベント" autoComplete="off" name="strongEvents" placeholder="強いイベント 例: 昼主婦系,初心者系…" />
+              <input aria-label="弱いイベント" autoComplete="off" name="weakEvents" placeholder="弱いイベント…" />
               <div className="switch-row">
                 <label>
                   <input name="hasDaytime" type="checkbox" defaultChecked />
@@ -905,7 +906,7 @@ export function NightRadarConsole({ initialState }: Props) {
 
             <section className="app-card form-card">
               <FormTitle icon={<MagicWand size={19} weight="bold" />} title="AI分析" />
-              <textarea value={analysisText} onChange={(event) => setAnalysisText(event.target.value)} rows={5} />
+              <textarea aria-label="AI分析対象テキスト" value={analysisText} onChange={(event) => setAnalysisText(event.target.value)} rows={5} />
               <button type="button" onClick={runAiAnalysis} disabled={busy === 'ai'}>
                 <Sparkle size={17} weight="fill" />
                 分類する
@@ -942,7 +943,7 @@ export function NightRadarConsole({ initialState }: Props) {
                   取り込む
                 </button>
               </div>
-              <textarea value={csvText} onChange={(event) => setCsvText(event.target.value)} rows={7} />
+              <textarea aria-label="CSVテキスト" value={csvText} onChange={(event) => setCsvText(event.target.value)} rows={7} />
             </section>
 
             <section className="app-card form-card">
@@ -954,7 +955,14 @@ export function NightRadarConsole({ initialState }: Props) {
                   </option>
                 ))}
               </select>
-              <input placeholder="公開ページURL" value={scrapeUrl} onChange={(event) => setScrapeUrl(event.target.value)} />
+              <input
+                aria-label="公開ページURL"
+                autoComplete="off"
+                placeholder="公開ページURL…"
+                type="url"
+                value={scrapeUrl}
+                onChange={(event) => setScrapeUrl(event.target.value)}
+              />
               <button type="button" onClick={runScrape} disabled={busy === 'scrape'}>
                 <Broadcast size={17} weight="bold" />
                 取得して投稿化
@@ -972,9 +980,16 @@ export function NightRadarConsole({ initialState }: Props) {
                     </option>
                   ))}
                 </select>
-                <input autoComplete="off" name="label" placeholder="ラベル 例: 公式BBS" />
-                <input autoComplete="off" name="url" placeholder="BBS URL" type="url" />
-                <input autoComplete="off" min={15} name="crawlIntervalMinutes" placeholder="巡回間隔 分" type="number" />
+                <input aria-label="BBSソースラベル" autoComplete="off" name="label" placeholder="ラベル 例: 公式BBS…" />
+                <input aria-label="BBS URL" autoComplete="off" name="url" placeholder="BBS URL…" type="url" />
+                <input
+                  aria-label="巡回間隔"
+                  autoComplete="off"
+                  min={15}
+                  name="crawlIntervalMinutes"
+                  placeholder="巡回間隔 分…"
+                  type="number"
+                />
                 <button type="submit" disabled={busy === 'bbs-source'}>
                   <Plus size={17} weight="bold" />
                   ソース保存
@@ -1052,7 +1067,15 @@ export function NightRadarConsole({ initialState }: Props) {
               </button>
               <label className="email-row">
                 <EnvelopeSimple size={18} weight="bold" />
-                <input placeholder="メールアドレス" value={email} onChange={(event) => setEmail(event.target.value)} />
+                <input
+                  aria-label="メールアドレス"
+                  autoComplete="email"
+                  placeholder="メールアドレス…"
+                  spellCheck={false}
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
               </label>
               <button type="button" onClick={sendEmailLink} disabled={busy === 'email'}>
                 認証メールを送る

@@ -15,6 +15,9 @@ export async function GET(request: Request) {
   try {
     return Response.json(await crawlDueBbsSourcesForCron())
   } catch (error) {
+    if (error instanceof RepositoryError && error.status === 503) {
+      return Response.json({ mode: 'demo', checked: 0, crawled: 0, message: error.message })
+    }
     if (error instanceof RepositoryError) return jsonError(error.message, error.status)
     return jsonError(error instanceof Error ? error.message : 'Cron crawl failed.', 400)
   }
