@@ -94,7 +94,7 @@ create table if not exists public.bbs_sources (
   url text not null,
   parser_type text not null default 'auto' check (parser_type in ('auto', 'body')),
   active boolean not null default true,
-  crawl_interval_minutes integer not null default 360 check (crawl_interval_minutes between 15 and 10080),
+  crawl_interval_minutes integer not null default 360 check (crawl_interval_minutes between 5 and 10080),
   last_fetched_at timestamptz,
   last_status text not null default 'pending' check (last_status in ('ok', 'blocked', 'failed', 'pending')),
   last_message text,
@@ -115,6 +115,21 @@ create table if not exists public.crawl_runs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.bbs_snapshots (
+  id text primary key default gen_random_uuid()::text,
+  source_id text references public.bbs_sources(id) on delete set null,
+  store_id text not null references public.stores(id) on delete cascade,
+  url text not null,
+  screenshot_data_url text,
+  extracted_text text not null default '',
+  metrics jsonb not null default '{}',
+  radar_score integer not null default 0 check (radar_score between 0 and 100),
+  captured_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists bbs_snapshots_store_captured_idx on public.bbs_snapshots (store_id, captured_at desc);
+
 create table if not exists public.exact_terms (
   id text primary key default gen_random_uuid()::text,
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -123,6 +138,17 @@ create table if not exists public.exact_terms (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (user_id, term_group, term)
+);
+
+create table if not exists public.word_bookmarks (
+  id text primary key default gen_random_uuid()::text,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  label text not null,
+  pattern text not null,
+  match_type text not null default 'exact' check (match_type in ('exact', 'regex', 'emoji')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, pattern, match_type)
 );
 
 create table if not exists public.exact_matches (
@@ -188,7 +214,7 @@ create table if not exists public.notification_preferences (
   email text,
   webhook_url text,
   channel text not null default 'in_app' check (channel in ('in_app', 'email', 'webhook')),
-  audience text not null default 'light' check (audience in ('free', 'light', 'standard', 'premium')),
+  audience text not null default 'free' check (audience in ('free', 'light', 'standard', 'premium')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -208,8 +234,10 @@ alter table public.posts enable row level security;
 alter table public.store_situations enable row level security;
 alter table public.bbs_sources enable row level security;
 alter table public.crawl_runs enable row level security;
+alter table public.bbs_snapshots enable row level security;
 alter table public.exact_terms enable row level security;
 alter table public.exact_matches enable row level security;
+alter table public.word_bookmarks enable row level security;
 alter table public.ai_analyses enable row level security;
 alter table public.score_snapshots enable row level security;
 alter table public.import_batches enable row level security;
@@ -265,13 +293,29 @@ create policy "bbs sources owner manage through store" on public.bbs_sources
   );
 
 drop policy if exists "crawl runs owner read through store" on public.crawl_runs;
-create policy "crawl runs owner read through store" on public.crawl_runs
-  for select using (
+drop policy if exists "crawl runs owner manage through store" on public.crawl_runs;
+create policy "crawl runs owner manage through store" on public.crawl_runs
+  for all using (
+    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
+  ) with check (
+    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
+  );
+
+drop policy if exists "bbs snapshots owner read through store" on public.bbs_snapshots;
+drop policy if exists "bbs snapshots owner manage through store" on public.bbs_snapshots;
+create policy "bbs snapshots owner manage through store" on public.bbs_snapshots
+  for all using (
+    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
+  ) with check (
     exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
   );
 
 drop policy if exists "exact terms owner manage" on public.exact_terms;
 create policy "exact terms owner manage" on public.exact_terms
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "word bookmarks owner manage" on public.word_bookmarks;
+create policy "word bookmarks owner manage" on public.word_bookmarks
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 drop policy if exists "exact matches owner manage" on public.exact_matches;
@@ -332,4 +376,8 @@ create trigger notification_jobs_updated_at before update on public.notification
 
 drop trigger if exists notification_preferences_updated_at on public.notification_preferences;
 create trigger notification_preferences_updated_at before update on public.notification_preferences
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists word_bookmarks_updated_at on public.word_bookmarks;
+create trigger word_bookmarks_updated_at before update on public.word_bookmarks
   for each row execute function public.set_updated_at();

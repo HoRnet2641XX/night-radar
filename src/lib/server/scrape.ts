@@ -1,7 +1,17 @@
 import * as cheerio from 'cheerio'
 import type { PostRecord, ScrapeResult } from '../types'
 
-const blockedHostPatterns = [/^localhost$/i, /^127\./, /^10\./, /^192\.168\./, /^172\.(1[6-9]|2\d|3[0-1])\./, /\.local$/i]
+const blockedHostPatterns = [
+  /^localhost$/i,
+  /^\[?::1\]?$/i,
+  /^127\./,
+  /^0\./,
+  /^10\./,
+  /^169\.254\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[0-1])\./,
+  /\.local$/i,
+]
 
 function isAllowedHost(hostname: string) {
   if (blockedHostPatterns.some((pattern) => pattern.test(hostname))) return false
@@ -11,7 +21,49 @@ function isAllowedHost(hostname: string) {
     .filter(Boolean)
 
   if (!allowed?.length) return true
-  return allowed.includes(hostname)
+  return allowed.includes(hostname) || allowed.some((host) => host.startsWith('*.') && hostname.endsWith(host.slice(1)))
+}
+
+function compactText(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function extractReadableText($: cheerio.CheerioAPI) {
+  $('script, style, noscript, iframe, svg, nav, header, footer, form, button, select, option').remove()
+
+  const candidates = [
+    'article',
+    'main',
+    '[role="main"]',
+    '.bbs',
+    '.board',
+    '.thread',
+    '.topic',
+    '.post',
+    '.comment',
+    '.entry',
+    '.content',
+    '#content',
+  ]
+
+  const seen = new Set<string>()
+  const blocks: string[] = []
+  candidates.forEach((selector) => {
+    $(selector).each((_, element) => {
+      const text = compactText($(element).text())
+      if (text.length < 40 || seen.has(text)) return
+      seen.add(text)
+      blocks.push(text)
+    })
+  })
+
+  const source = blocks.length ? blocks.join('\n') : compactText($('body').text())
+  return source
+    .split(/\n+/)
+    .map((line) => compactText(line))
+    .filter((line) => line.length >= 20)
+    .join('\n')
+    .slice(0, 12_000)
 }
 
 export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> {
@@ -75,9 +127,8 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
 
     const html = (await response.text()).slice(0, 500_000)
     const $ = cheerio.load(html)
-    $('script, style, noscript, iframe, svg').remove()
     const title = $('title').first().text().trim()
-    const extractedText = $('body').text().replace(/\s+/g, ' ').trim().slice(0, 12_000)
+    const extractedText = extractReadableText($)
 
     return {
       url: url.toString(),
@@ -107,7 +158,7 @@ export function scrapeResultToPost(result: ScrapeResult, storeId: string): PostR
     source: 'scrape',
     sourceUrl: result.url,
     postedAt: result.fetchedAt,
-    body: result.extractedText.slice(0, 900),
+    body: result.extractedText.slice(0, 1500),
     keywords: [],
   }
 }

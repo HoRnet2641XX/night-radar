@@ -9,6 +9,7 @@ export type ExactTermGroup = 'popularSingleMale' | 'popularSingleFemale' | 'nega
 export type RuntimeMode = 'database' | 'anonymous' | 'demo'
 export type CrawlStatus = 'ok' | 'blocked' | 'failed' | 'pending'
 export type BbsParserType = 'auto' | 'body'
+export type WordBookmarkMatchType = 'exact' | 'regex' | 'emoji'
 
 export type StoreProfile = {
   id: string
@@ -79,6 +80,71 @@ export type CrawlRun = {
   message?: string
   fetchedAt: string
   postId?: string
+}
+
+export type BbsSnapshotMetrics = {
+  femaleOnly: number
+  firstVisit: number
+  comeback: number
+  groupVisit: number
+  emoji: number
+  totalSignals: number
+  textLength: number
+}
+
+export type BbsSnapshot = {
+  id: string
+  sourceId?: string
+  storeId: string
+  url: string
+  screenshotDataUrl?: string
+  extractedText: string
+  metrics: BbsSnapshotMetrics
+  radarScore: number
+  capturedAt: string
+}
+
+export type StoreRadarPoint = {
+  store: StoreProfile
+  score: number
+  tone: SignalTone
+  share: number
+  rank: number
+  postCount: number
+  snapshotCount: number
+  lastCapturedAt?: string
+  signals: BbsSnapshotMetrics
+  verdict: string
+}
+
+export type WatchedWordHit = {
+  id: string
+  label: string
+  term: string
+  store: StoreProfile
+  post: PostRecord
+  snippet: string
+  severity: 'high' | 'medium' | 'low'
+}
+
+export type WordBookmark = {
+  id: string
+  label: string
+  pattern: string
+  matchType: WordBookmarkMatchType
+  createdAt: string
+}
+
+export type VisitForecast = {
+  id: string
+  store: StoreProfile
+  event?: EventInput
+  score: number
+  rank: number
+  dateLabel: string
+  timeLabel: string
+  reasons: string[]
+  watchedSignalCount: number
 }
 
 export type WordCategory = {
@@ -155,6 +221,13 @@ export type NotificationJob = {
   status: 'queued' | 'sent' | 'dry_run' | 'failed'
 }
 
+export type NotificationPreference = {
+  email: string
+  webhookUrl: string
+  channel: NotificationChannel
+  audience: PlanKey
+}
+
 export type SubscriptionState = {
   plan: PlanKey
   status: string
@@ -199,8 +272,13 @@ export type DashboardState = {
   scoredEvents: ScoredEvent[]
   situations: StoreSituation[]
   bbsSources: BbsSource[]
+  crawlRuns: CrawlRun[]
+  bbsSnapshots: BbsSnapshot[]
   exactTerms: ExactTermState
+  wordBookmarks: WordBookmark[]
   notificationJobs: NotificationJob[]
+  notificationPreference: NotificationPreference
+  importBatches: ImportBatch[]
   subscription: SubscriptionState
   wordCategories: WordCategory[]
 }

@@ -7,7 +7,7 @@
     "dev": "NEXT_TEST_WASM=1 NEXT_TEST_WASM_DIR=\"$PWD/node_modules/@next/swc-wasm-nodejs\" next dev --webpack",
     "build": "NEXT_TEST_WASM=1 NEXT_TEST_WASM_DIR=\"$PWD/node_modules/@next/swc-wasm-nodejs\" next build --webpack",
     "lint": "eslint .",
-    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test": "node --import tsx --test src/lib/csv.test.ts src/lib/scoring.test.ts",
     "start": "next start"
   },
   "dependencies": {
@@ -20,6 +20,7 @@
     "next": "^16.2.6",
     "openai": "^6.39.1",
     "papaparse": "^5.5.3",
+    "playwright": "^1.60.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "resend": "^6.12.4",

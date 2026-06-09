@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { motion } from 'motion/react'
 import {
   BellRinging,
   Broadcast,
@@ -32,21 +31,39 @@ import {
 } from '@phosphor-icons/react'
 import { csvTemplates } from '@/lib/csv'
 import { plans } from '@/lib/demo-data'
-import { buildStoreBbsAnalytics, parseExactTerms, searchExactBbsTerms, summarizeSignals } from '@/lib/scoring'
+import { planLimits, planRank } from '@/lib/plans'
+import {
+  buildStoreBbsAnalytics,
+  buildStoreRadarPoints,
+  buildVisitForecasts,
+  buildWatchedWordHits,
+  parseExactTerms,
+  searchExactBbsTerms,
+  summarizeSignals,
+} from '@/lib/scoring'
 import type {
   AiAnalysis,
+  BbsSnapshot,
   BbsSource,
+  CrawlRun,
   DashboardState,
   ExactTermMatch,
   ExactTermState,
   EventInput,
+  ImportBatch,
+  NotificationChannel,
   NotificationJob,
+  NotificationPreference,
+  PlanKey,
   PostRecord,
   RuntimeMode,
   ScoredEvent,
-  StoreBbsAnalytics,
+  StoreRadarPoint,
   StoreProfile,
   StoreSituation,
+  VisitForecast,
+  WatchedWordHit,
+  WordBookmark,
 } from '@/lib/types'
 import './night-radar-console.css'
 
@@ -74,6 +91,19 @@ const exactTermLabels = {
   popularSingleFemale: '人気単女',
   negativePerson: '不人気・苦手',
 } as const
+
+const planLabels: Record<PlanKey, string> = {
+  free: '無料',
+  light: 'ライト',
+  standard: 'スタンダード',
+  premium: 'プレミアム',
+}
+
+const notificationChannelLabels: Record<NotificationChannel, string> = {
+  in_app: 'アプリ内',
+  email: 'メール',
+  webhook: 'Webhook',
+}
 
 const situationStatuses: Array<{ value: StoreSituation['status']; label: string }> = [
   { value: 'open', label: '通常営業' },
@@ -142,10 +172,20 @@ export function NightRadarConsole({ initialState }: Props) {
     message: initialState.connectionNote ?? (initialState.mode === 'database' ? 'synced' : 'ready'),
   })
   const [jobs, setJobs] = useState<NotificationJob[]>(initialState.notificationJobs)
+  const [notificationPreference, setNotificationPreference] = useState<NotificationPreference>(initialState.notificationPreference)
+  const [importBatches, setImportBatches] = useState<ImportBatch[]>(initialState.importBatches)
+  const [crawlRuns, setCrawlRuns] = useState<CrawlRun[]>(initialState.crawlRuns)
+  const [bbsSnapshots, setBbsSnapshots] = useState<BbsSnapshot[]>(initialState.bbsSnapshots)
+  const [wordBookmarks, setWordBookmarks] = useState<WordBookmark[]>(initialState.wordBookmarks)
+  const [bookmarkDraft, setBookmarkDraft] = useState('')
+  const [csvResult, setCsvResult] = useState<{ kind: CsvKind; imported: number; errors: string[] } | null>(null)
   const [busy, setBusy] = useState('')
 
   const summary = useMemo(() => summarizeSignals(scoredEvents), [scoredEvents])
   const storeAnalytics = useMemo(() => buildStoreBbsAnalytics(stores, posts), [stores, posts])
+  const storeRadar = useMemo(() => buildStoreRadarPoints(stores, posts, bbsSnapshots), [stores, posts, bbsSnapshots])
+  const watchedWordHits = useMemo(() => buildWatchedWordHits(posts, stores, wordBookmarks), [posts, stores, wordBookmarks])
+  const visitForecasts = useMemo(() => buildVisitForecasts(events, stores, posts), [events, stores, posts])
   const exactMatches = useMemo(
     () =>
       searchExactBbsTerms(posts, stores, [
@@ -171,6 +211,12 @@ export function NightRadarConsole({ initialState }: Props) {
   const focusedStores = storeAnalytics.slice(0, 3)
   const visibleSituations = situations.slice(0, 3)
   const visibleMatches = (serverMatches.length ? serverMatches : exactMatches).slice(0, 8)
+  const currentPlan = subscription.plan
+  const currentLimits = planLimits[currentPlan]
+  const visibleImports = importBatches.slice(0, 4)
+  const visibleCrawlRuns = crawlRuns.slice(0, 4)
+  const visibleWatchedHits = watchedWordHits.slice(0, 8)
+  const topForecasts = visitForecasts.slice(0, 3)
   const latestPost = posts[0]
   const activeWords = wordCategories.filter((word) =>
     posts.some((post) => word.examples.some((example) => post.body.includes(example))),
@@ -179,6 +225,7 @@ export function NightRadarConsole({ initialState }: Props) {
   const radarScore = featuredEvent?.score ?? 0
   const busyLabel = busy ? '処理中…' : apiState.message
   const modeLabel = mode === 'database' ? 'DB保存中' : mode === 'anonymous' ? 'ログイン待ち' : 'デモ'
+  const sourceLimitLabel = `${bbsSources.length}/${currentLimits.bbsSources}`
 
   function flash(message: string, tone: ApiState['tone'] = 'good') {
     setApiState({ message, tone })
@@ -349,17 +396,29 @@ export function NightRadarConsole({ initialState }: Props) {
   async function importCsv() {
     setBusy('csv')
     try {
-      const result = await postJson<{ items: unknown[]; errors: string[] }>('/api/csv/import', {
+      const result = await postJson<{ items: unknown[]; errors: string[]; mode?: RuntimeMode; message?: string }>('/api/csv/import', {
         kind: csvKind,
         text: csvText,
         persist: true,
       })
+      setCsvResult({ kind: csvKind, imported: result.items.length, errors: result.errors })
       if (result.errors.length) {
         flash(`CSVに${result.errors.length}件のエラーがあります。`, 'warn')
       }
       if (csvKind === 'stores') setStores((current) => [...(result.items as StoreProfile[]), ...current])
       if (csvKind === 'events') setEvents((current) => [...(result.items as EventInput[]), ...current])
       if (csvKind === 'posts') setPosts((current) => [...(result.items as PostRecord[]), ...current])
+      setImportBatches((current) => [
+        {
+          id: crypto.randomUUID(),
+          kind: csvKind,
+          importedCount: result.items.length,
+          errorCount: result.errors.length,
+          createdAt: new Date().toISOString(),
+        },
+        ...current,
+      ])
+      applyMode(result.mode, result.message)
       if (!result.errors.length) flash(`${result.items.length}件を取り込みました。`)
     } catch (error) {
       flash(error instanceof Error ? error.message : 'CSV取り込みに失敗しました。', 'warn')
@@ -413,7 +472,7 @@ export function NightRadarConsole({ initialState }: Props) {
     if (!analysisText.trim()) return flash('AI分析するテキストが必要です。', 'warn')
     setBusy('ai')
     try {
-      const result = await postJson<{ analysis: AiAnalysis; mode: string }>('/api/ai/analyze', { text: analysisText })
+      const result = await postJson<{ analysis: AiAnalysis; mode: string }>('/api/ai/analyze', { text: analysisText, persist: true })
       setAnalysis(result.analysis)
       flash(`AI分析を完了しました (${result.mode})。`)
     } catch (error) {
@@ -425,6 +484,9 @@ export function NightRadarConsole({ initialState }: Props) {
 
   async function addBbsSource(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (mode === 'database' && bbsSources.length >= currentLimits.bbsSources) {
+      return flash(`${planLabels[currentPlan]}プランのBBSソース上限は${currentLimits.bbsSources}件です。`, 'warn')
+    }
     const form = new FormData(event.currentTarget)
     const item: BbsSource = {
       id: crypto.randomUUID(),
@@ -460,13 +522,22 @@ export function NightRadarConsole({ initialState }: Props) {
       const result = await postJson<{
         mode?: RuntimeMode
         message?: string
-        results: Array<{ source: BbsSource; post: PostRecord | null }>
+        results: Array<{ source: BbsSource; post: PostRecord | null; run?: CrawlRun; snapshot?: BbsSnapshot | null }>
       }>('/api/bbs-sources/crawl', { sourceIds })
       setBbsSources((current) =>
         current.map((source) => result.results.find((entry) => entry.source.id === source.id)?.source ?? source),
       )
       const newPosts = result.results.map((entry) => entry.post).filter((post): post is PostRecord => Boolean(post))
       if (newPosts.length) setPosts((current) => [...newPosts, ...current.filter((post) => !newPosts.some((next) => next.id === post.id))])
+      const newRuns = result.results.map((entry) => entry.run).filter((run): run is CrawlRun => Boolean(run))
+      if (newRuns.length) setCrawlRuns((current) => [...newRuns, ...current.filter((run) => !newRuns.some((next) => next.id === run.id))])
+      const newSnapshots = result.results.map((entry) => entry.snapshot).filter((snapshot): snapshot is BbsSnapshot => Boolean(snapshot))
+      if (newSnapshots.length) {
+        setBbsSnapshots((current) => [
+          ...newSnapshots,
+          ...current.filter((snapshot) => !newSnapshots.some((next) => next.id === snapshot.id)),
+        ])
+      }
       applyMode(result.mode, result.message)
       flash(`${result.results.length}件のBBSソースを巡回しました。`, result.results.length ? 'good' : 'warn')
     } catch (error) {
@@ -476,7 +547,48 @@ export function NightRadarConsole({ initialState }: Props) {
     }
   }
 
+  async function addWordBookmark(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const pattern = bookmarkDraft.trim()
+    if (!pattern) return flash('保存するワードが必要です。', 'warn')
+
+    setBusy('word-bookmark')
+    try {
+      const result = await postJson<{ bookmark: WordBookmark; mode?: RuntimeMode; message?: string }>('/api/word-bookmarks', {
+        label: pattern,
+        pattern,
+        matchType: 'exact',
+      })
+      setWordBookmarks((current) => [result.bookmark, ...current.filter((bookmark) => bookmark.id !== result.bookmark.id)])
+      setBookmarkDraft('')
+      applyMode(result.mode, result.message)
+      if (!result.message) flash('ワードをブックマークしました。')
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'ワードを保存できません。', 'warn')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function deleteWordBookmark(id: string) {
+    setBusy('delete-word-bookmark')
+    try {
+      const result = await deleteJson<{ mode?: RuntimeMode; message?: string }>('/api/word-bookmarks', { id })
+      setWordBookmarks((current) => current.filter((bookmark) => bookmark.id !== id))
+      applyMode(result.mode, result.message)
+      if (!result.message) flash('ワードブックマークを削除しました。')
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'ワードブックマークを削除できません。', 'warn')
+    } finally {
+      setBusy('')
+    }
+  }
+
   async function saveExactTerms() {
+    if (mode === 'database') {
+      const overLimit = Object.entries(exactTerms).find(([, value]) => parseExactTerms(value).length > currentLimits.exactTermsPerGroup)
+      if (overLimit) return flash(`${planLabels[currentPlan]}プランの完全一致ワード上限は各${currentLimits.exactTermsPerGroup}件です。`, 'warn')
+    }
     setBusy('exact')
     try {
       const result = await postJson<{
@@ -503,17 +615,68 @@ export function NightRadarConsole({ initialState }: Props) {
   async function sendNotifications() {
     setBusy('notify')
     try {
-      const result = await postJson<{ jobs: NotificationJob[]; mode?: RuntimeMode; message?: string }>('/api/notifications/dispatch', {
-        channel: email ? 'email' : 'in_app',
-        audience: 'light',
-        recipient: email || undefined,
+      const result = await postJson<{
+        jobs: NotificationJob[]
+        mode?: RuntimeMode
+        message?: string
+        preference?: NotificationPreference
+      }>('/api/notifications/dispatch', {
+        channel: notificationPreference.channel,
+        audience: notificationPreference.audience,
+        recipient: notificationPreference.email || undefined,
+        webhookUrl: notificationPreference.webhookUrl || undefined,
         events: scoredEvents,
       })
       setJobs(result.jobs)
+      if (result.preference) setNotificationPreference(result.preference)
       applyMode(result.mode, result.message)
       if (!result.message) flash('通知ジョブを作成しました。')
     } catch (error) {
       flash(error instanceof Error ? error.message : '通知配信に失敗しました。', 'warn')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function saveNotificationSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (notificationPreference.channel === 'email' && !notificationPreference.email) {
+      return flash('メール通知には送信先メールが必要です。', 'warn')
+    }
+    if (notificationPreference.channel === 'webhook' && !notificationPreference.webhookUrl) {
+      return flash('Webhook通知にはURLが必要です。', 'warn')
+    }
+
+    setBusy('notification-settings')
+    try {
+      const result = await postJson<{
+        preference: NotificationPreference
+        mode?: RuntimeMode
+        message?: string
+      }>('/api/notifications/preferences', notificationPreference)
+      setNotificationPreference(result.preference)
+      applyMode(result.mode, result.message)
+      if (!result.message) flash('通知設定を保存しました。')
+    } catch (error) {
+      flash(error instanceof Error ? error.message : '通知設定を保存できません。', 'warn')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function deleteBbsSource(id: string) {
+    if (!window.confirm('このBBSソースを削除しますか？')) return
+    setBusy('delete-bbs-source')
+    try {
+      const result = await deleteJson<{ mode?: RuntimeMode; message?: string }>('/api/records', {
+        kind: 'bbsSources',
+        id,
+      })
+      setBbsSources((current) => current.filter((source) => source.id !== id))
+      applyMode(result.mode, result.message)
+      if (!result.message) flash('BBSソースを削除しました。')
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'BBSソース削除に失敗しました。', 'warn')
     } finally {
       setBusy('')
     }
@@ -607,13 +770,7 @@ export function NightRadarConsole({ initialState }: Props) {
         </header>
 
         {view === 'radar' && (
-          <motion.section
-            className="view-stack"
-            key="radar"
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28 }}
-          >
+          <section className="view-stack">
             <section className="radar-hero-card">
               <div className="radar-copy">
                 <span>Live signal</span>
@@ -669,34 +826,44 @@ export function NightRadarConsole({ initialState }: Props) {
             </section>
 
             <LatestPost source={latestPost?.source ?? 'manual'} body={latestPost?.body ?? 'まだ投稿がありません。'} />
-          </motion.section>
+          </section>
         )}
 
         {view === 'analytics' && (
-          <motion.section
-            className="view-stack"
-            key="analytics"
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28 }}
-          >
+          <section className="view-stack">
             <ViewIntro
               eyebrow="BBS"
               title="店舗別BBS"
-              body="投稿量、曜日、完全一致ワードだけを見る。"
+              body="どの店が熱いか、まだ余地があるかだけを見る。"
             />
 
-            <section className="analytics-hero app-card">
-              <div className="section-heading">
-                <span>Pulse</span>
-                <h2>盛り上がり</h2>
-              </div>
-              <div className="pulse-grid">
-                {focusedStores.map((item) => (
-                  <StorePulseCard item={item} key={item.store.id} />
-                ))}
-              </div>
+            <RadarBoard points={storeRadar} />
+
+            <section className="subpage-strip" aria-label="詳細ページ">
+              <a href="/forecast">来店予告ランキング</a>
+              <a href="/calendar">月間イベント</a>
+              <a href="/ai-guide">AIガイド</a>
             </section>
+
+            <OpsPanel
+              mode={mode}
+              sourceLimitLabel={sourceLimitLabel}
+              crawlRuns={visibleCrawlRuns}
+              importBatches={visibleImports}
+              jobs={jobs}
+            />
+
+            <WatchedWordsPanel
+              hits={visibleWatchedHits}
+              bookmarks={wordBookmarks}
+              bookmarkDraft={bookmarkDraft}
+              busy={busy}
+              onDraftChange={setBookmarkDraft}
+              onAddBookmark={addWordBookmark}
+              onDeleteBookmark={deleteWordBookmark}
+            />
+
+            <ForecastPreview forecasts={topForecasts} />
 
             <section className="app-card">
               <div className="section-heading">
@@ -803,17 +970,11 @@ export function NightRadarConsole({ initialState }: Props) {
               </button>
               <ExactMatchList matches={visibleMatches} />
             </section>
-          </motion.section>
+          </section>
         )}
 
         {view === 'capture' && (
-          <motion.section
-            className="view-stack"
-            key="capture"
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28 }}
-          >
+          <section className="view-stack">
             <ViewIntro eyebrow="Capture" title="入力は短く、判断材料は濃く。" body="店舗、イベント、投稿メモをカード単位で追加します。" />
             <form className="app-card form-card" onSubmit={addPost}>
               <FormTitle icon={<ClipboardText size={19} weight="bold" />} title="投稿メモ" />
@@ -891,17 +1052,11 @@ export function NightRadarConsole({ initialState }: Props) {
                 店舗追加
               </button>
             </form>
-          </motion.section>
+          </section>
         )}
 
         {view === 'automate' && (
-          <motion.section
-            className="view-stack"
-            key="automate"
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28 }}
-          >
+          <section className="view-stack">
             <ViewIntro eyebrow="Flow" title="取り込みから通知までを一本化。" body="CSV、公開HTML、AI分類、通知ジョブを同じ画面で扱います。" />
 
             <section className="app-card form-card">
@@ -944,6 +1099,8 @@ export function NightRadarConsole({ initialState }: Props) {
                 </button>
               </div>
               <textarea aria-label="CSVテキスト" value={csvText} onChange={(event) => setCsvText(event.target.value)} rows={7} />
+              <CsvImportSummary result={csvResult} />
+              <ImportHistory batches={visibleImports} />
             </section>
 
             <section className="app-card form-card">
@@ -985,9 +1142,9 @@ export function NightRadarConsole({ initialState }: Props) {
                 <input
                   aria-label="巡回間隔"
                   autoComplete="off"
-                  min={15}
+                  min={5}
                   name="crawlIntervalMinutes"
-                  placeholder="巡回間隔 分…"
+                  placeholder="巡回間隔 分 例: 5…"
                   type="number"
                 />
                 <button type="submit" disabled={busy === 'bbs-source'}>
@@ -1003,9 +1160,20 @@ export function NightRadarConsole({ initialState }: Props) {
                         <strong>{source.label}</strong>
                         <span>{stores.find((store) => store.id === source.storeId)?.name ?? '未登録'} / {source.lastStatus ?? 'pending'}</span>
                       </div>
-                      <button type="button" onClick={() => crawlSources([source.id])} disabled={busy === 'crawl'}>
-                        巡回
-                      </button>
+                      <div className="source-actions">
+                        <button type="button" onClick={() => crawlSources([source.id])} disabled={busy === 'crawl'}>
+                          巡回
+                        </button>
+                        <button
+                          className="icon-action"
+                          type="button"
+                          onClick={() => deleteBbsSource(source.id)}
+                          disabled={busy === 'delete-bbs-source'}
+                          aria-label={`${source.label}を削除`}
+                        >
+                          <Trash size={16} weight="bold" />
+                        </button>
+                      </div>
                     </article>
                   ))
                 ) : (
@@ -1015,10 +1183,66 @@ export function NightRadarConsole({ initialState }: Props) {
               <button className="secondary-action" type="button" onClick={() => crawlSources()} disabled={busy === 'crawl' || !bbsSources.length}>
                 全ソース巡回
               </button>
+              <CrawlRunList runs={visibleCrawlRuns} />
             </section>
 
             <section className="app-card form-card">
               <FormTitle icon={<BellRinging size={19} weight="bold" />} title="通知配信" />
+              <form className="nested-form" onSubmit={saveNotificationSettings}>
+                <div className="inline-grid">
+                  <select
+                    aria-label="通知チャンネル"
+                    value={notificationPreference.channel}
+                    onChange={(event) =>
+                      setNotificationPreference((current) => ({
+                        ...current,
+                        channel: event.target.value as NotificationChannel,
+                      }))
+                    }
+                  >
+                    <option value="in_app">アプリ内</option>
+                    <option value="email">メール</option>
+                    <option value="webhook">Webhook</option>
+                  </select>
+                  <select
+                    aria-label="通知対象プラン"
+                    value={notificationPreference.audience}
+                    onChange={(event) =>
+                      setNotificationPreference((current) => ({
+                        ...current,
+                        audience: event.target.value as PlanKey,
+                      }))
+                    }
+                  >
+                    {plans.map((plan) => (
+                      <option key={plan.key} value={plan.key} disabled={mode === 'database' && planRank[plan.key] > planRank[currentPlan]}>
+                        {plan.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  aria-label="通知メール"
+                  autoComplete="email"
+                  placeholder="通知メール…"
+                  type="email"
+                  value={notificationPreference.email}
+                  onChange={(event) => setNotificationPreference((current) => ({ ...current, email: event.target.value }))}
+                />
+                <input
+                  aria-label="Webhook URL"
+                  autoComplete="off"
+                  placeholder="Webhook URL…"
+                  type="url"
+                  value={notificationPreference.webhookUrl}
+                  onChange={(event) => setNotificationPreference((current) => ({ ...current, webhookUrl: event.target.value }))}
+                />
+                <button className="secondary-action" type="submit" disabled={busy === 'notification-settings'}>
+                  <BellRinging size={17} weight="bold" />
+                  通知設定を保存
+                </button>
+              </form>
+              <NotificationPreferenceSummary preference={notificationPreference} />
               <button type="button" onClick={sendNotifications} disabled={busy === 'notify'}>
                 <BellRinging size={17} weight="bold" />
                 通知ジョブを作成
@@ -1038,17 +1262,11 @@ export function NightRadarConsole({ initialState }: Props) {
                 )}
               </div>
             </section>
-          </motion.section>
+          </section>
         )}
 
         {view === 'account' && (
-          <motion.section
-            className="view-stack"
-            key="account"
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28 }}
-          >
+          <section className="view-stack">
             <ViewIntro eyebrow="Account" title="認証、課金、公開情報ポリシー。" body="X、Google、メール認証とStripeプランを接続できます。" />
 
             <section className="app-card form-card">
@@ -1091,13 +1309,22 @@ export function NightRadarConsole({ initialState }: Props) {
               {plans
                 .filter((plan): plan is (typeof plans)[number] & { key: 'light' | 'standard' | 'premium' } => plan.key !== 'free')
                 .map((plan) => (
-                  <button className="plan-card" key={plan.key} type="button" onClick={() => checkout(plan.key)}>
+                  <button
+                    className={`plan-card ${subscription.plan === plan.key ? 'is-current' : ''}`}
+                    key={plan.key}
+                    type="button"
+                    onClick={() => checkout(plan.key)}
+                  >
                     <span>
                       <StripeLogo size={20} weight="bold" />
                       {plan.label}
+                      {subscription.plan === plan.key ? <em>現在</em> : null}
                     </span>
                     <strong>{plan.price}</strong>
                     <small>{plan.summary}</small>
+                    <small>
+                      BBS {planLimits[plan.key].bbsSources}件 / 完全一致 各{planLimits[plan.key].exactTermsPerGroup}語
+                    </small>
                   </button>
                 ))}
             </section>
@@ -1115,7 +1342,7 @@ export function NightRadarConsole({ initialState }: Props) {
                 <a href="/privacy">プライバシー</a>
               </p>
             </section>
-          </motion.section>
+          </section>
         )}
 
         <nav className="bottom-nav" aria-label="主要ナビゲーション">
@@ -1209,38 +1436,322 @@ function ScoreRow({ event }: { event: ScoredEvent }) {
   )
 }
 
-function StorePulseCard({ item }: { item: StoreBbsAnalytics }) {
+function RadarBoard({ points }: { points: StoreRadarPoint[] }) {
+  const top = points[0]
+
   return (
-    <article className="store-pulse-card">
-      <div className="pulse-head">
-        <span>
-          <Storefront size={17} weight="bold" />
-          {item.store.name}
-        </span>
-        <em>{item.verdict}</em>
-      </div>
-      <div className="pulse-score">
-        <strong>{item.excitement}</strong>
-        <span>pulse</span>
-      </div>
-      <div className="ratio-track" aria-label={`書き込み数比率 ${item.postRatio}%`}>
-        <i style={{ inlineSize: `${item.postRatio}%` }} />
-      </div>
-      <dl className="pulse-metrics">
+    <section className="radar-board app-card" aria-label="店舗レーダー">
+      <div className="radar-board-head">
         <div>
-          <dt>投稿</dt>
-          <dd>{item.postCount}</dd>
+          <span>Store radar</span>
+          <h2>{top ? `${top.store.name} が現在Hot` : 'BBS未観測'}</h2>
         </div>
-        <div>
-          <dt>比率</dt>
-          <dd>{item.postRatio}%</dd>
+        <strong>{top?.score ?? 0}</strong>
+      </div>
+      <div className="radar-board-grid">
+        <StoreShareDonut points={points.slice(0, 5)} />
+        <div className="vertical-radar">
+          {points.slice(0, 5).map((point) => (
+            <article
+              className={`radar-store-row ${point.tone}`}
+              key={point.store.id}
+            >
+              <div className="radar-store-rank">{point.rank}</div>
+              <div className="radar-store-main">
+                <div>
+                  <strong>{point.store.name}</strong>
+                  <span>
+                    {point.verdict} / 女性{point.signals.femaleOnly} 初{point.signals.firstVisit} 複{point.signals.groupVisit}
+                  </span>
+                </div>
+                <div className="radar-meter" aria-label={`${point.store.name} ${point.score}`}>
+                  <i style={{ inlineSize: `${Math.max(8, point.score)}%` }} />
+                </div>
+              </div>
+              <em>{point.score}</em>
+            </article>
+          ))}
         </div>
-        <div>
-          <dt>曜日</dt>
-          <dd>{item.dominantWeekday.replace('曜', '')}</dd>
+      </div>
+    </section>
+  )
+}
+
+function StoreShareDonut({ points }: { points: StoreRadarPoint[] }) {
+  const radius = 38
+  const circumference = 2 * Math.PI * radius
+  const total = Math.max(1, points.reduce((sum, point) => sum + point.score, 0))
+  const segments = points.reduce<Array<{ point: StoreRadarPoint; length: number; offset: number }>>((items, point) => {
+    const previous = items.reduce((sum, item) => sum + item.length, 0)
+    return [
+      ...items,
+      {
+        point,
+        length: (point.score / total) * circumference,
+        offset: previous,
+      },
+    ]
+  }, [])
+
+  return (
+    <div className="share-donut">
+      <svg viewBox="0 0 104 104" role="img" aria-label="店舗別Hot比率">
+        <circle className="donut-base" cx="52" cy="52" r={radius} />
+        {segments.map(({ point, length, offset }) => {
+          const strokeDasharray = `${length} ${circumference - length}`
+          const strokeDashoffset = -offset
+          return (
+            <circle
+              className={`donut-segment ${point.tone}`}
+              cx="52"
+              cy="52"
+              key={point.store.id}
+              r={radius}
+              strokeDasharray={strokeDasharray}
+              strokeDashoffset={strokeDashoffset}
+            />
+          )
+        })}
+      </svg>
+      <div>
+        <strong>{points[0]?.share ?? 0}%</strong>
+        <span>{points[0]?.store.name ?? '未観測'}</span>
+      </div>
+    </div>
+  )
+}
+
+function WatchedWordsPanel({
+  hits,
+  bookmarks,
+  bookmarkDraft,
+  busy,
+  onDraftChange,
+  onAddBookmark,
+  onDeleteBookmark,
+}: {
+  hits: WatchedWordHit[]
+  bookmarks: WordBookmark[]
+  bookmarkDraft: string
+  busy: string
+  onDraftChange: (value: string) => void
+  onAddBookmark: (event: FormEvent<HTMLFormElement>) => void
+  onDeleteBookmark: (id: string) => void
+}) {
+  return (
+    <section className="app-card watched-card">
+      <div className="section-heading">
+        <span>Watch words</span>
+        <h2>注目ワード</h2>
+      </div>
+      <div className="watch-word-chips" aria-label="固定監視ワード">
+        <span>女性</span>
+        <span>初めて</span>
+        <span>久しぶり</span>
+        <span>2人組</span>
+        <span>絵文字</span>
+      </div>
+      <form className="bookmark-form" onSubmit={onAddBookmark}>
+        <input
+          aria-label="ブックマークワード"
+          autoComplete="off"
+          placeholder="追加ワード…"
+          value={bookmarkDraft}
+          onChange={(event) => onDraftChange(event.target.value)}
+        />
+        <button type="submit" disabled={busy === 'word-bookmark'}>
+          保存
+        </button>
+      </form>
+      {bookmarks.length ? (
+        <div className="bookmark-list">
+          {bookmarks.slice(0, 8).map((bookmark) => (
+            <button type="button" key={bookmark.id} onClick={() => onDeleteBookmark(bookmark.id)}>
+              {bookmark.label}
+              <Trash size={13} weight="bold" />
+            </button>
+          ))}
         </div>
-      </dl>
-    </article>
+      ) : null}
+      <div className="watch-hit-list">
+        {hits.length ? (
+          hits.map((hit) => (
+            <article className={`watch-hit ${hit.severity}`} key={hit.id}>
+              <span>{hit.label}</span>
+              <strong>{hit.store.name}</strong>
+              <p>{hit.snippet}</p>
+            </article>
+          ))
+        ) : (
+          <p className="muted-note">BBS投稿を取り込むと、注目ワードがここに出ます。</p>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function ForecastPreview({ forecasts }: { forecasts: VisitForecast[] }) {
+  return (
+    <section className="app-card forecast-preview">
+      <div className="section-heading">
+        <span>Arrival forecast</span>
+        <h2>来店予告Top3</h2>
+      </div>
+      <div className="forecast-list-mini">
+        {forecasts.length ? (
+          forecasts.map((forecast) => (
+            <article key={forecast.id}>
+              <span>{forecast.rank}</span>
+              <div>
+                <strong>{forecast.store.name}</strong>
+                <small>
+                  {forecast.dateLabel} {forecast.timeLabel} / {forecast.reasons[0]}
+                </small>
+              </div>
+              <em>{forecast.score}</em>
+            </article>
+          ))
+        ) : (
+          <p className="muted-note">イベントとBBS投稿を追加するとランキングが出ます。</p>
+        )}
+      </div>
+      <a className="text-action" href="/forecast">
+        ランキングを見る
+      </a>
+    </section>
+  )
+}
+
+function formatShortDate(value?: string) {
+  if (!value) return '未実行'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+function hostLabel(value: string) {
+  try {
+    return new URL(value).hostname
+  } catch {
+    return value
+  }
+}
+
+function OpsPanel({
+  mode,
+  sourceLimitLabel,
+  crawlRuns,
+  importBatches,
+  jobs,
+}: {
+  mode: RuntimeMode
+  sourceLimitLabel: string
+  crawlRuns: CrawlRun[]
+  importBatches: ImportBatch[]
+  jobs: NotificationJob[]
+}) {
+  const latestRun = crawlRuns[0]
+  const latestImport = importBatches[0]
+  const failedJobs = jobs.filter((job) => job.status === 'failed').length
+
+  return (
+    <section className="ops-panel app-card" aria-label="運用状態">
+      <div className="ops-tile">
+        <ShieldCheck size={17} weight="bold" />
+        <span>保存</span>
+        <strong>{mode === 'database' ? 'DB' : mode === 'anonymous' ? 'ログイン待ち' : 'デモ'}</strong>
+      </div>
+      <div className="ops-tile">
+        <Broadcast size={17} weight="bold" />
+        <span>BBS</span>
+        <strong>{sourceLimitLabel}</strong>
+      </div>
+      <div className="ops-tile">
+        <GlobeHemisphereEast size={17} weight="bold" />
+        <span>巡回</span>
+        <strong>{latestRun ? latestRun.status : '未実行'}</strong>
+      </div>
+      <div className="ops-tile">
+        <FileCsv size={17} weight="bold" />
+        <span>取込</span>
+        <strong>{latestImport ? latestImport.importedCount : 0}</strong>
+      </div>
+      {failedJobs ? <p className="ops-note">通知失敗 {failedJobs}件</p> : null}
+    </section>
+  )
+}
+
+function CsvImportSummary({ result }: { result: { kind: CsvKind; imported: number; errors: string[] } | null }) {
+  if (!result) return <p className="muted-note">IDなしCSVと日本語見出しにも対応しています。</p>
+
+  return (
+    <div className={`csv-summary ${result.errors.length ? 'warn' : 'good'}`}>
+      <strong>
+        {result.kind} / {result.imported}件
+      </strong>
+      <span>{result.errors.length ? `エラー ${result.errors.length}件` : '取り込み可能'}</span>
+      {result.errors.length ? (
+        <ul>
+          {result.errors.slice(0, 4).map((error) => (
+            <li key={error}>{error}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
+function ImportHistory({ batches }: { batches: ImportBatch[] }) {
+  if (!batches.length) return null
+
+  return (
+    <div className="mini-history" aria-label="CSV取り込み履歴">
+      {batches.map((batch) => (
+        <article key={batch.id}>
+          <span>{batch.kind}</span>
+          <strong>{batch.importedCount}件</strong>
+          <em>{formatShortDate(batch.createdAt)}</em>
+        </article>
+      ))}
+    </div>
+  )
+}
+
+function CrawlRunList({ runs }: { runs: CrawlRun[] }) {
+  if (!runs.length) return null
+
+  return (
+    <div className="mini-history" aria-label="BBS巡回履歴">
+      {runs.map((run) => (
+        <article key={run.id}>
+          <span>{run.status}</span>
+          <strong>{run.message ?? hostLabel(run.url)}</strong>
+          <em>{formatShortDate(run.fetchedAt)}</em>
+        </article>
+      ))}
+    </div>
+  )
+}
+
+function NotificationPreferenceSummary({ preference }: { preference: NotificationPreference }) {
+  const destination =
+    preference.channel === 'email'
+      ? preference.email || '未設定'
+      : preference.channel === 'webhook'
+        ? preference.webhookUrl || '未設定'
+        : 'アプリ内'
+
+  return (
+    <div className="preference-summary">
+      <span>{notificationChannelLabels[preference.channel]}</span>
+      <strong>{destination}</strong>
+      <em>{planLabels[preference.audience]}向け</em>
+    </div>
   )
 }
 

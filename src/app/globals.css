@@ -143,6 +143,171 @@ a:focus-visible {
   line-height: 1.75;
 }
 
+.insight-page {
+  display: grid;
+  min-height: 100dvh;
+  place-items: start center;
+  padding: 18px 14px 48px;
+}
+
+.insight-sheet {
+  width: min(100%, 760px);
+  border: 1px solid rgba(182, 215, 255, 0.14);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(13, 32, 56, 0.96), rgba(7, 17, 31, 0.98)),
+    #07111f;
+  color: var(--paper);
+  padding: clamp(18px, 4vw, 30px);
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 38px;
+  border: 1px solid rgba(182, 215, 255, 0.16);
+  border-radius: 14px;
+  color: var(--accent-2);
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.insight-header {
+  display: grid;
+  gap: 7px;
+  margin: 22px 0 18px;
+}
+
+.insight-header span {
+  color: rgba(207, 228, 248, 0.62);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.insight-header h1 {
+  margin: 0;
+  font-size: clamp(30px, 7vw, 52px);
+  line-height: 1;
+  text-wrap: balance;
+}
+
+.insight-header p {
+  max-width: 40rem;
+  margin: 0;
+  color: rgba(234, 244, 255, 0.7);
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.forecast-page-list,
+.calendar-list,
+.guide-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.forecast-page-list article,
+.calendar-list section,
+.guide-grid article {
+  border: 1px solid rgba(182, 215, 255, 0.11);
+  border-radius: 18px;
+  background: rgba(225, 240, 255, 0.06);
+  padding: 14px;
+}
+
+.forecast-page-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.forecast-rank {
+  display: grid;
+  inline-size: 36px;
+  block-size: 36px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(138, 240, 228, 0.12);
+  color: var(--signal);
+  font-family: var(--font-mono);
+  font-weight: 950;
+}
+
+.forecast-page-list span,
+.calendar-list span,
+.guide-grid span {
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.forecast-page-list h2,
+.calendar-list h2,
+.guide-grid strong {
+  margin: 4px 0;
+  color: var(--paper);
+  font-size: 20px;
+}
+
+.forecast-page-list p,
+.calendar-list p,
+.guide-grid p {
+  margin: 0;
+  color: rgba(234, 244, 255, 0.68);
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.forecast-page-list strong {
+  color: var(--accent-2);
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+.forecast-page-list ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.forecast-page-list li {
+  border-radius: 999px;
+  background: rgba(225, 240, 255, 0.08);
+  color: rgba(234, 244, 255, 0.72);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.calendar-list section {
+  display: grid;
+  gap: 10px;
+}
+
+.calendar-list section > div {
+  display: grid;
+  gap: 8px;
+}
+
+.calendar-list article {
+  border-radius: 14px;
+  background: rgba(7, 17, 31, 0.34);
+  padding: 11px;
+}
+
+.calendar-list strong {
+  display: block;
+  color: var(--paper);
+  margin: 3px 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

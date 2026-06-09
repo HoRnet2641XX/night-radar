@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { events, posts, stores } from './demo-data'
-import { buildStoreBbsAnalytics, parseExactTerms, scoreEvents, searchExactBbsTerms } from './scoring'
+import {
+  buildBbsSnapshotMetrics,
+  buildStoreBbsAnalytics,
+  buildStoreRadarPoints,
+  buildVisitForecasts,
+  buildWatchedWordHits,
+  parseExactTerms,
+  scoreBbsSnapshot,
+  scoreEvents,
+  searchExactBbsTerms,
+} from './scoring'
 
 describe('scoreEvents', () => {
   it('ranks events and attaches store metrics', () => {
@@ -38,5 +48,28 @@ describe('searchExactBbsTerms', () => {
 
     assert.ok(matches.length > 0)
     assert.equal(matches.every((match) => match.term === '人気単男A'), true)
+  })
+})
+
+describe('BBS radar signals', () => {
+  it('detects watched female-focused signals', () => {
+    const metrics = buildBbsSnapshotMetrics('女性 はじめて 2人組 😊 久しぶり')
+
+    assert.equal(metrics.femaleOnly, 1)
+    assert.equal(metrics.firstVisit, 1)
+    assert.equal(metrics.groupVisit, 1)
+    assert.ok(metrics.emoji >= 1)
+    assert.ok(scoreBbsSnapshot(metrics) > 40)
+  })
+
+  it('builds store radar points and visit forecasts', () => {
+    const radar = buildStoreRadarPoints(stores, posts)
+    const hits = buildWatchedWordHits(posts, stores)
+    const forecasts = buildVisitForecasts(events, stores, posts)
+
+    assert.equal(radar[0].rank, 1)
+    assert.ok(radar[0].score >= 0)
+    assert.ok(hits.length > 0)
+    assert.equal(forecasts[0].rank, 1)
   })
 })

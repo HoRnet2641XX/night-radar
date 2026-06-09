@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -12,6 +12,11 @@ export const metadata: Metadata = {
     description: '公開情報と投稿メモから、今日見るべき夜のシグナルをスマホで素早く判断するレーダーアプリ。',
     type: 'website',
   },
+}
+
+export const viewport: Viewport = {
+  colorScheme: 'dark',
+  themeColor: '#07111f',
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

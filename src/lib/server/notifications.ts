@@ -1,8 +1,9 @@
 import { Resend } from 'resend'
+import { planLimits } from '../plans'
 import type { NotificationChannel, NotificationJob, PlanKey, ScoredEvent } from '../types'
 
 export function buildSignalNotifications(events: ScoredEvent[], audience: PlanKey, channel: NotificationChannel) {
-  return events.slice(0, audience === 'free' ? 2 : audience === 'light' ? 5 : 12).map((event) => ({
+  return events.slice(0, planLimits[audience].notificationJobs).map((event) => ({
     id: `notice-${event.id}-${channel}`,
     title: `${event.store.name} / ${event.title}`,
     body: `${event.date} ${event.startsAt}、公開シグナル期待度 ${event.score}。${event.reasons.join(' / ')}`,
@@ -13,21 +14,22 @@ export function buildSignalNotifications(events: ScoredEvent[], audience: PlanKe
   })) satisfies NotificationJob[]
 }
 
-export async function dispatchNotification(job: NotificationJob, recipient?: string) {
+export async function dispatchNotification(job: NotificationJob, options?: { recipient?: string; webhookUrl?: string }) {
   try {
-    if (job.channel === 'email' && process.env.RESEND_API_KEY && recipient) {
+    if (job.channel === 'email' && process.env.RESEND_API_KEY && options?.recipient) {
       const resend = new Resend(process.env.RESEND_API_KEY)
       await resend.emails.send({
         from: process.env.NOTIFICATION_FROM_EMAIL ?? 'Night Radar <notifications@example.com>',
-        to: recipient,
+        to: options.recipient,
         subject: job.title,
         text: job.body,
       })
       return { ...job, status: 'sent' as const }
     }
 
-    if (job.channel === 'webhook' && process.env.NOTIFICATION_WEBHOOK_URL) {
-      const response = await fetch(process.env.NOTIFICATION_WEBHOOK_URL, {
+    const webhookUrl = options?.webhookUrl || process.env.NOTIFICATION_WEBHOOK_URL
+    if (job.channel === 'webhook' && webhookUrl) {
+      const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(job),

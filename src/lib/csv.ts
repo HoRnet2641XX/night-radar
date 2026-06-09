@@ -39,11 +39,68 @@ const postSchema = z.object({
   keywords: z.string().default(''),
 })
 
+const headerAliases: Record<string, string> = {
+  ID: 'id',
+  id: 'id',
+  店舗ID: 'storeId',
+  store_id: 'storeId',
+  店舗名: 'name',
+  店名: 'name',
+  エリア: 'area',
+  昼営業: 'hasDaytime',
+  夜営業: 'hasNight',
+  昼開始: 'openingHourDay',
+  夜開始: 'openingHourNight',
+  PR構造: 'prStructure',
+  強い曜日: 'strongDays',
+  強いイベント: 'strongEvents',
+  弱いイベント: 'weakEvents',
+  信頼度: 'trustSeed',
+  日付: 'date',
+  曜日: 'weekday',
+  開始: 'startsAt',
+  開始時刻: 'startsAt',
+  時間帯: 'session',
+  カテゴリ: 'category',
+  イベント名: 'title',
+  タイトル: 'title',
+  URL: 'sourceUrl',
+  ソースURL: 'sourceUrl',
+  source_url: 'sourceUrl',
+  投稿日時: 'postedAt',
+  本文: 'body',
+  投稿本文: 'body',
+  キーワード: 'keywords',
+}
+
 function splitList(value: string) {
   return value
     .split(/[,\n、]/)
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function stableCsvId(kind: 'stores' | 'events' | 'posts', row: Record<string, string>, index: number) {
+  const raw = Object.entries(row)
+    .filter(([key]) => key !== 'id')
+    .map(([key, value]) => `${key}:${value}`)
+    .join('|')
+  let hash = 0
+  for (let i = 0; i < raw.length; i += 1) {
+    hash = (hash * 31 + raw.charCodeAt(i)) >>> 0
+  }
+  return `${kind}-${index + 1}-${hash.toString(36)}`
+}
+
+function normalizeRow(row: Record<string, string>, kind: 'stores' | 'events' | 'posts', index: number) {
+  const normalized: Record<string, string> = {}
+  Object.entries(row).forEach(([key, value]) => {
+    const trimmedKey = key.trim()
+    normalized[headerAliases[trimmedKey] ?? trimmedKey] = String(value ?? '').trim()
+  })
+  if (!normalized.id) normalized.id = stableCsvId(kind, normalized, index)
+  if (kind === 'stores' && !normalized.storeId) normalized.storeId = normalized.id
+  return normalized
 }
 
 export function parseCsvText(text: string, kind: 'stores' | 'events' | 'posts') {
@@ -64,8 +121,13 @@ export function parseCsvText(text: string, kind: 'stores' | 'events' | 'posts') 
   const items: Array<StoreProfile | EventInput | PostRecord> = []
 
   parsed.data.forEach((row, index) => {
+    const normalizedRow = normalizeRow(row, kind, index)
     const result =
-      kind === 'stores' ? storeSchema.safeParse(row) : kind === 'events' ? eventSchema.safeParse(row) : postSchema.safeParse(row)
+      kind === 'stores'
+        ? storeSchema.safeParse(normalizedRow)
+        : kind === 'events'
+          ? eventSchema.safeParse(normalizedRow)
+          : postSchema.safeParse(normalizedRow)
 
     if (!result.success) {
       errors.push(`${index + 2}: ${result.error.issues.map((issue) => issue.message).join(', ')}`)

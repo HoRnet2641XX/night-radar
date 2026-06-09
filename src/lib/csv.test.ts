@@ -29,4 +29,14 @@ describe('parseCsvText', () => {
     assert.deepEqual(result.items, [])
     assert.ok(result.errors.length > 0)
   })
+
+  it('accepts Japanese headers and fills missing ids', () => {
+    const result = parseCsvText('店舗名,エリア,昼営業,夜営業\nテスト店,新宿,true,true\n', 'stores')
+    const store = result.items[0] as StoreProfile
+
+    assert.deepEqual(result.errors, [])
+    assert.equal(store.name, 'テスト店')
+    assert.equal(store.area, '新宿')
+    assert.match(store.id, /^stores-1-/)
+  })
 })

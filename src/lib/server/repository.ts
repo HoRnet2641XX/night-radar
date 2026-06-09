@@ -1,15 +1,19 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { User } from '@supabase/supabase-js'
 import { events as demoEvents, posts as demoPosts, stores as demoStores, storeSituations, wordCategories } from '../demo-data'
+import { highestAudienceForPlan, normalizePlan, planLimitMessage, planLimits, planRank } from '../plans'
 import { scoreEvents, searchExactBbsTerms } from '../scoring'
 import type {
+  BbsSnapshot,
   BbsSource,
   CrawlRun,
   DashboardState,
   EventInput,
   ExactTermSearchGroup,
   ExactTermState,
+  ImportBatch,
   NotificationJob,
+  NotificationPreference,
   PlanKey,
   PostRecord,
   RuntimeMode,
@@ -17,8 +21,10 @@ import type {
   StoreProfile,
   StoreSituation,
   SubscriptionState,
+  WordBookmark,
 } from '../types'
 import { createSupabaseAdminClient, createSupabaseServerClient } from '../supabase/server'
+import { buildBbsSnapshot } from './bbs-snapshot'
 import { scrapePublicPage, scrapeResultToPost } from './scrape'
 
 type SupabaseServerClient = NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>
@@ -46,6 +52,13 @@ export const defaultExactTerms: ExactTermState = {
   negativePerson: '苦手さんC',
 }
 
+export const defaultNotificationPreference: NotificationPreference = {
+  email: '',
+  webhookUrl: '',
+  channel: 'in_app',
+  audience: 'free',
+}
+
 function demoDashboardState(mode: RuntimeMode = 'demo', connectionNote?: string): DashboardState {
   const scoredEvents = scoreEvents(demoEvents, demoStores, demoPosts)
 
@@ -58,8 +71,13 @@ function demoDashboardState(mode: RuntimeMode = 'demo', connectionNote?: string)
     scoredEvents,
     situations: storeSituations,
     bbsSources: [],
+    crawlRuns: [],
+    bbsSnapshots: [],
     exactTerms: defaultExactTerms,
+    wordBookmarks: [],
     notificationJobs: [],
+    notificationPreference: defaultNotificationPreference,
+    importBatches: [],
     subscription: { plan: 'free', status: 'inactive' },
     wordCategories,
   }
@@ -335,7 +353,7 @@ function normalizeBbsSource(input: Partial<BbsSource>): BbsSource {
     url,
     parserType: input.parserType ?? 'auto',
     active: input.active ?? true,
-    crawlIntervalMinutes: Math.max(15, Math.min(10080, Number(input.crawlIntervalMinutes ?? 360))),
+    crawlIntervalMinutes: Math.max(5, Math.min(10080, Number(input.crawlIntervalMinutes ?? 360))),
     lastFetchedAt: input.lastFetchedAt,
     lastStatus: input.lastStatus ?? 'pending',
     lastMessage: input.lastMessage,
@@ -354,6 +372,40 @@ function toNotificationJob(row: DbRow): NotificationJob {
   }
 }
 
+function toNotificationPreference(row?: DbRow | null): NotificationPreference {
+  if (!row) return defaultNotificationPreference
+
+  return {
+    email: stringField(row, 'email'),
+    webhookUrl: stringField(row, 'webhook_url'),
+    channel: stringField(row, 'channel', 'in_app') as NotificationPreference['channel'],
+    audience: normalizePlan(stringField(row, 'audience', 'free')),
+  }
+}
+
+function normalizeNotificationPreference(input: Partial<NotificationPreference>, plan: PlanKey): NotificationPreference {
+  const channel = input.channel === 'email' || input.channel === 'webhook' ? input.channel : 'in_app'
+  const requestedAudience = normalizePlan(input.audience)
+  const audience = planRank[requestedAudience] > planRank[plan] ? highestAudienceForPlan(plan) : requestedAudience
+
+  return {
+    email: String(input.email ?? '').trim(),
+    webhookUrl: String(input.webhookUrl ?? '').trim(),
+    channel,
+    audience,
+  }
+}
+
+function toNotificationPreferenceRow(preference: NotificationPreference, userId: string) {
+  return {
+    user_id: userId,
+    email: preference.email || null,
+    webhook_url: preference.webhookUrl || null,
+    channel: preference.channel,
+    audience: preference.audience,
+  }
+}
+
 function toNotificationRow(job: NotificationJob, userId?: string) {
   return {
     id: job.id || randomUUID(),
@@ -367,9 +419,101 @@ function toNotificationRow(job: NotificationJob, userId?: string) {
   }
 }
 
+function toImportBatch(row: DbRow): ImportBatch {
+  return {
+    id: stringField(row, 'id'),
+    kind: stringField(row, 'kind', 'posts') as ImportBatch['kind'],
+    importedCount: numberField(row, 'imported_count'),
+    errorCount: numberField(row, 'error_count'),
+    createdAt: stringField(row, 'created_at'),
+  }
+}
+
+function toCrawlRun(row: DbRow): CrawlRun {
+  return {
+    id: stringField(row, 'id'),
+    sourceId: optionalStringField(row, 'source_id'),
+    storeId: stringField(row, 'store_id'),
+    url: stringField(row, 'url'),
+    status: stringField(row, 'status', 'pending') as CrawlRun['status'],
+    message: optionalStringField(row, 'message'),
+    fetchedAt: stringField(row, 'fetched_at'),
+    postId: optionalStringField(row, 'post_id'),
+  }
+}
+
+function toBbsSnapshot(row: DbRow): BbsSnapshot {
+  return {
+    id: stringField(row, 'id'),
+    sourceId: optionalStringField(row, 'source_id'),
+    storeId: stringField(row, 'store_id'),
+    url: stringField(row, 'url'),
+    screenshotDataUrl: optionalStringField(row, 'screenshot_data_url'),
+    extractedText: stringField(row, 'extracted_text'),
+    metrics: (row.metrics ?? {
+      femaleOnly: 0,
+      firstVisit: 0,
+      comeback: 0,
+      groupVisit: 0,
+      emoji: 0,
+      totalSignals: 0,
+      textLength: 0,
+    }) as BbsSnapshot['metrics'],
+    radarScore: numberField(row, 'radar_score'),
+    capturedAt: stringField(row, 'captured_at'),
+  }
+}
+
+function toBbsSnapshotRow(snapshot: BbsSnapshot) {
+  return {
+    id: snapshot.id,
+    source_id: snapshot.sourceId ?? null,
+    store_id: snapshot.storeId,
+    url: snapshot.url,
+    screenshot_data_url: snapshot.screenshotDataUrl ?? null,
+    extracted_text: snapshot.extractedText.slice(0, 12_000),
+    metrics: snapshot.metrics,
+    radar_score: snapshot.radarScore,
+    captured_at: snapshot.capturedAt,
+  }
+}
+
+function toWordBookmark(row: DbRow): WordBookmark {
+  return {
+    id: stringField(row, 'id'),
+    label: stringField(row, 'label'),
+    pattern: stringField(row, 'pattern'),
+    matchType: stringField(row, 'match_type', 'exact') as WordBookmark['matchType'],
+    createdAt: stringField(row, 'created_at'),
+  }
+}
+
+function normalizeWordBookmark(input: Partial<WordBookmark>): WordBookmark {
+  const pattern = String(input.pattern ?? '').trim()
+  if (!pattern) throw new RepositoryError('ブックマークするワードが必要です。', 422)
+
+  return {
+    id: ensureId(input.id),
+    label: String(input.label || pattern).trim(),
+    pattern,
+    matchType: input.matchType === 'regex' || input.matchType === 'emoji' ? input.matchType : 'exact',
+    createdAt: input.createdAt || new Date().toISOString(),
+  }
+}
+
+function toWordBookmarkRow(bookmark: WordBookmark, userId: string) {
+  return {
+    id: bookmark.id,
+    user_id: userId,
+    label: bookmark.label,
+    pattern: bookmark.pattern,
+    match_type: bookmark.matchType,
+  }
+}
+
 function toSubscription(row?: DbRow | null): SubscriptionState {
   return {
-    plan: (row ? stringField(row, 'plan', 'free') : 'free') as PlanKey,
+    plan: row ? normalizePlan(stringField(row, 'plan', 'free')) : 'free',
     status: row ? stringField(row, 'status', 'inactive') : 'inactive',
     stripeCustomerId: row ? optionalStringField(row, 'stripe_customer_id') : undefined,
     stripeSubscriptionId: row ? optionalStringField(row, 'stripe_subscription_id') : undefined,
@@ -438,6 +582,24 @@ async function getWriteAccess(): Promise<WriteAccess> {
   return { mode: 'database', supabase, user }
 }
 
+async function getPlanForAccess(access: Extract<WriteAccess, { mode: 'database' }>): Promise<PlanKey> {
+  const { data, error } = await access.supabase
+    .from('subscriptions')
+    .select('plan,status')
+    .eq('user_id', access.user.id)
+    .maybeSingle()
+
+  if (error) throw new RepositoryError(error.message, 400)
+  const subscription = toSubscription(data)
+  return subscription.status === 'active' || subscription.status === 'trialing' ? subscription.plan : 'free'
+}
+
+async function getOwnedStoreIds(access: Extract<WriteAccess, { mode: 'database' }>) {
+  const { data, error } = await access.supabase.from('stores').select('id').eq('owner_id', access.user.id)
+  if (error) throw new RepositoryError(error.message, 400)
+  return (data ?? []).map((row) => stringField(row, 'id')).filter(Boolean)
+}
+
 function assertDatabaseAccess(access: WriteAccess): asserts access is Extract<WriteAccess, { mode: 'database' }> {
   if (access.mode === 'anonymous') throw new RepositoryError(access.message, 401)
   if (access.mode === 'demo') throw new RepositoryError(access.message, 503)
@@ -495,6 +657,25 @@ async function saveSituationWithAccess(access: Extract<WriteAccess, { mode: 'dat
 
 async function saveBbsSourceWithAccess(access: Extract<WriteAccess, { mode: 'database' }>, input: Partial<BbsSource>) {
   const source = normalizeBbsSource(input)
+  const plan = await getPlanForAccess(access)
+  const limit = planLimits[plan].bbsSources
+  const { data: existing, error: existingError } = await access.supabase
+    .from('bbs_sources')
+    .select('id')
+    .eq('store_id', source.storeId)
+    .eq('url', source.url)
+    .maybeSingle()
+  if (existingError) throw new RepositoryError(existingError.message, 400)
+
+  if (!existing) {
+    const storeIds = await getOwnedStoreIds(access)
+    const { count, error: countError } = storeIds.length
+      ? await access.supabase.from('bbs_sources').select('id', { count: 'exact', head: true }).in('store_id', storeIds)
+      : { count: 0, error: null }
+    if (countError) throw new RepositoryError(countError.message, 400)
+    if ((count ?? 0) >= limit) throw new RepositoryError(planLimitMessage(plan, 'bbsSources'), 402)
+  }
+
   const { data, error } = await access.supabase
     .from('bbs_sources')
     .upsert(toBbsSourceRow(source), { onConflict: 'store_id,url' })
@@ -522,7 +703,20 @@ export async function getDashboardState(): Promise<DashboardState> {
   const storeIds = (storeRows ?? []).map((row) => row.id)
   const stores = (storeRows ?? []).map(toStore)
 
-  const [eventResult, postResult, situationResult, sourceResult, termResult, noticeResult, subscriptionResult] =
+  const [
+    eventResult,
+    postResult,
+    situationResult,
+    sourceResult,
+    crawlResult,
+    snapshotResult,
+    termResult,
+    bookmarkResult,
+    noticeResult,
+    preferenceResult,
+    importResult,
+    subscriptionResult,
+  ] =
     await Promise.all([
       storeIds.length
         ? supabase.from('events').select('*').in('store_id', storeIds).order('created_at', { ascending: false })
@@ -536,13 +730,27 @@ export async function getDashboardState(): Promise<DashboardState> {
       storeIds.length
         ? supabase.from('bbs_sources').select('*').in('store_id', storeIds).order('created_at', { ascending: false })
         : Promise.resolve({ data: [], error: null }),
+      storeIds.length
+        ? supabase.from('crawl_runs').select('*').in('store_id', storeIds).order('fetched_at', { ascending: false }).limit(20)
+        : Promise.resolve({ data: [], error: null }),
+      storeIds.length
+        ? supabase.from('bbs_snapshots').select('*').in('store_id', storeIds).order('captured_at', { ascending: false }).limit(120)
+        : Promise.resolve({ data: [], error: null }),
       supabase.from('exact_terms').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
+      supabase.from('word_bookmarks').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase
         .from('notification_jobs')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(20),
+      supabase.from('notification_preferences').select('*').eq('user_id', user.id).maybeSingle(),
+      supabase
+        .from('import_batches')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(12),
       supabase.from('subscriptions').select('*').eq('user_id', user.id).maybeSingle(),
     ])
 
@@ -551,8 +759,13 @@ export async function getDashboardState(): Promise<DashboardState> {
     postResult.error ||
     situationResult.error ||
     sourceResult.error ||
+    crawlResult.error ||
+    snapshotResult.error ||
     termResult.error ||
+    bookmarkResult.error ||
     noticeResult.error ||
+    preferenceResult.error ||
+    importResult.error ||
     subscriptionResult.error
   if (firstError) return demoDashboardState('demo', firstError.message)
 
@@ -569,8 +782,13 @@ export async function getDashboardState(): Promise<DashboardState> {
     scoredEvents,
     situations: (situationResult.data ?? []).map(toSituation),
     bbsSources: (sourceResult.data ?? []).map(toBbsSource),
+    crawlRuns: (crawlResult.data ?? []).map(toCrawlRun),
+    bbsSnapshots: (snapshotResult.data ?? []).map(toBbsSnapshot),
     exactTerms: exactRowsToState(termResult.data),
+    wordBookmarks: (bookmarkResult.data ?? []).map(toWordBookmark),
     notificationJobs: (noticeResult.data ?? []).map(toNotificationJob),
+    notificationPreference: toNotificationPreference(preferenceResult.data),
+    importBatches: (importResult.data ?? []).map(toImportBatch),
     subscription: toSubscription(subscriptionResult.data),
     wordCategories,
   }
@@ -637,6 +855,8 @@ export async function persistCsvItems(kind: 'stores' | 'events' | 'posts', items
     return { mode: 'demo' as const, items, message: access.message }
   }
   assertDatabaseAccess(access)
+  const plan = await getPlanForAccess(access)
+  if (items.length > planLimits[plan].csvRows) throw new RepositoryError(planLimitMessage(plan, 'csvRows'), 402)
 
   const saved: Array<StoreProfile | EventInput | PostRecord> = []
   for (const item of items) {
@@ -666,6 +886,10 @@ export async function saveAndSearchExactTerms(exactTerms: ExactTermState, fallba
     return { mode: 'demo' as const, matches: searchExactBbsTerms(posts, stores, groups), exactTerms }
   }
   assertDatabaseAccess(access)
+  const plan = await getPlanForAccess(access)
+  const termLimit = planLimits[plan].exactTermsPerGroup
+  const overLimitGroup = groups.find((group) => group.terms.length > termLimit)
+  if (overLimitGroup) throw new RepositoryError(`${overLimitGroup.label}: ${planLimitMessage(plan, 'exactTermsPerGroup')}`, 402)
 
   await access.supabase.from('exact_terms').delete().eq('user_id', access.user.id)
   const termRows = groups.flatMap((group) =>
@@ -701,6 +925,31 @@ export async function saveAndSearchExactTerms(exactTerms: ExactTermState, fallba
   return { mode: 'database' as const, matches, exactTerms }
 }
 
+export async function saveWordBookmark(input: Partial<WordBookmark>) {
+  const bookmark = normalizeWordBookmark(input)
+  const access = await getWriteAccess()
+  if (access.mode === 'demo') return { mode: 'demo' as const, message: access.message, bookmark }
+  assertDatabaseAccess(access)
+
+  const { data, error } = await access.supabase
+    .from('word_bookmarks')
+    .upsert(toWordBookmarkRow(bookmark, access.user.id), { onConflict: 'user_id,pattern,match_type' })
+    .select('*')
+    .single()
+  if (error) throw new RepositoryError(error.message, 400)
+  return { mode: 'database' as const, bookmark: toWordBookmark(data) }
+}
+
+export async function deleteWordBookmark(id: string) {
+  const access = await getWriteAccess()
+  if (access.mode === 'demo') return { mode: 'demo' as const, ok: true, message: access.message }
+  assertDatabaseAccess(access)
+
+  const { error } = await access.supabase.from('word_bookmarks').delete().eq('id', id).eq('user_id', access.user.id)
+  if (error) throw new RepositoryError(error.message, 400)
+  return { mode: 'database' as const, ok: true }
+}
+
 async function persistNotificationJobs(jobs: NotificationJob[], userId?: string) {
   const supabase = createSupabaseAdminClient()
   if (!supabase || !userId) return
@@ -732,11 +981,63 @@ export async function saveDispatchedNotifications(jobs: NotificationJob[]) {
   return { mode: 'database' as const, jobs }
 }
 
-async function crawlSourceRow(supabase: DataClient, row: DbRow): Promise<{ source: BbsSource; run: CrawlRun; post: PostRecord | null }> {
+export async function saveNotificationPreference(input: Partial<NotificationPreference>) {
+  const access = await getWriteAccess()
+  if (access.mode === 'demo') {
+    return {
+      mode: 'demo' as const,
+      message: access.message,
+      preference: normalizeNotificationPreference(input, 'free'),
+    }
+  }
+  assertDatabaseAccess(access)
+  const plan = await getPlanForAccess(access)
+  const preference = normalizeNotificationPreference(input, plan)
+  const { data, error } = await access.supabase
+    .from('notification_preferences')
+    .upsert(toNotificationPreferenceRow(preference, access.user.id))
+    .select('*')
+    .single()
+  if (error) throw new RepositoryError(error.message, 400)
+
+  return { mode: 'database' as const, preference: toNotificationPreference(data) }
+}
+
+export async function getCurrentNotificationDelivery() {
+  const access = await getWriteAccess()
+  if (access.mode !== 'database') {
+    return {
+      mode: access.mode,
+      plan: 'free' as PlanKey,
+      preference: defaultNotificationPreference,
+      message: access.message,
+    }
+  }
+
+  const plan = await getPlanForAccess(access)
+  const { data, error } = await access.supabase
+    .from('notification_preferences')
+    .select('*')
+    .eq('user_id', access.user.id)
+    .maybeSingle()
+  if (error) throw new RepositoryError(error.message, 400)
+
+  return {
+    mode: 'database' as const,
+    plan,
+    preference: toNotificationPreference(data),
+  }
+}
+
+async function crawlSourceRow(
+  supabase: DataClient,
+  row: DbRow,
+): Promise<{ source: BbsSource; run: CrawlRun; post: PostRecord | null; snapshot: BbsSnapshot | null }> {
   const source = toBbsSource(row)
   const result = await scrapePublicPage(source.url)
   const candidatePost = scrapeResultToPost(result, source.storeId)
   const post = candidatePost ? await savePostRow(supabase, candidatePost) : null
+  const snapshot = await buildBbsSnapshot(source, result)
   const fetchedAt = result.fetchedAt
 
   await supabase
@@ -762,6 +1063,12 @@ async function crawlSourceRow(supabase: DataClient, row: DbRow): Promise<{ sourc
     .select('*')
     .single()
 
+  const { data: snapshotRow } = await supabase
+    .from('bbs_snapshots')
+    .insert(toBbsSnapshotRow(snapshot))
+    .select('*')
+    .single()
+
   return {
     source: {
       ...source,
@@ -780,6 +1087,7 @@ async function crawlSourceRow(supabase: DataClient, row: DbRow): Promise<{ sourc
       fetchedAt,
       postId: post?.id,
     },
+    snapshot: snapshotRow ? toBbsSnapshot(snapshotRow) : snapshot,
   }
 }
 
@@ -788,7 +1096,8 @@ export async function crawlUserBbsSources(sourceIds?: string[]) {
   if (access.mode === 'demo') return { mode: 'demo' as const, results: [], message: access.message }
   assertDatabaseAccess(access)
 
-  let query = access.supabase.from('bbs_sources').select('*').eq('active', true).limit(20)
+  const plan = await getPlanForAccess(access)
+  let query = access.supabase.from('bbs_sources').select('*').eq('active', true).limit(planLimits[plan].crawlSourcesPerRun)
   if (sourceIds?.length) query = query.in('id', sourceIds)
   const { data, error } = await query
   if (error) throw new RepositoryError(error.message, 400)
