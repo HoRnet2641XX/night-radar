@@ -13,8 +13,9 @@ Dashboard: https://supabase.com/dashboard/projects
    - service_role key -> `SUPABASE_SERVICE_ROLE_KEY`
 3. SQL Editorで `supabase/schema.sql` を実行する。
 4. 既に古いユーザー所有型schemaを適用済みの場合は、続けて `supabase/migrations/20260611_shared_catalog.sql` を実行する。
-5. テスト用の共通カタログを入れる場合は `supabase/seed-demo-catalog.sql` を実行する。
-6. Authentication > URL Configuration を開く。
+5. 実店舗カタログを入れる場合は `supabase/seed-store-catalog.sql` を実行する。
+6. テスト用の共通カタログだけでよい場合は `supabase/seed-demo-catalog.sql` を実行する。
+7. Authentication > URL Configuration を開く。
    - Site URL local: `http://localhost:3000`
    - Site URL production: `https://YOUR_VERCEL_DOMAIN`
    - Redirect URLs:
@@ -145,7 +146,7 @@ npm run dev
    - http://localhost:3000
 5. 画面右上が `DB保存中` になることを確認する。
 6. Plan画面でGoogle/X/メール認証を確認する。
-7. SQL Editorで `supabase/seed-demo-catalog.sql` または実データseedを流す。
+7. SQL Editorで `supabase/seed-store-catalog.sql` または `supabase/seed-demo-catalog.sql` を流す。
 8. BBSトップでStore radarとWatch wordsが更新されることを確認する。
 9. 下層ページを確認する。
    - http://localhost:3000/forecast

@@ -40,12 +40,13 @@ For a step-by-step setup checklist with dashboard URLs, see `docs/setup/external
 1. Create a Supabase project.
 2. Run `supabase/schema.sql` in the SQL editor.
 3. If you already applied an older user-owned schema, run `supabase/migrations/20260611_shared_catalog.sql`.
-4. For a local/demo catalog, run `supabase/seed-demo-catalog.sql`.
-5. Enable Auth providers: Email OTP, Google, and X / Twitter OAuth 2.0.
-6. Add redirect URLs:
+4. For the initial venue catalog, run `supabase/seed-store-catalog.sql`.
+5. For a local/demo catalog instead, run `supabase/seed-demo-catalog.sql`.
+6. Enable Auth providers: Email OTP, Google, and X / Twitter OAuth 2.0.
+7. Add redirect URLs:
    - `http://localhost:3000/api/auth/callback`
    - `https://YOUR_DOMAIN/api/auth/callback`
-7. Set:
+8. Set:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
