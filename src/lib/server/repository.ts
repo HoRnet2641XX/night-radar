@@ -145,7 +145,7 @@ function toStore(row: DbRow): StoreProfile {
 function toStoreRow(store: StoreProfile, ownerId: string) {
   return {
     id: store.id,
-    owner_id: ownerId,
+    owner_id: ownerId || null,
     name: store.name,
     area: store.area,
     has_daytime: store.hasDaytime,
@@ -605,6 +605,10 @@ function assertDatabaseAccess(access: WriteAccess): asserts access is Extract<Wr
   if (access.mode === 'demo') throw new RepositoryError(access.message, 503)
 }
 
+function assertUserCatalogWriteDisabled(): never {
+  throw new RepositoryError('店舗・イベント・BBSデータは運営管理です。管理側のCSV/seedで更新してください。', 403)
+}
+
 async function saveStoreWithAccess(access: Extract<WriteAccess, { mode: 'database' }>, input: Partial<StoreProfile>) {
   const store = normalizeStore(input)
   const { data, error } = await access.supabase
@@ -813,6 +817,9 @@ export async function saveRecord(kind: RecordKind, item: unknown) {
     }
   }
   assertDatabaseAccess(access)
+  if (kind === 'stores' || kind === 'events' || kind === 'posts' || kind === 'situations' || kind === 'bbsSources') {
+    assertUserCatalogWriteDisabled()
+  }
 
   const saved =
     kind === 'stores'
@@ -832,6 +839,9 @@ export async function deleteRecord(kind: RecordKind, id: string) {
   const access = await getWriteAccess()
   if (access.mode === 'demo') return { mode: 'demo' as const, ok: true, message: access.message }
   assertDatabaseAccess(access)
+  if (kind === 'stores' || kind === 'events' || kind === 'posts' || kind === 'situations' || kind === 'bbsSources') {
+    assertUserCatalogWriteDisabled()
+  }
 
   const table =
     kind === 'stores'
@@ -854,26 +864,10 @@ export async function persistCsvItems(kind: 'stores' | 'events' | 'posts', items
   if (access.mode === 'demo') {
     return { mode: 'demo' as const, items, message: access.message }
   }
+  void kind
+  void errors
   assertDatabaseAccess(access)
-  const plan = await getPlanForAccess(access)
-  if (items.length > planLimits[plan].csvRows) throw new RepositoryError(planLimitMessage(plan, 'csvRows'), 402)
-
-  const saved: Array<StoreProfile | EventInput | PostRecord> = []
-  for (const item of items) {
-    if (kind === 'stores') saved.push(await saveStoreWithAccess(access, item as StoreProfile))
-    if (kind === 'events') saved.push(await saveEventWithAccess(access, item as EventInput))
-    if (kind === 'posts') saved.push(await savePostWithAccess(access, item as PostRecord))
-  }
-
-  await access.supabase.from('import_batches').insert({
-    user_id: access.user.id,
-    kind,
-    imported_count: saved.length,
-    error_count: errors.length,
-    errors,
-  })
-
-  return { mode: 'database' as const, items: saved }
+  assertUserCatalogWriteDisabled()
 }
 
 export async function saveAndSearchExactTerms(exactTerms: ExactTermState, fallback?: { stores?: StoreProfile[]; posts?: PostRecord[] }) {
@@ -1092,21 +1086,11 @@ async function crawlSourceRow(
 }
 
 export async function crawlUserBbsSources(sourceIds?: string[]) {
+  void sourceIds
   const access = await getWriteAccess()
   if (access.mode === 'demo') return { mode: 'demo' as const, results: [], message: access.message }
   assertDatabaseAccess(access)
-
-  const plan = await getPlanForAccess(access)
-  let query = access.supabase.from('bbs_sources').select('*').eq('active', true).limit(planLimits[plan].crawlSourcesPerRun)
-  if (sourceIds?.length) query = query.in('id', sourceIds)
-  const { data, error } = await query
-  if (error) throw new RepositoryError(error.message, 400)
-
-  const results = []
-  for (const row of data ?? []) {
-    results.push(await crawlSourceRow(access.supabase, row))
-  }
-  return { mode: 'database' as const, results }
+  throw new RepositoryError('BBS巡回は運営側の定期ジョブで実行します。', 403)
 }
 
 export async function crawlDueBbsSourcesForCron() {

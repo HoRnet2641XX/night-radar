@@ -5,9 +5,9 @@ Night Radar is a mobile-first Next.js app for BBS-based venue signal analysis.
 It now includes:
 
 - Supabase-backed store, event, post, situation, BBS source, BBS snapshot, word bookmark, exact-term, notification, score snapshot, and subscription tables
-- manual data input with persistence
-- CSV import with Japanese headers and generated IDs when IDs are omitted
-- BBS source registration, source deletion, plan limits, screenshots, and manual/cron crawling
+- operator-managed shared venue catalog
+- CSV/SQL-based catalog seeding for stores, events, posts, and BBS sources
+- BBS screenshots and cron crawling for operator-managed sources
 - vertical store radar, store share donut, watched-word hits, forecast ranking, and monthly event calendar
 - exact-match search for popular single male, popular single female, and negative watch terms
 - weekday posting ratio, store pulse, and event score calculation
@@ -27,7 +27,7 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-Without Supabase keys, the app runs in demo mode. UI actions still work in the current browser session, but they are not durable.
+Without Supabase keys, the app runs in demo mode. With Supabase connected, users can read the shared catalog and save only user-specific settings such as word bookmarks, notification preferences, exact terms, and billing state.
 
 ## Configure
 
@@ -39,11 +39,13 @@ For a step-by-step setup checklist with dashboard URLs, see `docs/setup/external
 
 1. Create a Supabase project.
 2. Run `supabase/schema.sql` in the SQL editor.
-3. Enable Auth providers: Email OTP, Google, and X / Twitter OAuth 2.0.
-4. Add redirect URLs:
+3. If you already applied an older user-owned schema, run `supabase/migrations/20260611_shared_catalog.sql`.
+4. For a local/demo catalog, run `supabase/seed-demo-catalog.sql`.
+5. Enable Auth providers: Email OTP, Google, and X / Twitter OAuth 2.0.
+6. Add redirect URLs:
    - `http://localhost:3000/api/auth/callback`
    - `https://YOUR_DOMAIN/api/auth/callback`
-5. Set:
+7. Set:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
@@ -74,6 +76,8 @@ Set `SCRAPE_ALLOWED_HOSTS` if you want an allowlist. Empty means any public `htt
 Set `CRON_SECRET` to protect `/api/cron/crawl`. Vercel Cron is configured in `vercel.json` to call the route every 5 minutes.
 
 BBS sources accept a 5-minute minimum crawl interval. The app route honors that interval, but your scheduler must call `/api/cron/crawl` every 5 minutes for true 5-minute operation. Vercel Hobby plans may reject high-frequency cron schedules; use Vercel Pro or an external cron service for 5-minute crawling. If the runtime cannot launch Playwright, set `DISABLE_BROWSER_SCREENSHOTS=true`; radar metrics still save from text snapshots.
+
+Catalog writes are operator-only. Logged-in users can read stores, events, posts, BBS sources, crawl runs, and snapshots, but cannot write or delete them through the app. Use SQL, seed files, or a future admin-only dashboard for catalog updates.
 
 ### Notifications
 

@@ -12,7 +12,9 @@ Dashboard: https://supabase.com/dashboard/projects
    - Publishable/anon key -> `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
    - service_role key -> `SUPABASE_SERVICE_ROLE_KEY`
 3. SQL Editorで `supabase/schema.sql` を実行する。
-4. Authentication > URL Configuration を開く。
+4. 既に古いユーザー所有型schemaを適用済みの場合は、続けて `supabase/migrations/20260611_shared_catalog.sql` を実行する。
+5. テスト用の共通カタログを入れる場合は `supabase/seed-demo-catalog.sql` を実行する。
+6. Authentication > URL Configuration を開く。
    - Site URL local: `http://localhost:3000`
    - Site URL production: `https://YOUR_VERCEL_DOMAIN`
    - Redirect URLs:
@@ -115,12 +117,14 @@ External cron services:
 
 ## 8. BBS/event source data
 
-1. 店舗ごとの公開BBS URLを用意する。
-2. 必要なら許可ホストを `SCRAPE_ALLOWED_HOSTS` にカンマ区切りで入れる。
-3. 本番環境でPlaywrightが動かない場合:
+1. 店舗、イベント、BBS URLは運営側で用意する。
+2. 一般ユーザーは店舗やBBS URLを登録しない。
+3. 店舗ごとの公開BBS URLを用意する。
+4. 必要なら許可ホストを `SCRAPE_ALLOWED_HOSTS` にカンマ区切りで入れる。
+5. 本番環境でPlaywrightが動かない場合:
    - `DISABLE_BROWSER_SCREENSHOTS=true`
    - テキスト取得とレーダー算出は継続する。
-4. イベントカレンダーに載せたい店舗イベントは、CSVまたは画面入力で登録する。
+6. イベントカレンダーに載せたい店舗イベントは、SQL/seed/管理者用CSVで登録する。
 
 ## 9. Local verification after setup
 
@@ -141,7 +145,7 @@ npm run dev
    - http://localhost:3000
 5. 画面右上が `DB保存中` になることを確認する。
 6. Plan画面でGoogle/X/メール認証を確認する。
-7. Flow画面でBBS URLを保存し、`巡回` を押す。
+7. SQL Editorで `supabase/seed-demo-catalog.sql` または実データseedを流す。
 8. BBSトップでStore radarとWatch wordsが更新されることを確認する。
 9. 下層ページを確認する。
    - http://localhost:3000/forecast

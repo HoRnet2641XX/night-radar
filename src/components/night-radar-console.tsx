@@ -4,10 +4,8 @@ import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import {
   BellRinging,
   Broadcast,
-  CalendarDots,
   ChartBarHorizontal,
   ChartLineUp,
-  ClipboardText,
   Crosshair,
   EnvelopeSimple,
   FileCsv,
@@ -18,18 +16,15 @@ import {
   MagicWand,
   MagnifyingGlass,
   MapPin,
-  Plus,
   ShieldCheck,
   Sparkle,
   Storefront,
   StripeLogo,
   Trash,
-  UploadSimple,
   UsersThree,
   WarningCircle,
   XLogo,
 } from '@phosphor-icons/react'
-import { csvTemplates } from '@/lib/csv'
 import { plans } from '@/lib/demo-data'
 import { planLimits, planRank } from '@/lib/plans'
 import {
@@ -49,17 +44,14 @@ import type {
   DashboardState,
   ExactTermMatch,
   ExactTermState,
-  EventInput,
   ImportBatch,
   NotificationChannel,
   NotificationJob,
   NotificationPreference,
   PlanKey,
-  PostRecord,
   RuntimeMode,
   ScoredEvent,
   StoreRadarPoint,
-  StoreProfile,
   StoreSituation,
   VisitForecast,
   WatchedWordHit,
@@ -67,7 +59,6 @@ import type {
 } from '@/lib/types'
 import './night-radar-console.css'
 
-type CsvKind = 'stores' | 'events' | 'posts'
 type ApiState = { tone: 'idle' | 'good' | 'warn'; message: string }
 type ViewKey = 'radar' | 'analytics' | 'capture' | 'automate' | 'account'
 
@@ -75,13 +66,10 @@ type Props = {
   initialState: DashboardState
 }
 
-const weekdays = ['月曜', '火曜', '水曜', '木曜', '金曜', '土曜', '日曜']
-const eventCategories = ['初心者系', '昼主婦系', '女性無料系', 'カップル系', 'SM系', 'コスプレ系', '平日穴場系']
-
 const navItems: Array<{ key: ViewKey; label: string; icon: ReactNode }> = [
   { key: 'radar', label: 'Radar', icon: <Crosshair size={20} weight="bold" /> },
   { key: 'analytics', label: 'BBS', icon: <ChartBarHorizontal size={20} weight="bold" /> },
-  { key: 'capture', label: 'Capture', icon: <Plus size={20} weight="bold" /> },
+  { key: 'capture', label: 'Catalog', icon: <Storefront size={20} weight="bold" /> },
   { key: 'automate', label: 'Flow', icon: <MagicWand size={20} weight="bold" /> },
   { key: 'account', label: 'Plan', icon: <StripeLogo size={20} weight="bold" /> },
 ]
@@ -112,13 +100,6 @@ const situationStatuses: Array<{ value: StoreSituation['status']; label: string 
   { value: 'watch', label: '要観測' },
   { value: 'closed', label: '休止/不明' },
 ]
-
-function splitList(value: FormDataEntryValue | null) {
-  return String(value ?? '')
-    .split(/[,\n、]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
 
 async function postJson<T>(url: string, payload: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -152,18 +133,14 @@ export function NightRadarConsole({ initialState }: Props) {
   const subscription = initialState.subscription
   const [view, setView] = useState<ViewKey>('analytics')
   const [mode, setMode] = useState<RuntimeMode>(initialState.mode)
-  const [stores, setStores] = useState(initialStores)
-  const [events, setEvents] = useState(initialEvents)
-  const [posts, setPosts] = useState(initialPosts)
+  const [stores] = useState(initialStores)
+  const [events] = useState(initialEvents)
+  const [posts] = useState(initialPosts)
   const [scoredEvents, setScoredEvents] = useState(initialScoredEvents)
-  const [situations, setSituations] = useState(initialSituations)
-  const [bbsSources, setBbsSources] = useState<BbsSource[]>(initialState.bbsSources)
+  const [situations] = useState(initialSituations)
+  const [bbsSources] = useState<BbsSource[]>(initialState.bbsSources)
   const [exactTerms, setExactTerms] = useState<ExactTermState>(initialState.exactTerms)
   const [serverMatches, setServerMatches] = useState<ExactTermMatch[]>([])
-  const [csvKind, setCsvKind] = useState<CsvKind>('posts')
-  const [csvText, setCsvText] = useState(csvTemplates.posts)
-  const [scrapeUrl, setScrapeUrl] = useState('')
-  const [scrapeStoreId, setScrapeStoreId] = useState(initialStores[0]?.id ?? '')
   const [analysisText, setAnalysisText] = useState(initialPosts[0]?.body ?? '')
   const [analysis, setAnalysis] = useState<AiAnalysis | null>(null)
   const [email, setEmail] = useState(initialState.userEmail ?? '')
@@ -173,12 +150,11 @@ export function NightRadarConsole({ initialState }: Props) {
   })
   const [jobs, setJobs] = useState<NotificationJob[]>(initialState.notificationJobs)
   const [notificationPreference, setNotificationPreference] = useState<NotificationPreference>(initialState.notificationPreference)
-  const [importBatches, setImportBatches] = useState<ImportBatch[]>(initialState.importBatches)
-  const [crawlRuns, setCrawlRuns] = useState<CrawlRun[]>(initialState.crawlRuns)
-  const [bbsSnapshots, setBbsSnapshots] = useState<BbsSnapshot[]>(initialState.bbsSnapshots)
+  const [importBatches] = useState<ImportBatch[]>(initialState.importBatches)
+  const [crawlRuns] = useState<CrawlRun[]>(initialState.crawlRuns)
+  const [bbsSnapshots] = useState<BbsSnapshot[]>(initialState.bbsSnapshots)
   const [wordBookmarks, setWordBookmarks] = useState<WordBookmark[]>(initialState.wordBookmarks)
   const [bookmarkDraft, setBookmarkDraft] = useState('')
-  const [csvResult, setCsvResult] = useState<{ kind: CsvKind; imported: number; errors: string[] } | null>(null)
   const [busy, setBusy] = useState('')
 
   const summary = useMemo(() => summarizeSignals(scoredEvents), [scoredEvents])
@@ -225,7 +201,7 @@ export function NightRadarConsole({ initialState }: Props) {
   const radarScore = featuredEvent?.score ?? 0
   const busyLabel = busy ? '処理中…' : apiState.message
   const modeLabel = mode === 'database' ? 'DB保存中' : mode === 'anonymous' ? 'ログイン待ち' : 'デモ'
-  const sourceLimitLabel = `${bbsSources.length}/${currentLimits.bbsSources}`
+  const sourceLimitLabel = `${bbsSources.length}件`
 
   function flash(message: string, tone: ApiState['tone'] = 'good') {
     setApiState({ message, tone })
@@ -234,197 +210,6 @@ export function NightRadarConsole({ initialState }: Props) {
   function applyMode(nextMode?: RuntimeMode, message?: string) {
     if (nextMode) setMode(nextMode)
     if (message) flash(message, nextMode === 'database' ? 'good' : 'warn')
-  }
-
-  async function addStore(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const name = String(form.get('name') ?? '').trim()
-    if (!name) return flash('店舗名が必要です。', 'warn')
-
-    const item: StoreProfile = {
-      id: crypto.randomUUID(),
-      name,
-      area: String(form.get('area') ?? '未設定'),
-      hasDaytime: form.get('hasDaytime') === 'on',
-      hasNight: form.get('hasNight') === 'on',
-      openingHourDay: String(form.get('openingHourDay') ?? '13:00'),
-      openingHourNight: String(form.get('openingHourNight') ?? '19:00'),
-      prStructure: String(form.get('prStructure') ?? '未分類'),
-      strongDays: splitList(form.get('strongDays')),
-      strongEvents: splitList(form.get('strongEvents')),
-      weakEvents: splitList(form.get('weakEvents')),
-      trustSeed: Number(form.get('trustSeed') ?? 60),
-    }
-
-    setBusy('store')
-    try {
-      const result = await postJson<{ item: StoreProfile; mode?: RuntimeMode; message?: string }>('/api/records', {
-        kind: 'stores',
-        item,
-      })
-      setStores((current) => [result.item, ...current.filter((store) => store.id !== result.item.id)])
-      if (!scrapeStoreId) setScrapeStoreId(result.item.id)
-      event.currentTarget.reset()
-      applyMode(result.mode, result.message)
-      if (!result.message) flash('店舗データを保存しました。')
-    } catch (error) {
-      flash(error instanceof Error ? error.message : '店舗保存に失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function addEvent(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const title = String(form.get('title') ?? '').trim()
-    if (!title) return flash('イベント名が必要です。', 'warn')
-
-    const item: EventInput = {
-      id: crypto.randomUUID(),
-      storeId: String(form.get('storeId')),
-      date: String(form.get('date') || '今日'),
-      weekday: String(form.get('weekday') || '未設定'),
-      startsAt: String(form.get('startsAt') || '19:00'),
-      session: String(form.get('session')) === 'day' ? 'day' : 'night',
-      category: String(form.get('category') || '未分類'),
-      title,
-      sourceUrl: String(form.get('sourceUrl') || ''),
-    }
-
-    setBusy('event')
-    try {
-      const result = await postJson<{ item: EventInput; mode?: RuntimeMode; message?: string }>('/api/records', {
-        kind: 'events',
-        item,
-      })
-      setEvents((current) => [result.item, ...current.filter((entry) => entry.id !== result.item.id)])
-      event.currentTarget.reset()
-      applyMode(result.mode, result.message)
-      if (!result.message) flash('イベントを保存しました。')
-    } catch (error) {
-      flash(error instanceof Error ? error.message : 'イベント保存に失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function addPost(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const body = String(form.get('body') ?? '').trim()
-    if (!body) return flash('投稿本文が必要です。', 'warn')
-
-    const item: PostRecord = {
-      id: crypto.randomUUID(),
-      storeId: String(form.get('storeId')),
-      source: 'manual',
-      postedAt: new Date().toISOString(),
-      body,
-      keywords: splitList(form.get('keywords')),
-    }
-
-    setBusy('post')
-    try {
-      const result = await postJson<{ item: PostRecord; mode?: RuntimeMode; message?: string }>('/api/records', {
-        kind: 'posts',
-        item,
-      })
-      setPosts((current) => [result.item, ...current.filter((post) => post.id !== result.item.id)])
-      event.currentTarget.reset()
-      applyMode(result.mode, result.message)
-      if (!result.message) flash('投稿データを保存しました。')
-    } catch (error) {
-      flash(error instanceof Error ? error.message : '投稿保存に失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function addSituation(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const title = String(form.get('title') ?? '').trim()
-    if (!title) return flash('状況タイトルが必要です。', 'warn')
-
-    const item: StoreSituation = {
-      id: crypto.randomUUID(),
-      storeId: String(form.get('storeId')),
-      status: String(form.get('status') || 'watch') as StoreSituation['status'],
-      title,
-      note: String(form.get('note') ?? ''),
-      sourceUrl: String(form.get('sourceUrl') ?? ''),
-      observedAt: new Date().toISOString(),
-    }
-
-    setBusy('situation')
-    try {
-      const result = await postJson<{ item: StoreSituation; mode?: RuntimeMode; message?: string }>('/api/records', {
-        kind: 'situations',
-        item,
-      })
-      setSituations((current) => [result.item, ...current.filter((situation) => situation.id !== result.item.id)])
-      event.currentTarget.reset()
-      applyMode(result.mode, result.message)
-      if (!result.message) flash('店舗状況を保存しました。')
-    } catch (error) {
-      flash(error instanceof Error ? error.message : '店舗状況の保存に失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function deleteSituation(id: string) {
-    if (!window.confirm('この店舗状況を削除しますか？')) return
-    setBusy('delete-situation')
-    try {
-      const result = await deleteJson<{ mode?: RuntimeMode; message?: string }>('/api/records', {
-        kind: 'situations',
-        id,
-      })
-      setSituations((current) => current.filter((situation) => situation.id !== id))
-      applyMode(result.mode, result.message)
-      if (!result.message) flash('店舗状況を削除しました。')
-    } catch (error) {
-      flash(error instanceof Error ? error.message : '店舗状況の削除に失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function importCsv() {
-    setBusy('csv')
-    try {
-      const result = await postJson<{ items: unknown[]; errors: string[]; mode?: RuntimeMode; message?: string }>('/api/csv/import', {
-        kind: csvKind,
-        text: csvText,
-        persist: true,
-      })
-      setCsvResult({ kind: csvKind, imported: result.items.length, errors: result.errors })
-      if (result.errors.length) {
-        flash(`CSVに${result.errors.length}件のエラーがあります。`, 'warn')
-      }
-      if (csvKind === 'stores') setStores((current) => [...(result.items as StoreProfile[]), ...current])
-      if (csvKind === 'events') setEvents((current) => [...(result.items as EventInput[]), ...current])
-      if (csvKind === 'posts') setPosts((current) => [...(result.items as PostRecord[]), ...current])
-      setImportBatches((current) => [
-        {
-          id: crypto.randomUUID(),
-          kind: csvKind,
-          importedCount: result.items.length,
-          errorCount: result.errors.length,
-          createdAt: new Date().toISOString(),
-        },
-        ...current,
-      ])
-      applyMode(result.mode, result.message)
-      if (!result.errors.length) flash(`${result.items.length}件を取り込みました。`)
-    } catch (error) {
-      flash(error instanceof Error ? error.message : 'CSV取り込みに失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
   }
 
   async function runScoring() {
@@ -443,31 +228,6 @@ export function NightRadarConsole({ initialState }: Props) {
     }
   }
 
-  async function runScrape() {
-    const storeId = scrapeStoreId || stores[0]?.id
-    if (!scrapeUrl || !storeId) return flash('URLと店舗データが必要です。', 'warn')
-    setBusy('scrape')
-    try {
-      const result = await postJson<{ post: PostRecord | null; result: { status: string; message?: string } }>(
-        '/api/scrape',
-        {
-          url: scrapeUrl,
-          storeId,
-          persist: true,
-        },
-      )
-      if (result.post) setPosts((current) => [result.post!, ...current])
-      flash(
-        result.post ? 'スクレイピング結果を投稿として追加しました。' : result.result.message ?? '取得しました。',
-        result.post ? 'good' : 'warn',
-      )
-    } catch (error) {
-      flash(error instanceof Error ? error.message : 'スクレイピングに失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
   async function runAiAnalysis() {
     if (!analysisText.trim()) return flash('AI分析するテキストが必要です。', 'warn')
     setBusy('ai')
@@ -477,71 +237,6 @@ export function NightRadarConsole({ initialState }: Props) {
       flash(`AI分析を完了しました (${result.mode})。`)
     } catch (error) {
       flash(error instanceof Error ? error.message : 'AI分析に失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function addBbsSource(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (mode === 'database' && bbsSources.length >= currentLimits.bbsSources) {
-      return flash(`${planLabels[currentPlan]}プランのBBSソース上限は${currentLimits.bbsSources}件です。`, 'warn')
-    }
-    const form = new FormData(event.currentTarget)
-    const item: BbsSource = {
-      id: crypto.randomUUID(),
-      storeId: String(form.get('storeId')),
-      label: String(form.get('label') || 'BBS'),
-      url: String(form.get('url') || ''),
-      parserType: 'auto',
-      active: true,
-      crawlIntervalMinutes: Number(form.get('crawlIntervalMinutes') || 360),
-      lastStatus: 'pending',
-    }
-
-    setBusy('bbs-source')
-    try {
-      const result = await postJson<{ item: BbsSource; mode?: RuntimeMode; message?: string }>('/api/records', {
-        kind: 'bbsSources',
-        item,
-      })
-      setBbsSources((current) => [result.item, ...current.filter((source) => source.id !== result.item.id)])
-      event.currentTarget.reset()
-      applyMode(result.mode, result.message)
-      if (!result.message) flash('BBSソースを保存しました。')
-    } catch (error) {
-      flash(error instanceof Error ? error.message : 'BBSソース保存に失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function crawlSources(sourceIds?: string[]) {
-    setBusy('crawl')
-    try {
-      const result = await postJson<{
-        mode?: RuntimeMode
-        message?: string
-        results: Array<{ source: BbsSource; post: PostRecord | null; run?: CrawlRun; snapshot?: BbsSnapshot | null }>
-      }>('/api/bbs-sources/crawl', { sourceIds })
-      setBbsSources((current) =>
-        current.map((source) => result.results.find((entry) => entry.source.id === source.id)?.source ?? source),
-      )
-      const newPosts = result.results.map((entry) => entry.post).filter((post): post is PostRecord => Boolean(post))
-      if (newPosts.length) setPosts((current) => [...newPosts, ...current.filter((post) => !newPosts.some((next) => next.id === post.id))])
-      const newRuns = result.results.map((entry) => entry.run).filter((run): run is CrawlRun => Boolean(run))
-      if (newRuns.length) setCrawlRuns((current) => [...newRuns, ...current.filter((run) => !newRuns.some((next) => next.id === run.id))])
-      const newSnapshots = result.results.map((entry) => entry.snapshot).filter((snapshot): snapshot is BbsSnapshot => Boolean(snapshot))
-      if (newSnapshots.length) {
-        setBbsSnapshots((current) => [
-          ...newSnapshots,
-          ...current.filter((snapshot) => !newSnapshots.some((next) => next.id === snapshot.id)),
-        ])
-      }
-      applyMode(result.mode, result.message)
-      flash(`${result.results.length}件のBBSソースを巡回しました。`, result.results.length ? 'good' : 'warn')
-    } catch (error) {
-      flash(error instanceof Error ? error.message : 'BBS巡回に失敗しました。', 'warn')
     } finally {
       setBusy('')
     }
@@ -664,24 +359,6 @@ export function NightRadarConsole({ initialState }: Props) {
     }
   }
 
-  async function deleteBbsSource(id: string) {
-    if (!window.confirm('このBBSソースを削除しますか？')) return
-    setBusy('delete-bbs-source')
-    try {
-      const result = await deleteJson<{ mode?: RuntimeMode; message?: string }>('/api/records', {
-        kind: 'bbsSources',
-        id,
-      })
-      setBbsSources((current) => current.filter((source) => source.id !== id))
-      applyMode(result.mode, result.message)
-      if (!result.message) flash('BBSソースを削除しました。')
-    } catch (error) {
-      flash(error instanceof Error ? error.message : 'BBSソース削除に失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
   async function startOAuth(provider: 'google' | 'x') {
     setBusy(provider)
     try {
@@ -794,7 +471,7 @@ export function NightRadarConsole({ initialState }: Props) {
             <section className="quick-actions" aria-label="主要操作">
               <ActionButton icon={<ChartLineUp size={20} weight="bold" />} label="再計算" onClick={runScoring} disabled={busy === 'score'} />
               <ActionButton icon={<ChartBarHorizontal size={20} weight="bold" />} label="BBS" onClick={() => setView('analytics')} />
-              <ActionButton icon={<Plus size={20} weight="bold" />} label="追加" onClick={() => setView('capture')} />
+              <ActionButton icon={<Storefront size={20} weight="bold" />} label="店舗" onClick={() => setView('capture')} />
               <ActionButton icon={<BellRinging size={20} weight="bold" />} label="通知" onClick={sendNotifications} disabled={busy === 'notify'} />
             </section>
 
@@ -893,41 +570,18 @@ export function NightRadarConsole({ initialState }: Props) {
             <section className="app-card form-card">
               <FormTitle icon={<MapPin size={19} weight="bold" />} title="店舗状況" />
               <div className="situation-list">
-                {visibleSituations.map((situation) => (
-                  <SituationCard
-                    key={situation.id}
-                    situation={situation}
-                    storeName={stores.find((store) => store.id === situation.storeId)?.name ?? '未登録店舗'}
-                    onDelete={() => deleteSituation(situation.id)}
-                  />
-                ))}
+                {visibleSituations.length ? (
+                  visibleSituations.map((situation) => (
+                    <SituationCard
+                      key={situation.id}
+                      situation={situation}
+                      storeName={stores.find((store) => store.id === situation.storeId)?.name ?? '未登録店舗'}
+                    />
+                  ))
+                ) : (
+                  <p className="muted-note">運営側の観測メモが入ると表示されます。</p>
+                )}
               </div>
-              <details className="compact-details">
-                <summary>状況を追加</summary>
-                <form className="nested-form" onSubmit={addSituation}>
-                  <select name="storeId" aria-label="状況対象店舗">
-                    {stores.map((store) => (
-                      <option key={store.id} value={store.id}>
-                        {store.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select name="status" aria-label="状況種別">
-                    {situationStatuses.map((status) => (
-                      <option key={status.value} value={status.value}>
-                        {status.label}
-                      </option>
-                    ))}
-                  </select>
-                  <input aria-label="状況タイトル" autoComplete="off" name="title" placeholder="状況…" />
-                  <textarea aria-label="状況メモ" autoComplete="off" name="note" placeholder="メモ…" rows={3} />
-                  <input aria-label="状況ソースURL" autoComplete="off" name="sourceUrl" placeholder="URL…" type="url" />
-                  <button type="submit">
-                    <Plus size={17} weight="bold" />
-                    追加
-                  </button>
-                </form>
-              </details>
             </section>
 
             <section className="app-card form-card">
@@ -975,89 +629,85 @@ export function NightRadarConsole({ initialState }: Props) {
 
         {view === 'capture' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="Capture" title="入力は短く、判断材料は濃く。" body="店舗、イベント、投稿メモをカード単位で追加します。" />
-            <form className="app-card form-card" onSubmit={addPost}>
-              <FormTitle icon={<ClipboardText size={19} weight="bold" />} title="投稿メモ" />
-              <select name="storeId" aria-label="投稿対象店舗">
-                {stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-              </select>
-              <textarea aria-label="投稿本文" name="body" placeholder="公開掲示板・店舗告知などの要約テキスト…" rows={5} />
-              <input aria-label="投稿キーワード" autoComplete="off" name="keywords" placeholder="キーワード 例: 昼,主婦,初参加…" />
-              <button type="submit">
-                <Plus size={17} weight="bold" />
-                投稿追加
-              </button>
-            </form>
+            <ViewIntro eyebrow="Catalog" title="運営カタログ" body="店舗、イベント、BBSソースは運営側で更新されます。" />
 
-            <form className="app-card form-card" onSubmit={addEvent}>
-              <FormTitle icon={<CalendarDots size={19} weight="bold" />} title="イベント" />
-              <select name="storeId" aria-label="店舗">
-                {stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-              </select>
-              <input aria-label="イベント名" autoComplete="off" name="title" placeholder="イベント名…" />
-              <div className="inline-grid">
-                <select name="weekday" aria-label="曜日">
-                  {weekdays.map((weekday) => (
-                    <option key={weekday}>{weekday}</option>
-                  ))}
-                </select>
-                <select name="category" aria-label="カテゴリ">
-                  {eventCategories.map((item) => (
-                    <option key={item}>{item}</option>
-                  ))}
-                </select>
+            <section className="app-card catalog-card">
+              <div className="section-heading">
+                <span>Stores</span>
+                <h2>登録店舗</h2>
               </div>
-              <div className="inline-grid">
-                <input aria-label="イベント日付" autoComplete="off" name="date" placeholder="日付 例: 今日…" />
-                <input aria-label="開始時刻" autoComplete="off" name="startsAt" placeholder="19:00…" />
+              <div className="catalog-list">
+                {stores.length ? (
+                  stores.slice(0, 12).map((store) => (
+                    <article key={store.id}>
+                      <div>
+                        <strong>{store.name}</strong>
+                        <span>
+                          {store.area} / {storeSessionLabel(store)}
+                        </span>
+                      </div>
+                      <em>{store.trustSeed}</em>
+                    </article>
+                  ))
+                ) : (
+                  <p className="muted-note">運営側で店舗マスタを投入すると表示されます。</p>
+                )}
               </div>
-              <select name="session" aria-label="時間帯">
-                <option value="day">昼</option>
-                <option value="night">夜</option>
-              </select>
-              <button type="submit">
-                <Plus size={17} weight="bold" />
-                イベント追加
-              </button>
-            </form>
+            </section>
 
-            <form className="app-card form-card" onSubmit={addStore}>
-              <FormTitle icon={<Storefront size={19} weight="bold" />} title="店舗プロファイル" />
-              <input aria-label="店舗名" autoComplete="off" name="name" placeholder="店舗名…" />
-              <input aria-label="エリア" autoComplete="off" name="area" placeholder="エリア…" />
-              <input aria-label="PR構造" autoComplete="off" name="prStructure" placeholder="PR構造 例: 具体型…" />
-              <input aria-label="強い曜日" autoComplete="off" name="strongDays" placeholder="強い曜日 例: 火曜,金曜…" />
-              <input aria-label="強いイベント" autoComplete="off" name="strongEvents" placeholder="強いイベント 例: 昼主婦系,初心者系…" />
-              <input aria-label="弱いイベント" autoComplete="off" name="weakEvents" placeholder="弱いイベント…" />
-              <div className="switch-row">
-                <label>
-                  <input name="hasDaytime" type="checkbox" defaultChecked />
-                  昼営業
-                </label>
-                <label>
-                  <input name="hasNight" type="checkbox" defaultChecked />
-                  夜営業
-                </label>
+            <section className="app-card catalog-card">
+              <div className="section-heading">
+                <span>BBS sources</span>
+                <h2>巡回対象</h2>
               </div>
-              <button type="submit">
-                <Plus size={17} weight="bold" />
-                店舗追加
-              </button>
-            </form>
+              <div className="source-list">
+                {bbsSources.length ? (
+                  bbsSources.slice(0, 10).map((source) => (
+                    <article key={source.id}>
+                      <div>
+                        <strong>{source.label}</strong>
+                        <span>
+                          {stores.find((store) => store.id === source.storeId)?.name ?? '未登録'} / {source.lastStatus ?? 'pending'}
+                        </span>
+                      </div>
+                      <em>{source.crawlIntervalMinutes}分</em>
+                    </article>
+                  ))
+                ) : (
+                  <p className="muted-note">BBS URLは管理側のCSV/SQLで追加します。</p>
+                )}
+              </div>
+              <CrawlRunList runs={visibleCrawlRuns} />
+            </section>
+
+            <section className="app-card catalog-card">
+              <div className="section-heading">
+                <span>Events</span>
+                <h2>月間イベント</h2>
+              </div>
+              <div className="score-list">
+                {events.slice(0, 8).map((event) => (
+                  <article className="score-row" key={event.id}>
+                    <div>
+                      <strong>{event.title}</strong>
+                      <small>
+                        {stores.find((store) => store.id === event.storeId)?.name ?? '未登録'} / {event.date} {event.startsAt}
+                      </small>
+                    </div>
+                    <em>{event.session === 'day' ? '昼' : '夜'}</em>
+                  </article>
+                ))}
+              </div>
+              <a className="text-action" href="/calendar">
+                カレンダーを見る
+              </a>
+            </section>
           </section>
         )}
 
         {view === 'automate' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="Flow" title="取り込みから通知までを一本化。" body="CSV、公開HTML、AI分類、通知ジョブを同じ画面で扱います。" />
+            <ViewIntro eyebrow="Flow" title="AI分析と通知だけを調整。" body="店舗/BBSデータは運営側で巡回し、ユーザーは分析と通知設定を扱います。" />
 
             <section className="app-card form-card">
               <FormTitle icon={<MagicWand size={19} weight="bold" />} title="AI分析" />
@@ -1075,115 +725,6 @@ export function NightRadarConsole({ initialState }: Props) {
                   <small>具体性 {analysis.specificity} / {analysis.keywords.join('、') || 'キーワードなし'}</small>
                 </div>
               )}
-            </section>
-
-            <section className="app-card form-card">
-              <FormTitle icon={<FileCsv size={19} weight="bold" />} title="CSV取り込み" />
-              <div className="inline-grid">
-                <select
-                  value={csvKind}
-                  onChange={(event) => {
-                    const next = event.target.value as CsvKind
-                    setCsvKind(next)
-                    setCsvText(csvTemplates[next])
-                  }}
-                  aria-label="CSV種別"
-                >
-                  <option value="stores">店舗CSV</option>
-                  <option value="events">イベントCSV</option>
-                  <option value="posts">投稿CSV</option>
-                </select>
-                <button type="button" onClick={importCsv} disabled={busy === 'csv'}>
-                  <UploadSimple size={17} weight="bold" />
-                  取り込む
-                </button>
-              </div>
-              <textarea aria-label="CSVテキスト" value={csvText} onChange={(event) => setCsvText(event.target.value)} rows={7} />
-              <CsvImportSummary result={csvResult} />
-              <ImportHistory batches={visibleImports} />
-            </section>
-
-            <section className="app-card form-card">
-              <FormTitle icon={<GlobeHemisphereEast size={19} weight="bold" />} title="スクレイピング" />
-              <select value={scrapeStoreId} onChange={(event) => setScrapeStoreId(event.target.value)} aria-label="取得対象店舗">
-                {stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                aria-label="公開ページURL"
-                autoComplete="off"
-                placeholder="公開ページURL…"
-                type="url"
-                value={scrapeUrl}
-                onChange={(event) => setScrapeUrl(event.target.value)}
-              />
-              <button type="button" onClick={runScrape} disabled={busy === 'scrape'}>
-                <Broadcast size={17} weight="bold" />
-                取得して投稿化
-              </button>
-              <p className="muted-note">公開HTMLのみ。localhost/private IPはSSRF対策でブロックします。</p>
-            </section>
-
-            <section className="app-card form-card">
-              <FormTitle icon={<Broadcast size={19} weight="bold" />} title="BBS巡回ソース" />
-              <form className="nested-form" onSubmit={addBbsSource}>
-                <select name="storeId" aria-label="BBS対象店舗">
-                  {stores.map((store) => (
-                    <option key={store.id} value={store.id}>
-                      {store.name}
-                    </option>
-                  ))}
-                </select>
-                <input aria-label="BBSソースラベル" autoComplete="off" name="label" placeholder="ラベル 例: 公式BBS…" />
-                <input aria-label="BBS URL" autoComplete="off" name="url" placeholder="BBS URL…" type="url" />
-                <input
-                  aria-label="巡回間隔"
-                  autoComplete="off"
-                  min={5}
-                  name="crawlIntervalMinutes"
-                  placeholder="巡回間隔 分 例: 5…"
-                  type="number"
-                />
-                <button type="submit" disabled={busy === 'bbs-source'}>
-                  <Plus size={17} weight="bold" />
-                  ソース保存
-                </button>
-              </form>
-              <div className="source-list">
-                {bbsSources.length ? (
-                  bbsSources.slice(0, 8).map((source) => (
-                    <article key={source.id}>
-                      <div>
-                        <strong>{source.label}</strong>
-                        <span>{stores.find((store) => store.id === source.storeId)?.name ?? '未登録'} / {source.lastStatus ?? 'pending'}</span>
-                      </div>
-                      <div className="source-actions">
-                        <button type="button" onClick={() => crawlSources([source.id])} disabled={busy === 'crawl'}>
-                          巡回
-                        </button>
-                        <button
-                          className="icon-action"
-                          type="button"
-                          onClick={() => deleteBbsSource(source.id)}
-                          disabled={busy === 'delete-bbs-source'}
-                          aria-label={`${source.label}を削除`}
-                        >
-                          <Trash size={16} weight="bold" />
-                        </button>
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <p className="muted-note">店舗ごとのBBS URLを保存すると、定期巡回の対象になります。</p>
-                )}
-              </div>
-              <button className="secondary-action" type="button" onClick={() => crawlSources()} disabled={busy === 'crawl' || !bbsSources.length}>
-                全ソース巡回
-              </button>
-              <CrawlRunList runs={visibleCrawlRuns} />
             </section>
 
             <section className="app-card form-card">
@@ -1642,6 +1183,11 @@ function hostLabel(value: string) {
   }
 }
 
+function storeSessionLabel(store: { hasDaytime: boolean; hasNight: boolean }) {
+  const sessions = [store.hasDaytime ? '昼' : '', store.hasNight ? '夜' : ''].filter(Boolean)
+  return sessions.length ? sessions.join('・') : '時間未設定'
+}
+
 function OpsPanel({
   mode,
   sourceLimitLabel,
@@ -1686,42 +1232,6 @@ function OpsPanel({
   )
 }
 
-function CsvImportSummary({ result }: { result: { kind: CsvKind; imported: number; errors: string[] } | null }) {
-  if (!result) return <p className="muted-note">IDなしCSVと日本語見出しにも対応しています。</p>
-
-  return (
-    <div className={`csv-summary ${result.errors.length ? 'warn' : 'good'}`}>
-      <strong>
-        {result.kind} / {result.imported}件
-      </strong>
-      <span>{result.errors.length ? `エラー ${result.errors.length}件` : '取り込み可能'}</span>
-      {result.errors.length ? (
-        <ul>
-          {result.errors.slice(0, 4).map((error) => (
-            <li key={error}>{error}</li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  )
-}
-
-function ImportHistory({ batches }: { batches: ImportBatch[] }) {
-  if (!batches.length) return null
-
-  return (
-    <div className="mini-history" aria-label="CSV取り込み履歴">
-      {batches.map((batch) => (
-        <article key={batch.id}>
-          <span>{batch.kind}</span>
-          <strong>{batch.importedCount}件</strong>
-          <em>{formatShortDate(batch.createdAt)}</em>
-        </article>
-      ))}
-    </div>
-  )
-}
-
 function CrawlRunList({ runs }: { runs: CrawlRun[] }) {
   if (!runs.length) return null
 
@@ -1758,11 +1268,9 @@ function NotificationPreferenceSummary({ preference }: { preference: Notificatio
 function SituationCard({
   situation,
   storeName,
-  onDelete,
 }: {
   situation: StoreSituation
   storeName: string
-  onDelete: () => void
 }) {
   const statusLabel = situationStatuses.find((status) => status.value === situation.status)?.label ?? '要観測'
 
@@ -1776,9 +1284,6 @@ function SituationCard({
         <strong>{situation.title}</strong>
         <p>{situation.note || 'メモなし'}</p>
       </div>
-      <button type="button" onClick={onDelete} aria-label={`${situation.title}を削除`}>
-        <Trash size={17} weight="bold" />
-      </button>
     </article>
   )
 }

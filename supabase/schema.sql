@@ -30,7 +30,7 @@ create table if not exists public.subscriptions (
 
 create table if not exists public.stores (
   id text primary key default gen_random_uuid()::text,
-  owner_id uuid not null references auth.users(id) on delete cascade,
+  owner_id uuid references auth.users(id) on delete set null,
   name text not null,
   area text not null default '未設定',
   has_daytime boolean not null default false,
@@ -257,58 +257,41 @@ create policy "subscriptions owner read" on public.subscriptions
   for select using (auth.uid() = user_id);
 
 drop policy if exists "stores owner manage" on public.stores;
-create policy "stores owner manage" on public.stores
-  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+drop policy if exists "stores authenticated read" on public.stores;
+create policy "stores authenticated read" on public.stores
+  for select to authenticated using (true);
 
 drop policy if exists "events owner manage through store" on public.events;
-create policy "events owner manage through store" on public.events
-  for all using (
-    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
-  ) with check (
-    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
-  );
+drop policy if exists "events authenticated read" on public.events;
+create policy "events authenticated read" on public.events
+  for select to authenticated using (true);
 
 drop policy if exists "posts owner manage through store" on public.posts;
-create policy "posts owner manage through store" on public.posts
-  for all using (
-    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
-  ) with check (
-    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
-  );
+drop policy if exists "posts authenticated read" on public.posts;
+create policy "posts authenticated read" on public.posts
+  for select to authenticated using (true);
 
 drop policy if exists "situations owner manage through store" on public.store_situations;
-create policy "situations owner manage through store" on public.store_situations
-  for all using (
-    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
-  ) with check (
-    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
-  );
+drop policy if exists "situations authenticated read" on public.store_situations;
+create policy "situations authenticated read" on public.store_situations
+  for select to authenticated using (true);
 
 drop policy if exists "bbs sources owner manage through store" on public.bbs_sources;
-create policy "bbs sources owner manage through store" on public.bbs_sources
-  for all using (
-    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
-  ) with check (
-    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
-  );
+drop policy if exists "bbs sources authenticated read" on public.bbs_sources;
+create policy "bbs sources authenticated read" on public.bbs_sources
+  for select to authenticated using (true);
 
 drop policy if exists "crawl runs owner read through store" on public.crawl_runs;
 drop policy if exists "crawl runs owner manage through store" on public.crawl_runs;
-create policy "crawl runs owner manage through store" on public.crawl_runs
-  for all using (
-    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
-  ) with check (
-    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
-  );
+drop policy if exists "crawl runs authenticated read" on public.crawl_runs;
+create policy "crawl runs authenticated read" on public.crawl_runs
+  for select to authenticated using (true);
 
 drop policy if exists "bbs snapshots owner read through store" on public.bbs_snapshots;
 drop policy if exists "bbs snapshots owner manage through store" on public.bbs_snapshots;
-create policy "bbs snapshots owner manage through store" on public.bbs_snapshots
-  for all using (
-    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
-  ) with check (
-    exists (select 1 from public.stores s where s.id = store_id and s.owner_id = auth.uid())
-  );
+drop policy if exists "bbs snapshots authenticated read" on public.bbs_snapshots;
+create policy "bbs snapshots authenticated read" on public.bbs_snapshots
+  for select to authenticated using (true);
 
 drop policy if exists "exact terms owner manage" on public.exact_terms;
 create policy "exact terms owner manage" on public.exact_terms

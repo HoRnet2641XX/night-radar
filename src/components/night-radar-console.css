@@ -1394,7 +1394,18 @@
   gap: 9px;
 }
 
-.source-list article {
+.catalog-card {
+  display: grid;
+  gap: 12px;
+}
+
+.catalog-list {
+  display: grid;
+  gap: 9px;
+}
+
+.source-list article,
+.catalog-list article {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1405,26 +1416,37 @@
   padding: 10px;
 }
 
-.source-list article > div {
+.source-list article > div,
+.catalog-list article > div {
   display: grid;
   min-width: 0;
   gap: 3px;
 }
 
-.source-list strong {
+.source-list strong,
+.catalog-list strong {
   overflow: hidden;
   color: var(--nr-text);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.source-list span {
+.source-list span,
+.catalog-list span {
   overflow: hidden;
   color: var(--nr-muted);
   font-size: 12px;
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.source-list em,
+.catalog-list em {
+  color: var(--nr-accent-2);
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-weight: 950;
 }
 
 .source-list button {
