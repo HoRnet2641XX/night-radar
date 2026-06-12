@@ -67,11 +67,10 @@ type Props = {
 }
 
 const navItems: Array<{ key: ViewKey; label: string; icon: ReactNode }> = [
-  { key: 'radar', label: 'Radar', icon: <Crosshair size={20} weight="bold" /> },
-  { key: 'analytics', label: 'BBS', icon: <ChartBarHorizontal size={20} weight="bold" /> },
+  { key: 'analytics', label: 'Now', icon: <Broadcast size={20} weight="bold" /> },
+  { key: 'radar', label: 'Rank', icon: <ChartLineUp size={20} weight="bold" /> },
   { key: 'capture', label: 'Catalog', icon: <Storefront size={20} weight="bold" /> },
-  { key: 'automate', label: 'Flow', icon: <MagicWand size={20} weight="bold" /> },
-  { key: 'account', label: 'Plan', icon: <StripeLogo size={20} weight="bold" /> },
+  { key: 'account', label: 'Account', icon: <ShieldCheck size={20} weight="bold" /> },
 ]
 
 const exactTermLabels = {
@@ -194,13 +193,16 @@ export function NightRadarConsole({ initialState }: Props) {
   const visibleWatchedHits = watchedWordHits.slice(0, 8)
   const topForecasts = visitForecasts.slice(0, 3)
   const latestPost = posts[0]
+  const hotStore = storeRadar[0]
+  const watchStore = storeRadar.find((point) => point.rank > 1 && point.score >= 35) ?? storeRadar[1]
+  const latestCaptureLabel = bbsSnapshots.length ? `${bbsSnapshots.length}件` : '巡回待ち'
   const activeWords = wordCategories.filter((word) =>
     posts.some((post) => word.examples.some((example) => post.body.includes(example))),
   )
   const visibleWords = activeWords.length ? activeWords : wordCategories.slice(0, 5)
   const radarScore = featuredEvent?.score ?? 0
-  const busyLabel = busy ? '処理中…' : apiState.message
   const modeLabel = mode === 'database' ? 'DB保存中' : mode === 'anonymous' ? 'ログイン待ち' : 'デモ'
+  const busyLabel = busy ? '処理中…' : apiState.message === modeLabel ? '待機中' : apiState.message
   const sourceLimitLabel = `${bbsSources.length}件`
 
   function flash(message: string, tone: ApiState['tone'] = 'good') {
@@ -450,8 +452,8 @@ export function NightRadarConsole({ initialState }: Props) {
           <section className="view-stack">
             <section className="radar-hero-card">
               <div className="radar-copy">
-                <span>Live signal</span>
-                <h1>今日、見るべき夜を先に出す。</h1>
+                <span>Ranking</span>
+                <h1>来店予告を点数順に見る。</h1>
                 <p>{featuredEvent?.reasons[0] ?? '公開情報を入れると、昼夜の候補がここに立ち上がります。'}</p>
               </div>
               <div className="radar-orbit" aria-label={`公開シグナル期待度 ${radarScore}`}>
@@ -470,9 +472,9 @@ export function NightRadarConsole({ initialState }: Props) {
 
             <section className="quick-actions" aria-label="主要操作">
               <ActionButton icon={<ChartLineUp size={20} weight="bold" />} label="再計算" onClick={runScoring} disabled={busy === 'score'} />
-              <ActionButton icon={<ChartBarHorizontal size={20} weight="bold" />} label="BBS" onClick={() => setView('analytics')} />
+              <ActionButton icon={<ChartBarHorizontal size={20} weight="bold" />} label="Now" onClick={() => setView('analytics')} />
               <ActionButton icon={<Storefront size={20} weight="bold" />} label="店舗" onClick={() => setView('capture')} />
-              <ActionButton icon={<BellRinging size={20} weight="bold" />} label="通知" onClick={sendNotifications} disabled={busy === 'notify'} />
+              <ActionButton icon={<MagnifyingGlass size={20} weight="bold" />} label="検索" onClick={() => setView('analytics')} />
             </section>
 
             <section className="insight-card">
@@ -509,26 +511,19 @@ export function NightRadarConsole({ initialState }: Props) {
         {view === 'analytics' && (
           <section className="view-stack">
             <ViewIntro
-              eyebrow="BBS"
-              title="店舗別BBS"
-              body="どの店が熱いか、まだ余地があるかだけを見る。"
+              eyebrow="BBS monitor"
+              title="今見る店だけを出す。"
+              body="BBSの反応、来店予告、監視ワードを店舗ごとにまとめます。"
             />
+
+            <DecisionDock hotStore={hotStore} watchStore={watchStore} latestCaptureLabel={latestCaptureLabel} />
 
             <RadarBoard points={storeRadar} />
 
             <section className="subpage-strip" aria-label="詳細ページ">
               <a href="/forecast">来店予告ランキング</a>
               <a href="/calendar">月間イベント</a>
-              <a href="/ai-guide">AIガイド</a>
             </section>
-
-            <OpsPanel
-              mode={mode}
-              sourceLimitLabel={sourceLimitLabel}
-              crawlRuns={visibleCrawlRuns}
-              importBatches={visibleImports}
-              jobs={jobs}
-            />
 
             <WatchedWordsPanel
               hits={visibleWatchedHits}
@@ -541,6 +536,47 @@ export function NightRadarConsole({ initialState }: Props) {
             />
 
             <ForecastPreview forecasts={topForecasts} />
+
+            <section className="app-card form-card compact-search-card">
+              <FormTitle icon={<MagnifyingGlass size={19} weight="bold" />} title="全店BBS 完全一致" />
+              <div className="term-grid">
+                <label>
+                  <span>人気単男</span>
+                  <input
+                    autoComplete="off"
+                    name="popularSingleMale"
+                    spellCheck={false}
+                    value={exactTerms.popularSingleMale}
+                    onChange={(event) => setExactTerms((current) => ({ ...current, popularSingleMale: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>人気単女</span>
+                  <input
+                    autoComplete="off"
+                    name="popularSingleFemale"
+                    spellCheck={false}
+                    value={exactTerms.popularSingleFemale}
+                    onChange={(event) => setExactTerms((current) => ({ ...current, popularSingleFemale: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>不人気・苦手</span>
+                  <input
+                    autoComplete="off"
+                    name="negativePerson"
+                    spellCheck={false}
+                    value={exactTerms.negativePerson}
+                    onChange={(event) => setExactTerms((current) => ({ ...current, negativePerson: event.target.value }))}
+                  />
+                </label>
+              </div>
+              <button type="button" onClick={saveExactTerms} disabled={busy === 'exact'}>
+                <MagnifyingGlass size={17} weight="bold" />
+                検索して保存
+              </button>
+              <ExactMatchList matches={visibleMatches} />
+            </section>
 
             <section className="app-card">
               <div className="section-heading">
@@ -583,53 +619,20 @@ export function NightRadarConsole({ initialState }: Props) {
                 )}
               </div>
             </section>
-
-            <section className="app-card form-card">
-              <FormTitle icon={<MagnifyingGlass size={19} weight="bold" />} title="完全一致検索" />
-              <div className="term-grid">
-                <label>
-                  <span>人気単男</span>
-                  <input
-                    autoComplete="off"
-                    name="popularSingleMale"
-                    spellCheck={false}
-                    value={exactTerms.popularSingleMale}
-                    onChange={(event) => setExactTerms((current) => ({ ...current, popularSingleMale: event.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span>人気単女</span>
-                  <input
-                    autoComplete="off"
-                    name="popularSingleFemale"
-                    spellCheck={false}
-                    value={exactTerms.popularSingleFemale}
-                    onChange={(event) => setExactTerms((current) => ({ ...current, popularSingleFemale: event.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span>不人気・苦手</span>
-                  <input
-                    autoComplete="off"
-                    name="negativePerson"
-                    spellCheck={false}
-                    value={exactTerms.negativePerson}
-                    onChange={(event) => setExactTerms((current) => ({ ...current, negativePerson: event.target.value }))}
-                  />
-                </label>
-              </div>
-              <button type="button" onClick={saveExactTerms} disabled={busy === 'exact'}>
-                <MagnifyingGlass size={17} weight="bold" />
-                保存して全BBS検索
-              </button>
-              <ExactMatchList matches={visibleMatches} />
-            </section>
           </section>
         )}
 
         {view === 'capture' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="Catalog" title="運営カタログ" body="店舗、イベント、BBSソースは運営側で更新されます。" />
+            <ViewIntro eyebrow="Catalog" title="登録店舗と巡回先。" body="店舗、イベント、BBSソースは運営側で更新します。" />
+
+            <OpsPanel
+              mode={mode}
+              sourceLimitLabel={sourceLimitLabel}
+              crawlRuns={visibleCrawlRuns}
+              importBatches={visibleImports}
+              jobs={jobs}
+            />
 
             <section className="app-card catalog-card">
               <div className="section-heading">
@@ -711,7 +714,7 @@ export function NightRadarConsole({ initialState }: Props) {
 
             <section className="app-card form-card">
               <FormTitle icon={<MagicWand size={19} weight="bold" />} title="AI分析" />
-              <textarea aria-label="AI分析対象テキスト" value={analysisText} onChange={(event) => setAnalysisText(event.target.value)} rows={5} />
+              <textarea aria-label="AI分析対象テキスト" name="analysisText" value={analysisText} onChange={(event) => setAnalysisText(event.target.value)} rows={5} />
               <button type="button" onClick={runAiAnalysis} disabled={busy === 'ai'}>
                 <Sparkle size={17} weight="fill" />
                 分類する
@@ -765,6 +768,7 @@ export function NightRadarConsole({ initialState }: Props) {
                 <input
                   aria-label="通知メール"
                   autoComplete="email"
+                  name="notificationEmail"
                   placeholder="通知メール…"
                   type="email"
                   value={notificationPreference.email}
@@ -773,6 +777,7 @@ export function NightRadarConsole({ initialState }: Props) {
                 <input
                   aria-label="Webhook URL"
                   autoComplete="off"
+                  name="notificationWebhookUrl"
                   placeholder="Webhook URL…"
                   type="url"
                   value={notificationPreference.webhookUrl}
@@ -808,7 +813,7 @@ export function NightRadarConsole({ initialState }: Props) {
 
         {view === 'account' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="Account" title="認証、課金、公開情報ポリシー。" body="X、Google、メール認証とStripeプランを接続できます。" />
+            <ViewIntro eyebrow="Account" title="ログインと公開情報ポリシー。" body="決済、AI、通知は後で接続します。今は認証と閲覧体験を優先します。" />
 
             <section className="app-card form-card">
               <FormTitle icon={<ShieldCheck size={19} weight="bold" />} title="認証" />
@@ -829,6 +834,7 @@ export function NightRadarConsole({ initialState }: Props) {
                 <input
                   aria-label="メールアドレス"
                   autoComplete="email"
+                  name="email"
                   placeholder="メールアドレス…"
                   spellCheck={false}
                   type="email"
@@ -846,34 +852,37 @@ export function NightRadarConsole({ initialState }: Props) {
               )}
             </section>
 
-            <section className="plan-stack">
-              {plans
-                .filter((plan): plan is (typeof plans)[number] & { key: 'light' | 'standard' | 'premium' } => plan.key !== 'free')
-                .map((plan) => (
-                  <button
-                    className={`plan-card ${subscription.plan === plan.key ? 'is-current' : ''}`}
-                    key={plan.key}
-                    type="button"
-                    onClick={() => checkout(plan.key)}
-                  >
-                    <span>
-                      <StripeLogo size={20} weight="bold" />
-                      {plan.label}
-                      {subscription.plan === plan.key ? <em>現在</em> : null}
-                    </span>
-                    <strong>{plan.price}</strong>
-                    <small>{plan.summary}</small>
-                    <small>
-                      BBS {planLimits[plan.key].bbsSources}件 / 完全一致 各{planLimits[plan.key].exactTermsPerGroup}語
-                    </small>
-                  </button>
-                ))}
-            </section>
+            <details className="paused-details">
+              <summary>後で接続する設定</summary>
+              <section className="plan-stack">
+                {plans
+                  .filter((plan): plan is (typeof plans)[number] & { key: 'light' | 'standard' | 'premium' } => plan.key !== 'free')
+                  .map((plan) => (
+                    <button
+                      className={`plan-card ${subscription.plan === plan.key ? 'is-current' : ''}`}
+                      key={plan.key}
+                      type="button"
+                      onClick={() => checkout(plan.key)}
+                    >
+                      <span>
+                        <StripeLogo size={20} weight="bold" />
+                        {plan.label}
+                        {subscription.plan === plan.key ? <em>現在</em> : null}
+                      </span>
+                      <strong>{plan.price}</strong>
+                      <small>{plan.summary}</small>
+                      <small>
+                        BBS {planLimits[plan.key].bbsSources}件 / 完全一致 各{planLimits[plan.key].exactTermsPerGroup}語
+                      </small>
+                    </button>
+                  ))}
+              </section>
 
-            <button className="billing-portal-button" type="button" onClick={openBillingPortal} disabled={busy === 'portal'}>
-              <StripeLogo size={18} weight="bold" />
-              請求ポータルを開く
-            </button>
+              <button className="billing-portal-button" type="button" onClick={openBillingPortal} disabled={busy === 'portal'}>
+                <StripeLogo size={18} weight="bold" />
+                請求ポータルを開く
+              </button>
+            </details>
 
             <section className="legal-note">
               <WarningCircle size={18} weight="bold" />
@@ -939,6 +948,36 @@ function ActionButton({ icon, label, onClick, disabled = false }: { icon: ReactN
       {icon}
       <span>{label}</span>
     </button>
+  )
+}
+
+function DecisionDock({
+  hotStore,
+  watchStore,
+  latestCaptureLabel,
+}: {
+  hotStore?: StoreRadarPoint
+  watchStore?: StoreRadarPoint
+  latestCaptureLabel: string
+}) {
+  return (
+    <section className="decision-dock" aria-label="現在の判断サマリー">
+      <article className="decision-primary">
+        <span>Hot</span>
+        <strong>{hotStore?.store.name ?? '観測待ち'}</strong>
+        <p>{hotStore ? `${hotStore.verdict} / 女性${hotStore.signals.femaleOnly} 初${hotStore.signals.firstVisit}` : 'BBS巡回後に判定が出ます。'}</p>
+      </article>
+      <article>
+        <span>余地</span>
+        <strong>{watchStore?.store.name ?? '-'}</strong>
+        <p>{watchStore ? `${watchStore.score}pt / ${watchStore.verdict}` : '比較対象なし'}</p>
+      </article>
+      <article>
+        <span>巡回</span>
+        <strong>{latestCaptureLabel}</strong>
+        <p>5分間隔でBBSを観測</p>
+      </article>
+    </section>
   )
 }
 
@@ -1096,6 +1135,7 @@ function WatchedWordsPanel({
         <input
           aria-label="ブックマークワード"
           autoComplete="off"
+          name="bookmarkWord"
           placeholder="追加ワード…"
           value={bookmarkDraft}
           onChange={(event) => onDraftChange(event.target.value)}
