@@ -1,22 +1,22 @@
 :root {
-  --charcoal: #07111f;
-  --charcoal-2: #0d2038;
-  --paper: #eaf4ff;
-  --paper-2: #cfe4f8;
-  --surface: #f5fbff;
-  --surface-2: #dbeeff;
-  --surface-3: #c7dff3;
-  --ink: #0a1524;
-  --muted: #66798e;
-  --line: rgba(116, 162, 214, 0.18);
-  --line-dark: rgba(219, 238, 255, 0.2);
-  --accent: #5fafff;
-  --accent-2: #9bd7ff;
-  --signal: #62d7ce;
-  --blueprint: #7897b8;
-  --danger: #b95b58;
-  --focus: rgba(95, 175, 255, 0.42);
-  --shadow: rgba(2, 12, 30, 0.24);
+  --charcoal: oklch(9% 0.03 252);
+  --charcoal-2: oklch(15% 0.04 252);
+  --paper: oklch(96% 0.018 235);
+  --paper-2: oklch(88% 0.064 232);
+  --surface: oklch(16% 0.035 252);
+  --surface-2: oklch(21% 0.043 250);
+  --surface-3: oklch(27% 0.052 248);
+  --ink: oklch(96% 0.018 235);
+  --muted: oklch(77% 0.043 238 / 0.72);
+  --line: oklch(64% 0.23 24 / 0.22);
+  --line-dark: oklch(79% 0.08 238 / 0.13);
+  --accent: oklch(64% 0.24 24);
+  --accent-2: oklch(76% 0.145 235);
+  --signal: oklch(78% 0.125 198);
+  --blueprint: oklch(63% 0.065 238);
+  --danger: oklch(61% 0.235 24);
+  --focus: oklch(64% 0.24 24 / 0.42);
+  --shadow: oklch(5% 0.02 252 / 0.5);
   --radius-xs: 5px;
   --radius-sm: 7px;
   --radius-md: 10px;
@@ -31,11 +31,12 @@
 
   color: var(--ink);
   background:
-    radial-gradient(circle at 50% 0%, rgba(83, 161, 255, 0.22), transparent 34rem),
-    linear-gradient(90deg, rgba(210, 232, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(210, 232, 255, 0.035) 1px, transparent 1px),
-    #07111f;
-  background-size: 34px 34px, 34px 34px, auto;
+    radial-gradient(circle at 50% -12%, oklch(64% 0.24 24 / 0.15), transparent 26rem),
+    radial-gradient(circle at 82% 8%, oklch(76% 0.145 235 / 0.09), transparent 24rem),
+    linear-gradient(90deg, oklch(64% 0.24 24 / 0.032) 1px, transparent 1px),
+    linear-gradient(180deg, oklch(76% 0.145 235 / 0.022) 1px, transparent 1px),
+    linear-gradient(155deg, oklch(13% 0.04 252), oklch(7% 0.026 252) 62%, oklch(9% 0.03 252));
+  background-size: auto, auto, 42px 42px, 42px 42px, auto;
   font-family: var(--font-sans);
   font-size: 16px;
   line-height: 1.5;
@@ -43,7 +44,7 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  -webkit-tap-highlight-color: rgba(95, 175, 255, 0.2);
+  -webkit-tap-highlight-color: oklch(64% 0.24 24 / 0.2);
 }
 
 * {
@@ -102,7 +103,7 @@ a:focus-visible {
 }
 
 ::selection {
-  background: rgba(95, 175, 255, 0.24);
+  background: oklch(64% 0.24 24 / 0.26);
 }
 
 .legal-page {
