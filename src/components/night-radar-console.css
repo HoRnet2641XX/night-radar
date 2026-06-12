@@ -358,6 +358,7 @@
   position: absolute;
   right: -38px;
   bottom: -54px;
+  isolation: isolate;
   display: grid;
   width: 238px;
   height: 238px;
@@ -369,8 +370,29 @@
     radial-gradient(circle, transparent 0 68%, rgba(117, 185, 255, 0.2) 69% 70%, transparent 71%);
 }
 
+.radar-orbit::before,
+.radar-orbit::after {
+  position: absolute;
+  border-radius: 50%;
+  content: '';
+  pointer-events: none;
+}
+
+.radar-orbit::before {
+  inset: 27px;
+  border: 2px solid rgba(205, 58, 67, 0.22);
+  animation: orbit-ring-pulse 4.8s ease-in-out infinite;
+}
+
+.radar-orbit::after {
+  inset: 0;
+  border: 2px solid rgba(117, 185, 255, 0.18);
+  animation: orbit-ring-pulse 6.4s ease-in-out infinite reverse;
+}
+
 .radar-orbit i {
   position: absolute;
+  z-index: 1;
   display: block;
   border-radius: 50%;
 }
@@ -380,24 +402,28 @@
   height: 12px;
   background: var(--nr-scan);
   box-shadow: 0 0 18px rgba(205, 58, 67, 0.8);
-  transform: translate(42px, -74px);
+  transform: rotate(-32deg) translateX(86px);
+  animation: orbit-dot-red 7.5s linear infinite;
 }
 
 .radar-orbit i:nth-child(2) {
   width: 8px;
   height: 8px;
   background: var(--nr-accent);
-  transform: translate(-76px, 18px);
+  transform: rotate(166deg) translateX(80px);
+  animation: orbit-dot-blue 10s linear infinite;
 }
 
 .radar-orbit i:nth-child(3) {
   width: 6px;
   height: 6px;
   background: rgba(225, 240, 255, 0.78);
-  transform: translate(88px, 42px);
+  transform: rotate(38deg) translateX(98px);
+  animation: orbit-dot-white 12s linear infinite reverse;
 }
 
 .radar-orbit strong {
+  z-index: 1;
   color: #edf7ff;
   font-family: var(--font-mono);
   font-size: 44px;
@@ -410,9 +436,41 @@
 .radar-orbit span {
   position: absolute;
   top: 132px;
+  z-index: 1;
   color: var(--nr-muted);
   font-size: 11px;
   font-weight: 850;
+}
+
+@keyframes orbit-ring-pulse {
+  0%,
+  100% {
+    opacity: 0.54;
+    transform: scale(0.985);
+  }
+
+  50% {
+    opacity: 0.92;
+    transform: scale(1.025);
+  }
+}
+
+@keyframes orbit-dot-red {
+  to {
+    transform: rotate(328deg) translateX(86px);
+  }
+}
+
+@keyframes orbit-dot-blue {
+  to {
+    transform: rotate(526deg) translateX(80px);
+  }
+}
+
+@keyframes orbit-dot-white {
+  to {
+    transform: rotate(398deg) translateX(98px);
+  }
 }
 
 .signal-carousel {
@@ -694,9 +752,8 @@
   display: grid;
   gap: 16px;
   overflow: hidden;
-  border-color: rgba(205, 58, 67, 0.22);
+  border-color: rgba(154, 190, 225, 0.14);
   background:
-    radial-gradient(circle at 50% 0%, rgba(205, 58, 67, 0.14), transparent 18rem),
     linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
     rgba(5, 9, 16, 0.86);
   padding: 15px;
@@ -710,6 +767,7 @@
   width: 42%;
   background: linear-gradient(90deg, transparent, rgba(205, 58, 67, 0.18), transparent);
   content: '';
+  display: none;
   pointer-events: none;
   transform: skewX(-12deg);
   animation: panel-scan 5.2s ease-in-out infinite;
@@ -763,7 +821,7 @@
   font-size: var(--nr-type-number-lg);
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  text-shadow: 0 0 18px rgba(205, 58, 67, 0.72);
+  text-shadow: none;
 }
 
 .radar-board-grid {
@@ -780,10 +838,23 @@
   min-block-size: 116px;
 }
 
+.share-donut::before {
+  position: absolute;
+  inline-size: 86px;
+  block-size: 86px;
+  border: 1px solid rgba(117, 185, 255, 0.14);
+  border-radius: 50%;
+  content: '';
+  pointer-events: none;
+  animation: donut-breathe 4.8s ease-in-out infinite;
+}
+
 .share-donut svg {
   inline-size: 116px;
   block-size: 116px;
+  transform-origin: center;
   transform: rotate(-90deg);
+  animation: donut-drift 18s linear infinite;
 }
 
 .donut-base,
@@ -906,11 +977,44 @@
 }
 
 .radar-meter i {
+  position: relative;
   display: block;
   block-size: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--nr-scan), #edf7ff 48%, var(--nr-accent));
+  background-size: 190% 100%;
   box-shadow: 0 0 12px rgba(205, 58, 67, 0.45);
+  animation: meter-flow 2.8s ease-in-out infinite;
+}
+
+@keyframes donut-breathe {
+  0%,
+  100% {
+    opacity: 0.48;
+    transform: scale(0.96);
+  }
+
+  50% {
+    opacity: 0.86;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes donut-drift {
+  to {
+    transform: rotate(270deg);
+  }
+}
+
+@keyframes meter-flow {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 .subpage-strip {
@@ -966,15 +1070,16 @@
 .bookmark-form input {
   flex: 1 1 auto;
   min-width: 0;
-  border: 1px solid var(--nr-line);
+  border: 1px solid rgba(225, 240, 255, 0.14);
   border-radius: 14px;
-  background: var(--nr-surface-strong);
+  background: rgba(20, 20, 22, 0.94);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
   color: var(--nr-text);
   padding: 10px 12px;
 }
 
 .bookmark-form input::placeholder {
-  color: var(--nr-faint);
+  color: rgba(225, 240, 255, 0.42);
 }
 
 .bookmark-form button {
@@ -2211,7 +2316,13 @@ button:disabled {
 
 @media (prefers-reduced-motion: reduce) {
   .mobile-app-shell::before,
-  .radar-board::before {
+  .radar-board::before,
+  .radar-orbit::before,
+  .radar-orbit::after,
+  .radar-orbit i,
+  .share-donut::before,
+  .share-donut svg,
+  .radar-meter i {
     animation: none;
   }
 
