@@ -453,7 +453,7 @@ export function NightRadarConsole({ initialState }: Props) {
             <section className="radar-hero-card">
               <div className="radar-copy">
                 <span>Ranking</span>
-                <h1>来店予告を点数順に見る。</h1>
+                <h1>来店予告ランキング</h1>
                 <p>{featuredEvent?.reasons[0] ?? '公開情報を入れると、昼夜の候補がここに立ち上がります。'}</p>
               </div>
               <div className="radar-orbit" aria-label={`公開シグナル期待度 ${radarScore}`}>
@@ -512,8 +512,8 @@ export function NightRadarConsole({ initialState }: Props) {
           <section className="view-stack">
             <ViewIntro
               eyebrow="BBS monitor"
-              title="今見る店だけを出す。"
-              body="BBSの反応、来店予告、監視ワードを店舗ごとにまとめます。"
+              title="BBSモニター"
+              body="店舗別の反応、来店予告、監視ワードを一覧します。"
             />
 
             <DecisionDock hotStore={hotStore} watchStore={watchStore} latestCaptureLabel={latestCaptureLabel} />
@@ -624,7 +624,7 @@ export function NightRadarConsole({ initialState }: Props) {
 
         {view === 'capture' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="Catalog" title="登録店舗と巡回先。" body="店舗、イベント、BBSソースは運営側で更新します。" />
+            <ViewIntro eyebrow="Catalog" title="店舗・巡回先" body="店舗、イベント、BBSソースは運営側で更新します。" />
 
             <OpsPanel
               mode={mode}
@@ -710,7 +710,7 @@ export function NightRadarConsole({ initialState }: Props) {
 
         {view === 'automate' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="Flow" title="AI分析と通知だけを調整。" body="店舗/BBSデータは運営側で巡回し、ユーザーは分析と通知設定を扱います。" />
+            <ViewIntro eyebrow="Flow" title="分析・通知" body="店舗/BBSデータは運営側で巡回し、ユーザーは分析と通知設定を扱います。" />
 
             <section className="app-card form-card">
               <FormTitle icon={<MagicWand size={19} weight="bold" />} title="AI分析" />
@@ -813,7 +813,7 @@ export function NightRadarConsole({ initialState }: Props) {
 
         {view === 'account' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="Account" title="ログインと公開情報ポリシー。" body="決済、AI、通知は後で接続します。今は認証と閲覧体験を優先します。" />
+            <ViewIntro eyebrow="Account" title="ログイン・ポリシー" body="決済、AI、通知は後で接続します。今は認証と閲覧体験を優先します。" />
 
             <section className="app-card form-card">
               <FormTitle icon={<ShieldCheck size={19} weight="bold" />} title="認証" />

@@ -21,6 +21,12 @@
   --nr-good: #8af0e4;
   --nr-warn: #f3c679;
   --nr-depth: rgba(2, 8, 20, 0.38);
+  --nr-type-screen-title: 26px;
+  --nr-type-panel-title: 17px;
+  --nr-type-card-title: 15px;
+  --nr-type-number-lg: 34px;
+  --nr-type-number-md: 22px;
+  --nr-type-label: 11px;
 
   position: relative;
   min-height: calc(100dvh - 32px);
@@ -152,18 +158,18 @@
 .featured-label,
 .form-title span {
   color: var(--nr-muted);
-  font-size: 12px;
+  font-size: var(--nr-type-label);
   font-weight: 850;
 }
 
 .view-intro h1,
 .radar-copy h1 {
-  max-width: 10.8em;
+  max-width: 100%;
   margin: 0;
   color: var(--nr-text);
-  font-size: clamp(30px, 7vw, 46px);
-  font-weight: 920;
-  line-height: 1;
+  font-size: var(--nr-type-screen-title);
+  font-weight: 850;
+  line-height: 1.16;
   text-wrap: balance;
 }
 
@@ -172,8 +178,8 @@
   max-width: 32em;
   margin: 0;
   color: rgba(225, 240, 255, 0.66);
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 650;
   line-height: 1.55;
 }
 
@@ -214,8 +220,8 @@
 .decision-dock strong {
   overflow: hidden;
   color: var(--nr-text);
-  font-size: 20px;
-  line-height: 1.05;
+  font-size: var(--nr-type-card-title);
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -303,7 +309,7 @@
 .radar-orbit strong {
   color: rgba(237, 247, 255, 0.94);
   font-family: var(--font-mono);
-  font-size: 54px;
+  font-size: 44px;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -385,7 +391,7 @@
   margin-left: auto;
   color: var(--nr-accent-2);
   font-family: var(--font-mono);
-  font-size: 28px;
+  font-size: var(--nr-type-number-md);
   font-style: normal;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
@@ -469,8 +475,9 @@
 .form-title h2 {
   margin: 0;
   color: var(--nr-text);
-  font-size: 18px;
-  line-height: 1.18;
+  font-size: var(--nr-type-card-title);
+  font-weight: 850;
+  line-height: 1.24;
 }
 
 .word-cloud {
@@ -596,14 +603,14 @@
 .radar-board-head h2 {
   margin: 2px 0 0;
   color: var(--nr-text);
-  font-size: 22px;
+  font-size: var(--nr-type-panel-title);
   line-height: 1.12;
 }
 
 .radar-board-head > strong {
   color: var(--nr-text);
   font-family: var(--font-mono);
-  font-size: 42px;
+  font-size: var(--nr-type-number-lg);
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -664,7 +671,7 @@
 .share-donut strong {
   color: var(--nr-text);
   font-family: var(--font-mono);
-  font-size: 24px;
+  font-size: var(--nr-type-number-md);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1001,7 +1008,7 @@
 .pulse-score strong {
   color: var(--nr-text);
   font-family: var(--font-mono);
-  font-size: 42px;
+  font-size: var(--nr-type-number-lg);
   font-variant-numeric: tabular-nums;
   line-height: 0.95;
 }
@@ -1736,7 +1743,7 @@
 
 .plan-card strong {
   font-family: var(--font-mono);
-  font-size: 26px;
+  font-size: var(--nr-type-number-md);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1849,6 +1856,10 @@ button:disabled {
   }
 
   .mobile-app-shell {
+    --nr-type-screen-title: 28px;
+    --nr-type-panel-title: 18px;
+    --nr-type-number-lg: 36px;
+
     width: min(100%, 760px);
   }
 
@@ -1874,6 +1885,11 @@ button:disabled {
   }
 
   .mobile-app-shell {
+    --nr-type-screen-title: 24px;
+    --nr-type-panel-title: 17px;
+    --nr-type-number-lg: 32px;
+    --nr-type-number-md: 21px;
+
     min-height: 100dvh;
     border: 0;
     border-radius: 0;
@@ -1901,10 +1917,6 @@ button:disabled {
   .radar-board {
     gap: 12px;
     padding: 12px;
-  }
-
-  .radar-board-head h2 {
-    font-size: 20px;
   }
 
   .radar-board-grid {
