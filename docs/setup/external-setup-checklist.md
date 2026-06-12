@@ -100,9 +100,9 @@ Dashboard: https://vercel.com/dashboard
    - `BASIC_AUTH_USER`
    - `BASIC_AUTH_PASSWORD`
 4. Cron保護用に `CRON_SECRET` を設定する。
-5. 5分おきBBS巡回は `vercel.json` の `*/5 * * * *` で設定済み。
+5. 5分おきBBS巡回は外部Cronで `/api/cron/crawl` を叩く。
 
-Vercel Hobbyでは高頻度Cronが制限されるため、5分おき運用はPro以上、または外部Cron推奨。
+Vercel Hobbyでは高頻度Cronが制限されるため、5分おき運用は外部Cron推奨。Vercel Cronで運用したい場合はPro以上にしてから `vercel.json` にCron設定を追加する。
 
 External cron alternative:
 
