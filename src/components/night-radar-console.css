@@ -14,6 +14,10 @@
   --nr-line-soft: oklch(79% 0.08 238 / 0.13);
   --nr-surface: oklch(16% 0.034 252 / 0.78);
   --nr-surface-strong: oklch(21% 0.04 250 / 0.88);
+  --nr-card-flat: rgba(225, 240, 255, 0.045);
+  --nr-card-flat-strong: rgba(225, 240, 255, 0.06);
+  --nr-panel-flat: rgba(7, 11, 19, 0.78);
+  --nr-panel-flat-strong: rgba(5, 9, 16, 0.86);
   --nr-active: oklch(56% 0.17 26);
   --nr-active-ink: oklch(98% 0.018 42);
   --nr-accent: oklch(76% 0.095 235);
@@ -266,13 +270,10 @@
   overflow: hidden;
   border: 1px solid rgba(154, 190, 225, 0.13);
   border-radius: 14px;
-  background:
-    linear-gradient(135deg, rgba(205, 58, 67, 0.075), transparent 42%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
-    rgba(7, 11, 19, 0.76);
+  background: var(--nr-panel-flat);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.055),
-    inset 0 -1px 0 rgba(205, 58, 67, 0.12);
+    inset 0 -1px 0 rgba(117, 185, 255, 0.07);
   padding: 13px;
 }
 
@@ -289,10 +290,7 @@
 
 .decision-dock .decision-primary {
   border-color: rgba(205, 58, 67, 0.34);
-  background:
-    radial-gradient(circle at 90% 0%, rgba(205, 58, 67, 0.18), transparent 38%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025)),
-    rgba(8, 13, 22, 0.82);
+  background: rgba(8, 13, 22, 0.84);
 }
 
 .decision-dock .decision-primary::before {
@@ -488,12 +486,10 @@
   min-height: 118px;
   border: 1px solid rgba(154, 190, 225, 0.13);
   border-radius: 16px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.052), transparent),
-    rgba(7, 11, 19, 0.74);
+  background: var(--nr-panel-flat);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.055),
-    inset 0 -1px 0 rgba(205, 58, 67, 0.1);
+    inset 0 -1px 0 rgba(117, 185, 255, 0.06);
   padding: 14px;
   scroll-snap-align: start;
 }
@@ -578,18 +574,14 @@
   place-items: center;
   border: 1px solid rgba(154, 190, 225, 0.13);
   border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.052), transparent),
-    rgba(7, 11, 19, 0.74);
+  background: var(--nr-panel-flat);
   color: var(--nr-text-soft);
   font-size: 12px;
   font-weight: 850;
 }
 
 .quick-actions button:first-child {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent),
-    var(--nr-active);
+  background: var(--nr-active);
   color: var(--nr-active-ink);
   box-shadow: 0 0 20px rgba(205, 58, 67, 0.2);
 }
@@ -617,13 +609,11 @@
 .legal-note {
   border: 1px solid rgba(154, 190, 225, 0.13);
   border-radius: 16px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015)),
-    rgba(7, 11, 19, 0.78);
+  background: var(--nr-panel-flat);
   box-shadow:
     0 16px 34px rgba(0, 0, 0, 0.24),
     inset 0 1px 0 rgba(255, 255, 255, 0.055),
-    inset 0 -1px 0 rgba(205, 58, 67, 0.08);
+    inset 0 -1px 0 rgba(117, 185, 255, 0.06);
   padding: 16px;
 }
 
@@ -717,9 +707,7 @@
   gap: 12px;
   border: 1px solid var(--nr-line-soft);
   border-radius: 20px;
-  background:
-    radial-gradient(circle at 92% 12%, rgba(117, 185, 255, 0.16), transparent 30%),
-    rgba(225, 240, 255, 0.06);
+  background: var(--nr-card-flat-strong);
   padding: 13px;
 }
 
@@ -752,9 +740,7 @@
   gap: 16px;
   overflow: hidden;
   border-color: rgba(154, 190, 225, 0.14);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
-    rgba(5, 9, 16, 0.86);
+  background: var(--nr-panel-flat-strong);
   padding: 15px;
 }
 
@@ -1151,9 +1137,7 @@
   gap: 5px;
   border: 1px solid rgba(154, 190, 225, 0.12);
   border-radius: 13px;
-  background:
-    linear-gradient(90deg, rgba(205, 58, 67, 0.052), transparent 32%),
-    rgba(225, 240, 255, 0.045);
+  background: var(--nr-card-flat);
   padding: 10px;
 }
 
@@ -1188,9 +1172,7 @@
   gap: 10px;
   border: 1px solid rgba(154, 190, 225, 0.12);
   border-radius: 13px;
-  background:
-    linear-gradient(90deg, rgba(205, 58, 67, 0.052), transparent 32%),
-    rgba(225, 240, 255, 0.045);
+  background: var(--nr-card-flat);
   padding: 10px;
 }
 
@@ -1648,9 +1630,7 @@
   gap: 7px;
   border: 1px solid rgba(154, 190, 225, 0.12);
   border-radius: 13px;
-  background:
-    linear-gradient(90deg, rgba(205, 58, 67, 0.052), transparent 32%),
-    rgba(225, 240, 255, 0.045);
+  background: var(--nr-card-flat);
   padding: 12px;
 }
 
@@ -1794,9 +1774,7 @@
   gap: 10px;
   border: 1px solid rgba(154, 190, 225, 0.12);
   border-radius: 13px;
-  background:
-    linear-gradient(90deg, rgba(205, 58, 67, 0.045), transparent 32%),
-    rgba(225, 240, 255, 0.045);
+  background: var(--nr-card-flat);
   padding: 10px;
 }
 
@@ -1961,9 +1939,7 @@
   gap: 4px;
   border: 1px solid var(--nr-line-soft);
   border-radius: 13px;
-  background:
-    linear-gradient(90deg, var(--nr-scan-soft), transparent 38%),
-    oklch(18% 0.035 252 / 0.74);
+  background: var(--nr-card-flat);
   padding: 12px;
 }
 
@@ -2003,9 +1979,7 @@
   place-items: center;
   border: 1px solid var(--nr-line-soft);
   border-radius: 10px;
-  background:
-    linear-gradient(180deg, oklch(100% 0 0 / 0.055), transparent),
-    oklch(14% 0.03 252 / 0.76);
+  background: var(--nr-panel-flat);
   color: var(--nr-accent-2);
   font-size: 11px;
   font-weight: 900;
@@ -2064,10 +2038,7 @@
   overflow: hidden;
   border: 1px solid var(--nr-line-soft);
   border-radius: 13px;
-  background:
-    linear-gradient(135deg, var(--nr-scan-soft), transparent 38%),
-    linear-gradient(180deg, oklch(100% 0 0 / 0.052), transparent),
-    oklch(14% 0.032 252 / 0.82);
+  background: var(--nr-panel-flat);
   color: var(--nr-text);
   padding: 15px;
   text-align: left;
@@ -2103,9 +2074,7 @@
 
 .plan-card.is-current {
   border-color: oklch(78% 0.075 235 / 0.3);
-  background:
-    radial-gradient(circle at 88% 12%, oklch(78% 0.075 235 / 0.16), transparent 34%),
-    var(--nr-surface);
+  background: var(--nr-surface);
 }
 
 .plan-card strong {
@@ -2135,9 +2104,7 @@
   min-height: 48px;
   border: 1px solid var(--nr-line);
   border-radius: 12px;
-  background:
-    linear-gradient(180deg, oklch(100% 0 0 / 0.06), transparent),
-    oklch(16% 0.034 252 / 0.82);
+  background: var(--nr-panel-flat);
   color: var(--nr-text);
   font-weight: 900;
 }
