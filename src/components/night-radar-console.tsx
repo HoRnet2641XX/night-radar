@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import {
   BellRinging,
   Broadcast,
@@ -1090,9 +1090,18 @@ function StoreShareDonut({ points }: { points: StoreRadarPoint[] }) {
     <div className="share-donut">
       <svg viewBox="0 0 104 104" role="img" aria-label="店舗別Hot比率">
         <circle className="donut-base" cx="52" cy="52" r={radius} />
-        {segments.map(({ point, length, offset }) => {
+        {segments.map(({ point, length, offset }, index) => {
           const strokeDasharray = `${length} ${circumference - length}`
           const strokeDashoffset = -offset
+          const segmentStyle = {
+            '--donut-length': `${length}`,
+            '--donut-gap': `${circumference - length}`,
+            '--donut-offset': `${strokeDashoffset}`,
+            '--donut-trace': `${circumference}`,
+            '--donut-delay': `${index * 110}ms`,
+            '--donut-pulse-delay': `${900 + index * 110}ms`,
+          } as CSSProperties
+
           return (
             <circle
               className={`donut-segment ${point.tone}`}
@@ -1102,6 +1111,7 @@ function StoreShareDonut({ points }: { points: StoreRadarPoint[] }) {
               r={radius}
               strokeDasharray={strokeDasharray}
               strokeDashoffset={strokeDashoffset}
+              style={segmentStyle}
             />
           )
         })}
