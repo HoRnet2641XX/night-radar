@@ -86,6 +86,10 @@ const planLabels: Record<PlanKey, string> = {
   premium: 'プレミアム',
 }
 
+const paidPlans = plans.filter(
+  (plan): plan is (typeof plans)[number] & { key: 'light' | 'standard' | 'premium' } => plan.key !== 'free',
+)
+
 const notificationChannelLabels: Record<NotificationChannel, string> = {
   in_app: 'アプリ内',
   email: 'メール',
@@ -204,6 +208,7 @@ export function NightRadarConsole({ initialState }: Props) {
   const modeLabel = mode === 'database' ? 'DB保存中' : mode === 'anonymous' ? 'ログイン待ち' : 'デモ'
   const busyLabel = busy ? '処理中…' : apiState.message === modeLabel ? '待機中' : apiState.message
   const sourceLimitLabel = `${bbsSources.length}件`
+  const isSignedIn = Boolean(initialState.userEmail)
 
   function flash(message: string, tone: ApiState['tone'] = 'good') {
     setApiState({ message, tone })
@@ -813,13 +818,13 @@ export function NightRadarConsole({ initialState }: Props) {
 
         {view === 'account' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="Account" title="ログイン・ポリシー" body="決済、AI、通知は後で接続します。今は認証と閲覧体験を優先します。" />
+            <ViewIntro eyebrow="Account" title="アカウント" body="ログイン、支払い、公開情報ポリシーを管理します。" />
 
             <section className="app-card form-card">
               <FormTitle icon={<ShieldCheck size={19} weight="bold" />} title="認証" />
               <div className="account-state">
                 <span>{initialState.userEmail ? initialState.userEmail : '未ログイン'}</span>
-                <strong>{subscription.plan} / {subscription.status}</strong>
+                <strong>{planLabels[subscription.plan]} / {subscription.status}</strong>
               </div>
               <button type="button" onClick={() => startOAuth('x')} disabled={busy === 'x'}>
                 <XLogo size={19} weight="bold" />
@@ -852,37 +857,45 @@ export function NightRadarConsole({ initialState }: Props) {
               )}
             </section>
 
-            <details className="paused-details">
-              <summary>後で接続する設定</summary>
+            <section className="app-card billing-panel">
+              <div className="billing-head">
+                <FormTitle icon={<StripeLogo size={19} weight="bold" />} title="支払い・プラン" />
+                <span>{planLabels[currentPlan]}プラン</span>
+              </div>
+              <div className="billing-route" aria-label="決済開始ルート">
+                <span>Account</span>
+                <span>Plan</span>
+                <span>Stripe</span>
+              </div>
               <section className="plan-stack">
-                {plans
-                  .filter((plan): plan is (typeof plans)[number] & { key: 'light' | 'standard' | 'premium' } => plan.key !== 'free')
-                  .map((plan) => (
-                    <button
-                      className={`plan-card ${subscription.plan === plan.key ? 'is-current' : ''}`}
-                      key={plan.key}
-                      type="button"
-                      onClick={() => checkout(plan.key)}
-                    >
-                      <span>
-                        <StripeLogo size={20} weight="bold" />
-                        {plan.label}
-                        {subscription.plan === plan.key ? <em>現在</em> : null}
-                      </span>
-                      <strong>{plan.price}</strong>
-                      <small>{plan.summary}</small>
-                      <small>
-                        BBS {planLimits[plan.key].bbsSources}件 / 完全一致 各{planLimits[plan.key].exactTermsPerGroup}語
-                      </small>
-                    </button>
-                  ))}
+                {paidPlans.map((plan) => (
+                  <button
+                    className={`plan-card ${subscription.plan === plan.key ? 'is-current' : ''}`}
+                    disabled={!isSignedIn || busy === `checkout-${plan.key}`}
+                    key={plan.key}
+                    type="button"
+                    onClick={() => checkout(plan.key)}
+                  >
+                    <span>
+                      <StripeLogo size={20} weight="bold" />
+                      {plan.label}
+                      {subscription.plan === plan.key ? <em>現在</em> : null}
+                    </span>
+                    <strong>{plan.price}</strong>
+                    <small>{plan.summary}</small>
+                    <small>
+                      BBS {planLimits[plan.key].bbsSources}件 / 完全一致 各{planLimits[plan.key].exactTermsPerGroup}語
+                    </small>
+                    <small>{isSignedIn ? 'Stripe Checkoutへ進む' : 'ログイン後に開始'}</small>
+                  </button>
+                ))}
               </section>
 
-              <button className="billing-portal-button" type="button" onClick={openBillingPortal} disabled={busy === 'portal'}>
+              <button className="billing-portal-button" type="button" onClick={openBillingPortal} disabled={!isSignedIn || busy === 'portal'}>
                 <StripeLogo size={18} weight="bold" />
                 請求ポータルを開く
               </button>
-            </details>
+            </section>
 
             <section className="legal-note">
               <WarningCircle size={18} weight="bold" />

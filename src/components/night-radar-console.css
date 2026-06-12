@@ -6,24 +6,24 @@
 }
 
 .mobile-app-shell {
-  --nr-text: #edf7ff;
-  --nr-text-soft: rgba(225, 240, 255, 0.88);
-  --nr-muted: rgba(225, 240, 255, 0.62);
-  --nr-faint: rgba(225, 240, 255, 0.42);
-  --nr-line: rgba(255, 47, 75, 0.23);
-  --nr-line-soft: rgba(156, 196, 235, 0.11);
-  --nr-surface: rgba(9, 18, 31, 0.78);
-  --nr-surface-strong: rgba(18, 30, 48, 0.88);
-  --nr-active: #e51d36;
-  --nr-active-ink: #fff4f6;
-  --nr-accent: #54b8ff;
-  --nr-accent-2: #b7e2ff;
-  --nr-good: #ff314f;
-  --nr-warn: #f1bd61;
-  --nr-scan: #ff2847;
-  --nr-scan-soft: rgba(255, 40, 71, 0.18);
-  --nr-amber: #f1bd61;
-  --nr-depth: rgba(2, 8, 20, 0.38);
+  --nr-text: oklch(96% 0.018 235);
+  --nr-text-soft: oklch(91% 0.024 235 / 0.88);
+  --nr-muted: oklch(77% 0.043 238 / 0.64);
+  --nr-faint: oklch(71% 0.04 238 / 0.42);
+  --nr-line: oklch(64% 0.23 24 / 0.24);
+  --nr-line-soft: oklch(79% 0.08 238 / 0.13);
+  --nr-surface: oklch(16% 0.035 252 / 0.78);
+  --nr-surface-strong: oklch(21% 0.043 250 / 0.88);
+  --nr-active: oklch(61% 0.235 24);
+  --nr-active-ink: oklch(98% 0.018 24);
+  --nr-accent: oklch(76% 0.145 235);
+  --nr-accent-2: oklch(88% 0.064 232);
+  --nr-good: oklch(78% 0.125 198);
+  --nr-warn: oklch(82% 0.13 82);
+  --nr-scan: oklch(64% 0.24 24);
+  --nr-scan-soft: oklch(64% 0.24 24 / 0.18);
+  --nr-amber: oklch(82% 0.13 82);
+  --nr-depth: oklch(9% 0.03 252 / 0.46);
   --nr-type-screen-title: 26px;
   --nr-type-panel-title: 17px;
   --nr-type-card-title: 15px;
@@ -1813,34 +1813,67 @@
   display: grid;
   gap: 4px;
   border: 1px solid var(--nr-line-soft);
-  border-radius: 16px;
-  background: rgba(225, 240, 255, 0.055);
+  border-radius: 13px;
+  background:
+    linear-gradient(90deg, var(--nr-scan-soft), transparent 38%),
+    oklch(18% 0.035 252 / 0.74);
   padding: 12px;
 }
 
-.paused-details {
+.billing-panel {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+}
+
+.billing-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.billing-head > span {
+  flex: 0 0 auto;
   border: 1px solid var(--nr-line);
-  border-radius: 20px;
-  background: rgba(226, 241, 255, 0.055);
-  padding: 12px;
-}
-
-.paused-details summary {
-  cursor: pointer;
-  color: var(--nr-text);
+  border-radius: 999px;
+  background: var(--nr-scan-soft);
+  color: var(--nr-active-ink);
+  padding: 5px 9px;
+  font-size: 11px;
   font-weight: 900;
-  list-style: none;
 }
 
-.paused-details summary::-webkit-details-marker {
-  display: none;
+.billing-route {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
 }
 
-.paused-details[open] summary {
-  margin-bottom: 10px;
+.billing-route span {
+  position: relative;
+  display: grid;
+  min-block-size: 34px;
+  place-items: center;
+  border: 1px solid var(--nr-line-soft);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, oklch(100% 0 0 / 0.055), transparent),
+    oklch(14% 0.03 252 / 0.76);
   color: var(--nr-accent-2);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.billing-route span:not(:last-child)::after {
+  position: absolute;
+  top: 50%;
+  right: -8px;
+  z-index: 1;
+  width: 8px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--nr-scan), var(--nr-accent));
+  content: '';
+  transform: translateY(-50%);
 }
 
 .account-state span {
@@ -1877,28 +1910,44 @@
 }
 
 .plan-card {
+  position: relative;
   display: grid;
-  gap: 5px;
-  min-height: 112px;
-  border: 1px solid var(--nr-line);
-  border-radius: 22px;
-  background: var(--nr-surface);
+  gap: 6px;
+  min-height: 124px;
+  overflow: hidden;
+  border: 1px solid var(--nr-line-soft);
+  border-radius: 13px;
+  background:
+    linear-gradient(135deg, var(--nr-scan-soft), transparent 38%),
+    linear-gradient(180deg, oklch(100% 0 0 / 0.052), transparent),
+    oklch(14% 0.032 252 / 0.82);
   color: var(--nr-text);
   padding: 15px;
   text-align: left;
 }
 
+.plan-card::before {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: 12px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--nr-accent), transparent);
+  content: '';
+}
+
 .plan-card span {
   align-items: center;
   gap: 8px;
-  color: var(--nr-accent-2);
+  color: var(--nr-amber);
   font-weight: 900;
 }
 
 .plan-card span em {
   margin-left: auto;
   border-radius: 999px;
-  background: rgba(138, 240, 228, 0.14);
+  background: oklch(78% 0.125 198 / 0.15);
   color: var(--nr-good);
   padding: 4px 7px;
   font-size: 11px;
@@ -1906,16 +1955,18 @@
 }
 
 .plan-card.is-current {
-  border-color: rgba(138, 240, 228, 0.26);
+  border-color: oklch(78% 0.125 198 / 0.3);
   background:
-    radial-gradient(circle at 88% 12%, rgba(138, 240, 228, 0.14), transparent 34%),
+    radial-gradient(circle at 88% 12%, oklch(78% 0.125 198 / 0.16), transparent 34%),
     var(--nr-surface);
 }
 
 .plan-card strong {
+  color: var(--nr-active-ink);
   font-family: var(--font-mono);
   font-size: var(--nr-type-number-md);
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 12px oklch(64% 0.24 24 / 0.42);
 }
 
 .plan-card small {
@@ -1936,8 +1987,10 @@
   gap: 8px;
   min-height: 48px;
   border: 1px solid var(--nr-line);
-  border-radius: 18px;
-  background: var(--nr-surface-strong);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, oklch(100% 0 0 / 0.06), transparent),
+    oklch(16% 0.034 252 / 0.82);
   color: var(--nr-text);
   font-weight: 900;
 }
