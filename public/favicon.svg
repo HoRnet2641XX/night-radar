@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Night Radar">
-  <rect width="64" height="64" rx="10" fill="#090807"/>
-  <circle cx="32" cy="32" r="20" fill="none" stroke="#fff0e7" stroke-width="4"/>
-  <path d="M32 32 48 22" stroke="#d6a965" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="32" cy="32" r="5" fill="#d6a965"/>
-  <path d="M14 43h36" stroke="#fff0e7" stroke-width="4" stroke-linecap="round"/>
+  <rect width="64" height="64" rx="10" fill="#07111f"/>
+  <circle cx="32" cy="32" r="20" fill="none" stroke="#edf7ff" stroke-width="4"/>
+  <path d="M32 32 48 22" stroke="#75b9ff" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="5" fill="#75b9ff"/>
+  <path d="M14 43h36" stroke="#edf7ff" stroke-width="4" stroke-linecap="round"/>
 </svg>

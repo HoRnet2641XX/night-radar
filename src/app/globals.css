@@ -1,22 +1,22 @@
 :root {
-  --charcoal: oklch(9% 0.03 38);
-  --charcoal-2: oklch(15% 0.04 38);
-  --paper: oklch(96% 0.018 58);
-  --paper-2: oklch(88% 0.064 58);
-  --surface: oklch(16% 0.035 38);
-  --surface-2: oklch(21% 0.043 38);
-  --surface-3: oklch(27% 0.052 38);
-  --ink: oklch(96% 0.018 58);
-  --muted: oklch(77% 0.043 58 / 0.72);
-  --line: oklch(58% 0.17 26 / 0.22);
-  --line-dark: oklch(79% 0.08 58 / 0.13);
-  --accent: oklch(58% 0.19 26);
-  --accent-2: oklch(78% 0.105 62);
-  --signal: oklch(78% 0.105 76);
-  --blueprint: oklch(63% 0.065 58);
-  --danger: oklch(58% 0.19 26);
-  --focus: oklch(58% 0.19 26 / 0.42);
-  --shadow: oklch(5% 0.02 38 / 0.5);
+  --charcoal: oklch(9% 0.028 252);
+  --charcoal-2: oklch(15% 0.036 252);
+  --paper: oklch(96% 0.018 235);
+  --paper-2: oklch(88% 0.046 235);
+  --surface: oklch(16% 0.034 252);
+  --surface-2: oklch(21% 0.04 250);
+  --surface-3: oklch(27% 0.046 248);
+  --ink: oklch(96% 0.018 235);
+  --muted: oklch(77% 0.04 238 / 0.72);
+  --line: oklch(66% 0.075 238 / 0.22);
+  --line-dark: oklch(79% 0.08 238 / 0.13);
+  --accent: oklch(56% 0.17 26);
+  --accent-2: oklch(76% 0.095 235);
+  --signal: oklch(78% 0.075 198);
+  --blueprint: oklch(63% 0.065 238);
+  --danger: oklch(56% 0.17 26);
+  --focus: oklch(56% 0.17 26 / 0.42);
+  --shadow: oklch(5% 0.02 252 / 0.5);
   --radius-xs: 5px;
   --radius-sm: 7px;
   --radius-md: 10px;
@@ -31,11 +31,11 @@
 
   color: var(--ink);
   background:
-    radial-gradient(circle at 50% -12%, oklch(58% 0.19 26 / 0.14), transparent 26rem),
-    radial-gradient(circle at 82% 8%, oklch(78% 0.105 62 / 0.08), transparent 24rem),
-    linear-gradient(90deg, oklch(58% 0.19 26 / 0.03) 1px, transparent 1px),
-    linear-gradient(180deg, oklch(78% 0.105 62 / 0.02) 1px, transparent 1px),
-    linear-gradient(155deg, oklch(13% 0.04 38), oklch(7% 0.026 38) 62%, oklch(9% 0.03 38));
+    radial-gradient(circle at 50% -12%, oklch(56% 0.17 26 / 0.14), transparent 26rem),
+    radial-gradient(circle at 82% 8%, oklch(76% 0.095 235 / 0.08), transparent 24rem),
+    linear-gradient(90deg, oklch(56% 0.17 26 / 0.03) 1px, transparent 1px),
+    linear-gradient(180deg, oklch(76% 0.095 235 / 0.02) 1px, transparent 1px),
+    linear-gradient(155deg, oklch(13% 0.04 252), oklch(7% 0.026 252) 62%, oklch(9% 0.028 252));
   background-size: auto, auto, 42px 42px, 42px 42px, auto;
   font-family: var(--font-sans);
   font-size: 16px;
@@ -44,7 +44,7 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  -webkit-tap-highlight-color: oklch(58% 0.19 26 / 0.2);
+  -webkit-tap-highlight-color: oklch(56% 0.17 26 / 0.2);
 }
 
 * {
@@ -103,7 +103,7 @@ a:focus-visible {
 }
 
 ::selection {
-  background: oklch(58% 0.19 26 / 0.26);
+  background: oklch(56% 0.17 26 / 0.26);
 }
 
 .legal-page {
@@ -115,9 +115,9 @@ a:focus-visible {
 
 .legal-page section {
   width: min(100%, 780px);
-  border: 1px solid rgba(214, 190, 158, 0.16);
+  border: 1px solid rgba(154, 190, 225, 0.16);
   border-radius: 24px;
-  background: rgba(239, 229, 214, 0.075);
+  background: rgba(225, 240, 255, 0.075);
   color: var(--paper);
   padding: clamp(22px, 5vw, 44px);
 }
@@ -140,7 +140,7 @@ a:focus-visible {
 }
 
 .legal-page p {
-  color: rgba(239, 229, 214, 0.76);
+  color: rgba(225, 240, 255, 0.76);
   line-height: 1.75;
 }
 
@@ -153,11 +153,11 @@ a:focus-visible {
 
 .insight-sheet {
   width: min(100%, 760px);
-  border: 1px solid rgba(214, 190, 158, 0.14);
+  border: 1px solid rgba(154, 190, 225, 0.14);
   border-radius: 24px;
   background:
-    linear-gradient(180deg, rgba(24, 20, 19, 0.96), rgba(12, 10, 9, 0.98)),
-    oklch(9% 0.03 38);
+    linear-gradient(180deg, rgba(13, 32, 56, 0.96), rgba(7, 17, 31, 0.98)),
+    oklch(9% 0.028 252);
   color: var(--paper);
   padding: clamp(18px, 4vw, 30px);
 }
@@ -166,7 +166,7 @@ a:focus-visible {
   display: inline-flex;
   align-items: center;
   min-block-size: 38px;
-  border: 1px solid rgba(214, 190, 158, 0.16);
+  border: 1px solid rgba(154, 190, 225, 0.16);
   border-radius: 14px;
   color: var(--accent-2);
   padding: 0 12px;
@@ -182,7 +182,7 @@ a:focus-visible {
 }
 
 .insight-header span {
-  color: rgba(214, 196, 171, 0.62);
+  color: rgba(207, 228, 248, 0.62);
   font-size: 12px;
   font-weight: 900;
 }
@@ -197,7 +197,7 @@ a:focus-visible {
 .insight-header p {
   max-width: 40rem;
   margin: 0;
-  color: rgba(239, 229, 214, 0.7);
+  color: rgba(225, 240, 255, 0.7);
   font-weight: 700;
   line-height: 1.65;
 }
@@ -212,9 +212,9 @@ a:focus-visible {
 .forecast-page-list article,
 .calendar-list section,
 .guide-grid article {
-  border: 1px solid rgba(214, 190, 158, 0.11);
+  border: 1px solid rgba(154, 190, 225, 0.11);
   border-radius: 18px;
-  background: rgba(239, 229, 214, 0.06);
+  background: rgba(225, 240, 255, 0.06);
   padding: 14px;
 }
 
@@ -231,7 +231,7 @@ a:focus-visible {
   block-size: 36px;
   place-items: center;
   border-radius: 12px;
-  background: rgba(214, 169, 101, 0.12);
+  background: rgba(117, 185, 255, 0.12);
   color: var(--signal);
   font-family: var(--font-mono);
   font-weight: 950;
@@ -257,7 +257,7 @@ a:focus-visible {
 .calendar-list p,
 .guide-grid p {
   margin: 0;
-  color: rgba(239, 229, 214, 0.68);
+  color: rgba(225, 240, 255, 0.68);
   font-weight: 700;
   line-height: 1.55;
 }
@@ -280,8 +280,8 @@ a:focus-visible {
 
 .forecast-page-list li {
   border-radius: 999px;
-  background: rgba(239, 229, 214, 0.08);
-  color: rgba(239, 229, 214, 0.72);
+  background: rgba(225, 240, 255, 0.08);
+  color: rgba(225, 240, 255, 0.72);
   padding: 5px 8px;
   font-size: 12px;
   font-weight: 850;
@@ -299,7 +299,7 @@ a:focus-visible {
 
 .calendar-list article {
   border-radius: 14px;
-  background: rgba(12, 10, 9, 0.34);
+  background: rgba(7, 17, 31, 0.34);
   padding: 11px;
 }
 
