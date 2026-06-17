@@ -1,9 +1,11 @@
 'use client'
 
 import { useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
 import {
   BellRinging,
   Broadcast,
+  CalendarDots,
   ChartBarHorizontal,
   ChartLineUp,
   Crosshair,
@@ -36,6 +38,7 @@ import {
   searchExactBbsTerms,
   summarizeSignals,
 } from '@/lib/scoring'
+import { formatBarName, formatStoreArea, formatStoreSessionLabel } from '@/lib/display'
 import type {
   AiAnalysis,
   BbsSnapshot,
@@ -44,6 +47,7 @@ import type {
   DashboardState,
   ExactTermMatch,
   ExactTermState,
+  EventInput,
   ImportBatch,
   NotificationChannel,
   NotificationJob,
@@ -51,6 +55,7 @@ import type {
   PlanKey,
   RuntimeMode,
   ScoredEvent,
+  StoreProfile,
   StoreRadarPoint,
   StoreSituation,
   VisitForecast,
@@ -61,16 +66,25 @@ import './night-radar-console.css'
 
 type ApiState = { tone: 'idle' | 'good' | 'warn'; message: string }
 type ViewKey = 'radar' | 'analytics' | 'capture' | 'automate' | 'account'
+type AnalyticsPanelKey = 'words' | 'forecast' | 'search' | 'weekday'
 
 type Props = {
   initialState: DashboardState
 }
 
 const navItems: Array<{ key: ViewKey; label: string; icon: ReactNode }> = [
-  { key: 'analytics', label: 'Now', icon: <Broadcast size={20} weight="bold" /> },
-  { key: 'radar', label: 'Rank', icon: <ChartLineUp size={20} weight="bold" /> },
-  { key: 'capture', label: 'Catalog', icon: <Storefront size={20} weight="bold" /> },
-  { key: 'account', label: 'Account', icon: <ShieldCheck size={20} weight="bold" /> },
+  { key: 'analytics', label: '今日', icon: <Broadcast size={20} weight="bold" /> },
+  { key: 'radar', label: '予測', icon: <ChartLineUp size={20} weight="bold" /> },
+  { key: 'capture', label: '店舗', icon: <Storefront size={20} weight="bold" /> },
+  { key: 'automate', label: '分析', icon: <MagicWand size={20} weight="bold" /> },
+  { key: 'account', label: '設定', icon: <ShieldCheck size={20} weight="bold" /> },
+]
+
+const analyticsPanels: Array<{ key: AnalyticsPanelKey; label: string }> = [
+  { key: 'words', label: '注目' },
+  { key: 'forecast', label: '予告' },
+  { key: 'search', label: '検索' },
+  { key: 'weekday', label: '曜日' },
 ]
 
 const exactTermLabels = {
@@ -93,7 +107,7 @@ const paidPlans = plans.filter(
 const notificationChannelLabels: Record<NotificationChannel, string> = {
   in_app: 'アプリ内',
   email: 'メール',
-  webhook: 'Webhook',
+  webhook: '外部通知',
 }
 
 const situationStatuses: Array<{ value: StoreSituation['status']; label: string }> = [
@@ -149,7 +163,7 @@ export function NightRadarConsole({ initialState }: Props) {
   const [email, setEmail] = useState(initialState.userEmail ?? '')
   const [apiState, setApiState] = useState<ApiState>({
     tone: initialState.connectionNote ? 'warn' : 'idle',
-    message: initialState.connectionNote ?? (initialState.mode === 'database' ? 'synced' : 'ready'),
+    message: initialState.connectionNote ?? (initialState.mode === 'database' ? '同期済み' : '待機中'),
   })
   const [jobs, setJobs] = useState<NotificationJob[]>(initialState.notificationJobs)
   const [notificationPreference, setNotificationPreference] = useState<NotificationPreference>(initialState.notificationPreference)
@@ -158,6 +172,7 @@ export function NightRadarConsole({ initialState }: Props) {
   const [bbsSnapshots] = useState<BbsSnapshot[]>(initialState.bbsSnapshots)
   const [wordBookmarks, setWordBookmarks] = useState<WordBookmark[]>(initialState.wordBookmarks)
   const [bookmarkDraft, setBookmarkDraft] = useState('')
+  const [homePanel, setHomePanel] = useState<AnalyticsPanelKey>('words')
   const [busy, setBusy] = useState('')
 
   const summary = useMemo(() => summarizeSignals(scoredEvents), [scoredEvents])
@@ -205,7 +220,7 @@ export function NightRadarConsole({ initialState }: Props) {
   )
   const visibleWords = activeWords.length ? activeWords : wordCategories.slice(0, 5)
   const radarScore = featuredEvent?.score ?? 0
-  const modeLabel = mode === 'database' ? 'DB保存中' : mode === 'anonymous' ? 'ログイン待ち' : 'デモ'
+  const modeLabel = mode === 'database' ? '保存済み' : mode === 'anonymous' ? 'ログイン待ち' : 'デモ'
   const busyLabel = busy ? '処理中…' : apiState.message === modeLabel ? '待機中' : apiState.message
   const sourceLimitLabel = `${bbsSources.length}件`
   const isSignedIn = Boolean(initialState.userEmail)
@@ -236,14 +251,14 @@ export function NightRadarConsole({ initialState }: Props) {
   }
 
   async function runAiAnalysis() {
-    if (!analysisText.trim()) return flash('AI分析するテキストが必要です。', 'warn')
+    if (!analysisText.trim()) return flash('分析するテキストが必要です。', 'warn')
     setBusy('ai')
     try {
       const result = await postJson<{ analysis: AiAnalysis; mode: string }>('/api/ai/analyze', { text: analysisText, persist: true })
       setAnalysis(result.analysis)
-      flash(`AI分析を完了しました (${result.mode})。`)
+      flash(`分析を完了しました (${result.mode})。`)
     } catch (error) {
-      flash(error instanceof Error ? error.message : 'AI分析に失敗しました。', 'warn')
+      flash(error instanceof Error ? error.message : '分析に失敗しました。', 'warn')
     } finally {
       setBusy('')
     }
@@ -346,7 +361,7 @@ export function NightRadarConsole({ initialState }: Props) {
       return flash('メール通知には送信先メールが必要です。', 'warn')
     }
     if (notificationPreference.channel === 'webhook' && !notificationPreference.webhookUrl) {
-      return flash('Webhook通知にはURLが必要です。', 'warn')
+      return flash('外部通知を使う場合は、送信先のアドレスが必要です。', 'warn')
     }
 
     setBusy('notification-settings')
@@ -400,12 +415,12 @@ export function NightRadarConsole({ initialState }: Props) {
     try {
       const result = await postJson<{ url: string; mode?: string; message?: string }>('/api/stripe/checkout', { plan })
       if (result.mode === 'demo') {
-        flash(result.message ?? 'Stripeはデモモードです。', 'warn')
+        flash(result.message ?? '決済はデモモードです。', 'warn')
       } else if (result.url) {
         window.location.assign(result.url)
       }
     } catch (error) {
-      flash(error instanceof Error ? error.message : 'Checkoutを開始できません。', 'warn')
+      flash(error instanceof Error ? error.message : '決済画面を開始できません。', 'warn')
     } finally {
       setBusy('')
     }
@@ -416,7 +431,7 @@ export function NightRadarConsole({ initialState }: Props) {
     try {
       const result = await postJson<{ url: string; mode?: string; message?: string }>('/api/stripe/portal', {})
       if (result.mode === 'demo') {
-        flash(result.message ?? 'Stripeはデモモードです。', 'warn')
+        flash(result.message ?? '決済はデモモードです。', 'warn')
       } else if (result.url) {
         window.location.assign(result.url)
       }
@@ -442,10 +457,11 @@ export function NightRadarConsole({ initialState }: Props) {
   return (
     <main className="nr-shell" id="main">
       <section className="mobile-app-shell">
+        <RadarBackdrop />
         <header className="app-topbar">
-          <button className="brand-chip" type="button" onClick={() => setView('analytics')} aria-label="BBSへ戻る">
+          <button className="brand-chip" type="button" onClick={() => setView('analytics')} aria-label="今日の画面へ戻る">
             <Crosshair size={18} weight="bold" />
-            <span>Night Radar</span>
+            <span>ナイトレーダー</span>
           </button>
           <div className="status-cluster">
             <StatusPill icon={<ShieldCheck size={16} weight="bold" />} label={modeLabel} tone={mode === 'database' ? 'good' : 'warn'} />
@@ -453,11 +469,26 @@ export function NightRadarConsole({ initialState }: Props) {
           </div>
         </header>
 
+        <nav className="bottom-nav" aria-label="主要ナビゲーション">
+          {navItems.map((item) => (
+            <button
+              aria-pressed={view === item.key}
+              className={view === item.key ? 'is-active' : ''}
+              key={item.key}
+              type="button"
+              onClick={() => setView(item.key)}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+
         {view === 'radar' && (
           <section className="view-stack">
             <section className="radar-hero-card">
               <div className="radar-copy">
-                <span>Ranking</span>
+                <span>予測順位</span>
                 <h1>来店予告ランキング</h1>
                 <p>{featuredEvent?.reasons[0] ?? '公開情報を入れると、昼夜の候補がここに立ち上がります。'}</p>
               </div>
@@ -466,7 +497,7 @@ export function NightRadarConsole({ initialState }: Props) {
                 <i />
                 <i />
                 <strong>{radarScore || '--'}</strong>
-                <span>score</span>
+                <span>点</span>
               </div>
             </section>
 
@@ -477,14 +508,14 @@ export function NightRadarConsole({ initialState }: Props) {
 
             <section className="quick-actions" aria-label="主要操作">
               <ActionButton icon={<ChartLineUp size={20} weight="bold" />} label="再計算" onClick={runScoring} disabled={busy === 'score'} />
-              <ActionButton icon={<ChartBarHorizontal size={20} weight="bold" />} label="Now" onClick={() => setView('analytics')} />
+              <ActionButton icon={<ChartBarHorizontal size={20} weight="bold" />} label="今日" onClick={() => setView('analytics')} />
               <ActionButton icon={<Storefront size={20} weight="bold" />} label="店舗" onClick={() => setView('capture')} />
               <ActionButton icon={<MagnifyingGlass size={20} weight="bold" />} label="検索" onClick={() => setView('analytics')} />
             </section>
 
             <section className="insight-card">
               <div className="section-heading">
-                <span>Word radar</span>
+                <span>注目語</span>
                 <h2>反応中の嗜好ワード</h2>
               </div>
               <div className="word-cloud">
@@ -499,7 +530,7 @@ export function NightRadarConsole({ initialState }: Props) {
 
             <section className="score-list-card">
               <div className="section-heading">
-                <span>Ranking</span>
+                <span>予測順位</span>
                 <h2>候補リスト</h2>
               </div>
               <div className="score-list">
@@ -509,104 +540,112 @@ export function NightRadarConsole({ initialState }: Props) {
               </div>
             </section>
 
-            <LatestPost source={latestPost?.source ?? 'manual'} body={latestPost?.body ?? 'まだ投稿がありません。'} />
+            <LatestPost source={formatPostSource(latestPost?.source ?? 'manual')} body={latestPost?.body ?? 'まだ投稿がありません。'} />
           </section>
         )}
 
         {view === 'analytics' && (
           <section className="view-stack">
-            <ViewIntro
-              eyebrow="BBS monitor"
-              title="BBSモニター"
-              body="店舗別の反応、来店予告、監視ワードを一覧します。"
-            />
-
-            <DecisionDock hotStore={hotStore} watchStore={watchStore} latestCaptureLabel={latestCaptureLabel} />
-
-            <RadarBoard points={storeRadar} />
-
-            <section className="subpage-strip" aria-label="詳細ページ">
-              <a href="/forecast">来店予告ランキング</a>
-              <a href="/calendar">月間イベント</a>
-            </section>
-
-            <WatchedWordsPanel
-              hits={visibleWatchedHits}
-              bookmarks={wordBookmarks}
-              bookmarkDraft={bookmarkDraft}
+            <TodayDecisionCard
+              featuredEvent={featuredEvent}
+              hotStore={hotStore}
+              latestCaptureLabel={latestCaptureLabel}
+              onOpenPanel={setHomePanel}
+              onRunScoring={runScoring}
+              topForecast={topForecasts[0]}
+              watchStore={watchStore}
               busy={busy}
-              onDraftChange={setBookmarkDraft}
-              onAddBookmark={addWordBookmark}
-              onDeleteBookmark={deleteWordBookmark}
             />
 
-            <ForecastPreview forecasts={topForecasts} />
+            <HotCompactBar points={storeRadar} />
 
-            <section className="app-card form-card compact-search-card">
-              <FormTitle icon={<MagnifyingGlass size={19} weight="bold" />} title="全店BBS 完全一致" />
-              <div className="term-grid">
-                <label>
-                  <span>人気単男</span>
-                  <input
-                    autoComplete="off"
-                    name="popularSingleMale"
-                    spellCheck={false}
-                    value={exactTerms.popularSingleMale}
-                    onChange={(event) => setExactTerms((current) => ({ ...current, popularSingleMale: event.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span>人気単女</span>
-                  <input
-                    autoComplete="off"
-                    name="popularSingleFemale"
-                    spellCheck={false}
-                    value={exactTerms.popularSingleFemale}
-                    onChange={(event) => setExactTerms((current) => ({ ...current, popularSingleFemale: event.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span>不人気・苦手</span>
-                  <input
-                    autoComplete="off"
-                    name="negativePerson"
-                    spellCheck={false}
-                    value={exactTerms.negativePerson}
-                    onChange={(event) => setExactTerms((current) => ({ ...current, negativePerson: event.target.value }))}
-                  />
-                </label>
-              </div>
-              <button type="button" onClick={saveExactTerms} disabled={busy === 'exact'}>
-                <MagnifyingGlass size={17} weight="bold" />
-                検索して保存
-              </button>
-              <ExactMatchList matches={visibleMatches} />
-            </section>
+            <MonthlyCalendarPreview events={events} stores={stores} />
 
-            <section className="app-card">
-              <div className="section-heading">
-                <span>Weekday</span>
-                <h2>曜日</h2>
-              </div>
-              <div className="weekday-matrix">
-                {focusedStores.map((item) => (
-                  <article className="weekday-row" key={item.store.id}>
-                    <div>
-                      <strong>{item.store.name}</strong>
-                      <span>{item.dominantWeekday}が最多</span>
-                    </div>
-                    <div className="weekday-bars">
-                      {item.weekdayStats.map((stat) => (
-                        <span className="weekday-bar" key={stat.weekday}>
-                          <i style={{ blockSize: `${Math.max(6, stat.ratio)}%` }} />
-                          <em>{stat.weekday.replace('曜', '')}</em>
-                        </span>
-                      ))}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
+            <PanelSwitcher active={homePanel} onChange={setHomePanel} />
+
+            {homePanel === 'words' && (
+              <WatchedWordsPanel
+                hits={visibleWatchedHits}
+                bookmarks={wordBookmarks}
+                bookmarkDraft={bookmarkDraft}
+                busy={busy}
+                onDraftChange={setBookmarkDraft}
+                onAddBookmark={addWordBookmark}
+                onDeleteBookmark={deleteWordBookmark}
+              />
+            )}
+
+            {homePanel === 'forecast' && <ForecastPreview forecasts={topForecasts} />}
+
+            {homePanel === 'search' && (
+              <section className="app-card form-card compact-search-card">
+                <FormTitle icon={<MagnifyingGlass size={19} weight="bold" />} title="全店掲示板の完全一致" />
+                <div className="term-grid">
+                  <label>
+                    <span>人気単男</span>
+                    <input
+                      autoComplete="off"
+                      name="popularSingleMale"
+                      spellCheck={false}
+                      value={exactTerms.popularSingleMale}
+                      onChange={(event) => setExactTerms((current) => ({ ...current, popularSingleMale: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span>人気単女</span>
+                    <input
+                      autoComplete="off"
+                      name="popularSingleFemale"
+                      spellCheck={false}
+                      value={exactTerms.popularSingleFemale}
+                      onChange={(event) => setExactTerms((current) => ({ ...current, popularSingleFemale: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span>不人気・苦手</span>
+                    <input
+                      autoComplete="off"
+                      name="negativePerson"
+                      spellCheck={false}
+                      value={exactTerms.negativePerson}
+                      onChange={(event) => setExactTerms((current) => ({ ...current, negativePerson: event.target.value }))}
+                    />
+                  </label>
+                </div>
+                <button type="button" onClick={saveExactTerms} disabled={busy === 'exact'}>
+                  <MagnifyingGlass size={17} weight="bold" />
+                  検索して保存
+                </button>
+                <ExactMatchList matches={visibleMatches} />
+              </section>
+            )}
+
+            {homePanel === 'weekday' && (
+              <section className="app-card">
+                <div className="section-heading">
+                  <span>曜日</span>
+                  <h2>曜日別の反応</h2>
+                </div>
+                <div className="weekday-matrix">
+                  {focusedStores.map((item) => (
+                    <article className="weekday-row" key={item.store.id}>
+                      <div>
+                        <strong>{formatBarName(item.store.name)}</strong>
+                        <span>{item.dominantWeekday}が最多</span>
+                      </div>
+                      <div className="weekday-bars">
+                        {item.weekdayStats.map((stat) => (
+                          <span className="weekday-bar" key={stat.weekday}>
+                            <i style={{ blockSize: `${Math.max(6, stat.ratio)}%` }} />
+                            <em>{stat.weekday.replace('曜', '')}</em>
+                          </span>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <section className="app-card form-card">
               <FormTitle icon={<MapPin size={19} weight="bold" />} title="店舗状況" />
@@ -616,7 +655,7 @@ export function NightRadarConsole({ initialState }: Props) {
                     <SituationCard
                       key={situation.id}
                       situation={situation}
-                      storeName={stores.find((store) => store.id === situation.storeId)?.name ?? '未登録店舗'}
+                      storeName={formatBarName(stores.find((store) => store.id === situation.storeId)?.name)}
                     />
                   ))
                 ) : (
@@ -629,7 +668,7 @@ export function NightRadarConsole({ initialState }: Props) {
 
         {view === 'capture' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="Catalog" title="店舗・巡回先" body="店舗、イベント、BBSソースは運営側で更新します。" />
+            <ViewIntro eyebrow="店舗管理" title="店舗・巡回先" body="店舗、イベント、掲示板の巡回先は運営側で更新します。" />
 
             <OpsPanel
               mode={mode}
@@ -641,7 +680,7 @@ export function NightRadarConsole({ initialState }: Props) {
 
             <section className="app-card catalog-card">
               <div className="section-heading">
-                <span>Stores</span>
+                <span>登録店舗</span>
                 <h2>登録店舗</h2>
               </div>
               <div className="catalog-list">
@@ -649,12 +688,12 @@ export function NightRadarConsole({ initialState }: Props) {
                   stores.slice(0, 12).map((store) => (
                     <article key={store.id}>
                       <div>
-                        <strong>{store.name}</strong>
+                        <strong>{formatBarName(store.name)}</strong>
                         <span>
-                          {store.area} / {storeSessionLabel(store)}
+                          {formatStoreArea(store.area)} / {formatStoreSessionLabel(store)}
                         </span>
                       </div>
-                      <em>{store.trustSeed}</em>
+                      <em>登録済み</em>
                     </article>
                   ))
                 ) : (
@@ -665,7 +704,7 @@ export function NightRadarConsole({ initialState }: Props) {
 
             <section className="app-card catalog-card">
               <div className="section-heading">
-                <span>BBS sources</span>
+                <span>掲示板巡回</span>
                 <h2>巡回対象</h2>
               </div>
               <div className="source-list">
@@ -673,16 +712,16 @@ export function NightRadarConsole({ initialState }: Props) {
                   bbsSources.slice(0, 10).map((source) => (
                     <article key={source.id}>
                       <div>
-                        <strong>{source.label}</strong>
+                        <strong>{source.label === 'BBS' ? '掲示板' : source.label}</strong>
                         <span>
-                          {stores.find((store) => store.id === source.storeId)?.name ?? '未登録'} / {source.lastStatus ?? 'pending'}
+                          {formatBarName(stores.find((store) => store.id === source.storeId)?.name)} / {formatCrawlStatus(source.lastStatus)}
                         </span>
                       </div>
                       <em>{source.crawlIntervalMinutes}分</em>
                     </article>
                   ))
                 ) : (
-                  <p className="muted-note">BBS URLは管理側のCSV/SQLで追加します。</p>
+                  <p className="muted-note">掲示板のアドレスは管理側の登録データで追加します。</p>
                 )}
               </div>
               <CrawlRunList runs={visibleCrawlRuns} />
@@ -690,7 +729,7 @@ export function NightRadarConsole({ initialState }: Props) {
 
             <section className="app-card catalog-card">
               <div className="section-heading">
-                <span>Events</span>
+                <span>月間予定</span>
                 <h2>月間イベント</h2>
               </div>
               <div className="score-list">
@@ -699,7 +738,7 @@ export function NightRadarConsole({ initialState }: Props) {
                     <div>
                       <strong>{event.title}</strong>
                       <small>
-                        {stores.find((store) => store.id === event.storeId)?.name ?? '未登録'} / {event.date} {event.startsAt}
+                        {formatBarName(stores.find((store) => store.id === event.storeId)?.name)} / {event.date} {event.startsAt}
                       </small>
                     </div>
                     <em>{event.session === 'day' ? '昼' : '夜'}</em>
@@ -715,11 +754,12 @@ export function NightRadarConsole({ initialState }: Props) {
 
         {view === 'automate' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="Flow" title="分析・通知" body="店舗/BBSデータは運営側で巡回し、ユーザーは分析と通知設定を扱います。" />
+            <ViewIntro eyebrow="分析と通知" title="分析・通知" body="店舗と掲示板データは運営側で巡回し、ユーザーは分析と通知設定を扱います。" />
 
             <section className="app-card form-card">
-              <FormTitle icon={<MagicWand size={19} weight="bold" />} title="AI分析" />
-              <textarea aria-label="AI分析対象テキスト" name="analysisText" value={analysisText} onChange={(event) => setAnalysisText(event.target.value)} rows={5} />
+              <FormTitle icon={<MagicWand size={19} weight="bold" />} title="自動分析" />
+              <p className="form-note">入力欄の文章だけを分類します。初期表示は直近の掲示板投稿です。</p>
+              <textarea aria-label="分析対象テキスト" name="analysisText" value={analysisText} onChange={(event) => setAnalysisText(event.target.value)} rows={5} />
               <button type="button" onClick={runAiAnalysis} disabled={busy === 'ai'}>
                 <Sparkle size={17} weight="fill" />
                 分類する
@@ -727,7 +767,7 @@ export function NightRadarConsole({ initialState }: Props) {
               {analysis && (
                 <div className="analysis-result">
                   <strong>
-                    {analysis.eventCategory} / {analysis.session === 'day' ? '昼' : '夜'}
+                    {analysis.eventCategory}・{analysis.session === 'day' ? '昼向き' : '夜向き'}
                   </strong>
                   <p>{analysis.summary}</p>
                   <small>具体性 {analysis.specificity} / {analysis.keywords.join('、') || 'キーワードなし'}</small>
@@ -751,7 +791,7 @@ export function NightRadarConsole({ initialState }: Props) {
                   >
                     <option value="in_app">アプリ内</option>
                     <option value="email">メール</option>
-                    <option value="webhook">Webhook</option>
+                    <option value="webhook">外部通知</option>
                   </select>
                   <select
                     aria-label="通知対象プラン"
@@ -780,10 +820,10 @@ export function NightRadarConsole({ initialState }: Props) {
                   onChange={(event) => setNotificationPreference((current) => ({ ...current, email: event.target.value }))}
                 />
                 <input
-                  aria-label="Webhook URL"
+                  aria-label="外部通知の送信先"
                   autoComplete="off"
                   name="notificationWebhookUrl"
-                  placeholder="Webhook URL…"
+                  placeholder="外部通知の送信先…"
                   type="url"
                   value={notificationPreference.webhookUrl}
                   onChange={(event) => setNotificationPreference((current) => ({ ...current, webhookUrl: event.target.value }))}
@@ -804,12 +844,12 @@ export function NightRadarConsole({ initialState }: Props) {
                     <article key={job.id}>
                       <strong>{job.title}</strong>
                       <span>
-                        {job.channel} / {job.status}
+                        {notificationChannelLabels[job.channel]} / {formatJobStatus(job.status)}
                       </span>
                     </article>
                   ))
                 ) : (
-                  <p className="muted-note">ResendまたはWebhook未設定時はdry-runとしてジョブだけ作成します。</p>
+                  <p className="muted-note">メール配信または外部通知の送信先が未設定の場合は、試行記録として通知だけ作成します。</p>
                 )}
               </div>
             </section>
@@ -818,7 +858,7 @@ export function NightRadarConsole({ initialState }: Props) {
 
         {view === 'account' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="Account" title="アカウント" body="ログイン、支払い、公開情報ポリシーを管理します。" />
+            <ViewIntro eyebrow="設定" title="アカウント" body="ログイン、支払い、公開情報ポリシーを管理します。" />
 
             <section className="app-card form-card">
               <FormTitle icon={<ShieldCheck size={19} weight="bold" />} title="認証" />
@@ -828,11 +868,11 @@ export function NightRadarConsole({ initialState }: Props) {
               </div>
               <button type="button" onClick={() => startOAuth('x')} disabled={busy === 'x'}>
                 <XLogo size={19} weight="bold" />
-                Xで続ける
+                Xでログイン
               </button>
               <button className="secondary-action" type="button" onClick={() => startOAuth('google')} disabled={busy === 'google'}>
                 <GoogleLogo size={19} weight="bold" />
-                Googleで続ける
+                Googleでログイン
               </button>
               <label className="email-row">
                 <EnvelopeSimple size={18} weight="bold" />
@@ -863,9 +903,9 @@ export function NightRadarConsole({ initialState }: Props) {
                 <span>{planLabels[currentPlan]}プラン</span>
               </div>
               <div className="billing-route" aria-label="決済開始ルート">
-                <span>Account</span>
-                <span>Plan</span>
-                <span>Stripe</span>
+                <span>認証</span>
+                <span>プラン</span>
+                <span>決済</span>
               </div>
               <section className="plan-stack">
                 {paidPlans.map((plan) => (
@@ -884,9 +924,9 @@ export function NightRadarConsole({ initialState }: Props) {
                     <strong>{plan.price}</strong>
                     <small>{plan.summary}</small>
                     <small>
-                      BBS {planLimits[plan.key].bbsSources}件 / 完全一致 各{planLimits[plan.key].exactTermsPerGroup}語
+                      掲示板 {planLimits[plan.key].bbsSources}件 / 完全一致 各{planLimits[plan.key].exactTermsPerGroup}語
                     </small>
-                    <small>{isSignedIn ? 'Stripe Checkoutへ進む' : 'ログイン後に開始'}</small>
+                    <small>{isSignedIn ? '決済画面へ進む' : 'ログイン後に開始'}</small>
                   </button>
                 ))}
               </section>
@@ -908,22 +948,70 @@ export function NightRadarConsole({ initialState }: Props) {
           </section>
         )}
 
-        <nav className="bottom-nav" aria-label="主要ナビゲーション">
-          {navItems.map((item) => (
-            <button
-              aria-pressed={view === item.key}
-              className={view === item.key ? 'is-active' : ''}
-              key={item.key}
-              type="button"
-              onClick={() => setView(item.key)}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </nav>
       </section>
     </main>
+  )
+}
+
+const backdropNodes = [
+  { x: '12%', y: '16%', size: 3, delay: 0 },
+  { x: '78%', y: '14%', size: 4, delay: 0.4 },
+  { x: '88%', y: '38%', size: 2, delay: 0.8 },
+  { x: '18%', y: '58%', size: 4, delay: 1.2 },
+  { x: '66%', y: '72%', size: 3, delay: 1.6 },
+  { x: '35%', y: '86%', size: 2, delay: 2 },
+]
+
+function RadarBackdrop() {
+  const reduceMotion = useReducedMotion()
+
+  return (
+    <div className="radar-backdrop" aria-hidden="true">
+      <motion.div
+        className="backdrop-aurora"
+        animate={
+          reduceMotion
+            ? undefined
+            : {
+                opacity: [0.48, 0.78, 0.58, 0.48],
+                x: [0, 18, -10, 0],
+                y: [0, -12, 8, 0],
+              }
+        }
+        transition={{ duration: 18, ease: 'easeInOut', repeat: Infinity }}
+      />
+      <motion.div
+        className="backdrop-sweep"
+        animate={reduceMotion ? undefined : { x: ['-42%', '118%'], opacity: [0, 0.9, 0] }}
+        transition={{ duration: 5.8, ease: 'easeInOut', repeat: Infinity, repeatDelay: 1.6 }}
+      />
+      <svg className="backdrop-circuit" viewBox="0 0 640 920" preserveAspectRatio="none">
+        <motion.path
+          d="M40 142 C160 104 220 188 318 151 C438 105 498 146 606 90"
+          pathLength={1}
+          initial={false}
+          animate={reduceMotion ? undefined : { pathLength: [0.18, 1, 0.42], opacity: [0.18, 0.58, 0.22] }}
+          transition={{ duration: 9, ease: 'easeInOut', repeat: Infinity }}
+        />
+        <motion.path
+          d="M24 672 C146 590 222 710 330 620 C438 528 514 614 626 548"
+          pathLength={1}
+          initial={false}
+          animate={reduceMotion ? undefined : { pathLength: [0.24, 0.78, 1], opacity: [0.12, 0.46, 0.2] }}
+          transition={{ duration: 11, ease: 'easeInOut', repeat: Infinity, delay: 1.4 }}
+        />
+      </svg>
+      <div className="backdrop-grid" />
+      {backdropNodes.map((node) => (
+        <motion.span
+          className="backdrop-node"
+          key={`${node.x}-${node.y}`}
+          style={{ '--node-x': node.x, '--node-y': node.y, '--node-size': `${node.size}px` } as CSSProperties}
+          animate={reduceMotion ? undefined : { scale: [1, 1.8, 1], opacity: [0.34, 0.82, 0.34] }}
+          transition={{ duration: 3.6, ease: 'easeInOut', repeat: Infinity, delay: node.delay }}
+        />
+      ))}
+    </div>
   )
 }
 
@@ -964,33 +1052,138 @@ function ActionButton({ icon, label, onClick, disabled = false }: { icon: ReactN
   )
 }
 
-function DecisionDock({
+function TodayDecisionCard({
   hotStore,
   watchStore,
+  featuredEvent,
+  topForecast,
   latestCaptureLabel,
+  busy,
+  onRunScoring,
+  onOpenPanel,
 }: {
   hotStore?: StoreRadarPoint
   watchStore?: StoreRadarPoint
+  featuredEvent?: ScoredEvent
+  topForecast?: VisitForecast
   latestCaptureLabel: string
+  busy: string
+  onRunScoring: () => void
+  onOpenPanel: (panel: AnalyticsPanelKey) => void
+}) {
+  const score = hotStore?.score ?? featuredEvent?.score ?? 0
+  const scoreProgress = `${Math.max(0, Math.min(100, score))}%`
+  const primaryReason =
+    topForecast?.reasons[0] ??
+    featuredEvent?.reasons[0] ??
+    (hotStore ? `${hotStore.verdict}、注目シグナル ${hotStore.signals.totalSignals}件` : '掲示板の巡回後に判定が出ます。')
+  const secondaryReason = hotStore
+    ? `女性${hotStore.signals.femaleOnly} / 初${hotStore.signals.firstVisit} / 複${hotStore.signals.groupVisit}`
+    : `巡回 ${latestCaptureLabel}`
+
+  return (
+    <section className="today-decision-card" aria-label="今日の結論">
+      <div className="decision-kicker">
+        <span>今日の判定</span>
+        <em>{latestCaptureLabel}</em>
+      </div>
+      <div className="decision-main">
+        <div>
+          <strong>{hotStore ? `${formatBarName(hotStore.store.name)} が最優先` : '観測待ち'}</strong>
+          <p>{primaryReason}</p>
+        </div>
+        <div className="decision-score" aria-label={`現在スコア ${score}`} style={{ '--score-progress': scoreProgress } as CSSProperties}>
+          <div className="decision-score-inner">
+            <span>{score || '--'}</span>
+            <small>点</small>
+          </div>
+        </div>
+      </div>
+      <dl className="decision-facts">
+        <div>
+          <dt>根拠</dt>
+          <dd>{secondaryReason}</dd>
+        </div>
+        <div>
+          <dt>余地</dt>
+          <dd>{watchStore ? `${formatBarName(watchStore.store.name)} / ${watchStore.verdict}` : '比較対象なし'}</dd>
+        </div>
+      </dl>
+      <div className="decision-actions">
+        <button type="button" onClick={onRunScoring} disabled={busy === 'score'}>
+          <ChartLineUp size={17} weight="bold" />
+          再計算
+        </button>
+        <button type="button" onClick={() => onOpenPanel('forecast')}>
+          来店予告
+        </button>
+        <a href="/calendar">
+          月間イベント
+        </a>
+      </div>
+    </section>
+  )
+}
+
+function HotCompactBar({ points }: { points: StoreRadarPoint[] }) {
+  const topThree = points.slice(0, 3)
+  const top = topThree[0]
+
+  return (
+    <section className="hot-compact-card" aria-label="盛り上がり比率と上位店舗">
+      <div className="hot-compact-head">
+        <span>盛り上がり比率</span>
+        <strong>{top ? `${formatBarName(top.store.name)} ${top.share}%` : '未観測'}</strong>
+      </div>
+      <div className="hot-share-track" aria-hidden="true">
+        {topThree.map((point, index) => (
+          <i
+            className={`${point.tone} ${index === 0 ? 'is-leading' : ''}`}
+            key={point.store.id}
+            style={{ inlineSize: `${Math.max(8, point.share)}%` }}
+          />
+        ))}
+      </div>
+      <div className="top-store-strip">
+        {topThree.length ? (
+          topThree.map((point) => (
+            <article key={point.store.id}>
+              <span>{point.rank}</span>
+              <div>
+                <strong>{formatBarName(point.store.name)}</strong>
+                <small>{point.verdict}</small>
+              </div>
+              <em>{point.score}</em>
+            </article>
+          ))
+        ) : (
+          <p className="muted-note">掲示板を取り込むと上位店舗が出ます。</p>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function PanelSwitcher({
+  active,
+  onChange,
+}: {
+  active: AnalyticsPanelKey
+  onChange: (panel: AnalyticsPanelKey) => void
 }) {
   return (
-    <section className="decision-dock" aria-label="現在の判断サマリー">
-      <article className="decision-primary">
-        <span>Hot</span>
-        <strong>{hotStore?.store.name ?? '観測待ち'}</strong>
-        <p>{hotStore ? `${hotStore.verdict} / 女性${hotStore.signals.femaleOnly} 初${hotStore.signals.firstVisit}` : 'BBS巡回後に判定が出ます。'}</p>
-      </article>
-      <article>
-        <span>余地</span>
-        <strong>{watchStore?.store.name ?? '-'}</strong>
-        <p>{watchStore ? `${watchStore.score}pt / ${watchStore.verdict}` : '比較対象なし'}</p>
-      </article>
-      <article>
-        <span>巡回</span>
-        <strong>{latestCaptureLabel}</strong>
-        <p>5分間隔でBBSを観測</p>
-      </article>
-    </section>
+    <nav className="home-panel-tabs" aria-label="掲示板分析パネル">
+      {analyticsPanels.map((panel) => (
+        <button
+          className={active === panel.key ? 'is-active' : ''}
+          key={panel.key}
+          type="button"
+          onClick={() => onChange(panel.key)}
+        >
+          {panel.label}
+        </button>
+      ))}
+    </nav>
   )
 }
 
@@ -1004,7 +1197,7 @@ function SignalTile({ label, event, time }: { label: string; event?: ScoredEvent
         <p>
           {time} {label}
         </p>
-        <strong>{event ? `${event.store.name} / ${event.title}` : '未計算'}</strong>
+        <strong>{event ? `${formatBarName(event.store.name)} / ${event.title}` : '未計算'}</strong>
         <small>{event?.reasons[0] ?? 'データを追加すると表示されます'}</small>
       </div>
       <em>{event?.score ?? '-'}</em>
@@ -1018,7 +1211,7 @@ function ScoreRow({ event }: { event: ScoredEvent }) {
       <span>{event.rank}</span>
       <div>
         <strong>
-          {event.store.name} / {event.title}
+          {formatBarName(event.store.name)} / {event.title}
         </strong>
         <small>
           {event.date} {event.startsAt} / {event.reasons.join('、')}
@@ -1029,99 +1222,144 @@ function ScoreRow({ event }: { event: ScoredEvent }) {
   )
 }
 
-function RadarBoard({ points }: { points: StoreRadarPoint[] }) {
-  const top = points[0]
+function MonthlyCalendarPreview({ events, stores }: { events: EventInput[]; stores: StoreProfile[] }) {
+  const cells = useMemo(() => buildCalendarPreviewCells(events, stores), [events, stores])
+  const eventCount = cells.reduce((sum, cell) => sum + cell.items.length, 0)
 
   return (
-    <section className="radar-board app-card" aria-label="店舗レーダー">
-      <div className="radar-board-head">
+    <section className="calendar-preview-card" aria-label="月間イベント">
+      <div className="calendar-preview-head">
+        <CalendarDots size={20} weight="bold" />
         <div>
-          <span>Store radar</span>
-          <h2>{top ? `${top.store.name} が現在Hot` : 'BBS未観測'}</h2>
+          <span>月間イベント</span>
+          <strong>2026.06</strong>
         </div>
-        <strong>{top?.score ?? 0}</strong>
+        <a href="/calendar">全体</a>
       </div>
-      <div className="radar-board-grid">
-        <StoreShareDonut points={points.slice(0, 5)} />
-        <div className="vertical-radar">
-          {points.slice(0, 5).map((point) => (
-            <article
-              className={`radar-store-row ${point.tone}`}
-              key={point.store.id}
-            >
-              <div className="radar-store-rank">{point.rank}</div>
-              <div className="radar-store-main">
+      <div className="mini-month-grid" role="grid" aria-label="2026年6月の店舗イベント">
+        {['月', '火', '水', '木', '金', '土', '日'].map((day) => (
+          <span className="mini-weekday" key={day}>
+            {day}
+          </span>
+        ))}
+        {cells.map((cell) => (
+          <article
+            className={`mini-day ${cell.isBlank ? 'is-blank' : ''} ${cell.isToday ? 'is-today' : ''}`}
+            key={cell.key}
+          >
+            {!cell.isBlank && (
+              <>
+                <strong>{cell.day}</strong>
                 <div>
-                  <strong>{point.store.name}</strong>
-                  <span>
-                    {point.verdict} / 女性{point.signals.femaleOnly} 初{point.signals.firstVisit} 複{point.signals.groupVisit}
-                  </span>
+                  {cell.items.slice(0, 2).map((item) => (
+                    <span className={`event-color-${item.tone}`} key={`${cell.key}-${item.label}`}>
+                      {item.label}
+                    </span>
+                  ))}
+                  {cell.items.length > 2 && <em>+{cell.items.length - 2}</em>}
                 </div>
-                <div className="radar-meter" aria-label={`${point.store.name} ${point.score}`}>
-                  <i style={{ inlineSize: `${Math.max(8, point.score)}%` }} />
-                </div>
-              </div>
-              <em>{point.score}</em>
-            </article>
-          ))}
-        </div>
+              </>
+            )}
+          </article>
+        ))}
       </div>
+      <p>{eventCount ? `${eventCount}件のイベント/曜日傾向を表示` : 'イベント登録後に月間予定が出ます。'}</p>
     </section>
   )
 }
 
-function StoreShareDonut({ points }: { points: StoreRadarPoint[] }) {
-  const radius = 38
-  const circumference = 2 * Math.PI * radius
-  const total = Math.max(1, points.reduce((sum, point) => sum + point.score, 0))
-  const segments = points.reduce<Array<{ point: StoreRadarPoint; length: number; offset: number }>>((items, point) => {
-    const previous = items.reduce((sum, item) => sum + item.length, 0)
-    return [
-      ...items,
-      {
-        point,
-        length: (point.score / total) * circumference,
-        offset: previous,
-      },
-    ]
-  }, [])
+type CalendarPreviewCell = {
+  key: string
+  day: number
+  isBlank: boolean
+  isToday: boolean
+  items: Array<{ label: string; tone: 0 | 1 | 2 }>
+}
 
-  return (
-    <div className="share-donut">
-      <svg viewBox="0 0 104 104" role="img" aria-label="店舗別Hot比率">
-        <circle className="donut-base" cx="52" cy="52" r={radius} />
-        {segments.map(({ point, length, offset }, index) => {
-          const strokeDasharray = `${length} ${circumference - length}`
-          const strokeDashoffset = -offset
-          const segmentStyle = {
-            '--donut-length': `${length}`,
-            '--donut-gap': `${circumference - length}`,
-            '--donut-offset': `${strokeDashoffset}`,
-            '--donut-trace': `${circumference}`,
-            '--donut-delay': `${index * 110}ms`,
-            '--donut-pulse-delay': `${900 + index * 110}ms`,
-          } as CSSProperties
+function buildCalendarPreviewCells(events: EventInput[], stores: StoreProfile[]): CalendarPreviewCell[] {
+  const year = 2026
+  const monthIndex = 5
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
+  const firstDay = new Date(year, monthIndex, 1).getDay()
+  const leadingBlanks = (firstDay + 6) % 7
+  const today = new Date()
+  const todayDay = today.getFullYear() === year && today.getMonth() === monthIndex ? today.getDate() : 0
+  const weekdayNames = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜']
+  const eventDays = new Map<number, Array<{ label: string; tone: 0 | 1 | 2 }>>()
 
-          return (
-            <circle
-              className={`donut-segment ${point.tone}`}
-              cx="52"
-              cy="52"
-              key={point.store.id}
-              r={radius}
-              strokeDasharray={strokeDasharray}
-              strokeDashoffset={strokeDashoffset}
-              style={segmentStyle}
-            />
-          )
-        })}
-      </svg>
-      <div>
-        <strong>{points[0]?.share ?? 0}%</strong>
-        <span>{points[0]?.store.name ?? '未観測'}</span>
-      </div>
-    </div>
-  )
+  for (const event of events) {
+    const day = resolveEventDay(event, year, monthIndex)
+    if (!day) continue
+    const matchedStore = stores.find((store) => store.id === event.storeId)
+    const storeName = matchedStore ? formatBarName(matchedStore.name) : event.title
+    eventDays.set(day, [...(eventDays.get(day) ?? []), { label: storeName, tone: event.session === 'day' ? 1 : 0 }])
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const weekday = weekdayNames[new Date(year, monthIndex, day).getDay()]
+    const trendStores = stores
+      .filter((store) => store.strongDays.includes(weekday))
+      .slice(0, 3)
+      .map((store, index) => ({ label: formatBarName(store.name), tone: (index % 2 === 0 ? 1 : 2) as 1 | 2 }))
+    if (trendStores.length) {
+      eventDays.set(day, [...(eventDays.get(day) ?? []), ...trendStores])
+    }
+  }
+
+  const cells: CalendarPreviewCell[] = Array.from({ length: leadingBlanks }, (_, index) => ({
+    key: `blank-${index}`,
+    day: 0,
+    isBlank: true,
+    isToday: false,
+    items: [],
+  }))
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const unique = dedupeCalendarItems(eventDays.get(day) ?? [])
+    cells.push({
+      key: `day-${day}`,
+      day,
+      isBlank: false,
+      isToday: day === todayDay,
+      items: unique,
+    })
+  }
+
+  return cells
+}
+
+function resolveEventDay(event: EventInput, year: number, monthIndex: number) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(event.date)) {
+    const parsed = new Date(`${event.date}T00:00:00`)
+    if (parsed.getFullYear() === year && parsed.getMonth() === monthIndex) return parsed.getDate()
+    return 0
+  }
+
+  const now = new Date()
+  const anchor = now.getFullYear() === year && now.getMonth() === monthIndex ? now : new Date(year, monthIndex, 2)
+  if (event.date === '今日') return anchor.getDate()
+  if (event.date === '明日') {
+    const tomorrow = new Date(anchor)
+    tomorrow.setDate(anchor.getDate() + 1)
+    return tomorrow.getMonth() === monthIndex ? tomorrow.getDate() : 0
+  }
+
+  const weekdayIndex = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜'].indexOf(event.weekday)
+  if (weekdayIndex < 0) return 0
+  const candidate = new Date(anchor)
+  const offset = (weekdayIndex - candidate.getDay() + 7) % 7
+  candidate.setDate(candidate.getDate() + offset)
+  return candidate.getMonth() === monthIndex ? candidate.getDate() : 0
+}
+
+function dedupeCalendarItems(items: Array<{ label: string; tone: 0 | 1 | 2 }>) {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    const key = item.label
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 function WatchedWordsPanel({
@@ -1144,7 +1382,7 @@ function WatchedWordsPanel({
   return (
     <section className="app-card watched-card">
       <div className="section-heading">
-        <span>Watch words</span>
+        <span>注目語</span>
         <h2>注目ワード</h2>
       </div>
       <div className="watch-word-chips" aria-label="固定監視ワード">
@@ -1182,12 +1420,12 @@ function WatchedWordsPanel({
           hits.map((hit) => (
             <article className={`watch-hit ${hit.severity}`} key={hit.id}>
               <span>{hit.label}</span>
-              <strong>{hit.store.name}</strong>
+              <strong>{formatBarName(hit.store.name)}</strong>
               <p>{hit.snippet}</p>
             </article>
           ))
         ) : (
-          <p className="muted-note">BBS投稿を取り込むと、注目ワードがここに出ます。</p>
+          <p className="muted-note">掲示板投稿を取り込むと、注目ワードがここに出ます。</p>
         )}
       </div>
     </section>
@@ -1198,8 +1436,8 @@ function ForecastPreview({ forecasts }: { forecasts: VisitForecast[] }) {
   return (
     <section className="app-card forecast-preview">
       <div className="section-heading">
-        <span>Arrival forecast</span>
-        <h2>来店予告Top3</h2>
+        <span>来店予告</span>
+        <h2>来店予告 上位3件</h2>
       </div>
       <div className="forecast-list-mini">
         {forecasts.length ? (
@@ -1207,7 +1445,7 @@ function ForecastPreview({ forecasts }: { forecasts: VisitForecast[] }) {
             <article key={forecast.id}>
               <span>{forecast.rank}</span>
               <div>
-                <strong>{forecast.store.name}</strong>
+                <strong>{formatBarName(forecast.store.name)}</strong>
                 <small>
                   {forecast.dateLabel} {forecast.timeLabel} / {forecast.reasons[0]}
                 </small>
@@ -1216,7 +1454,7 @@ function ForecastPreview({ forecasts }: { forecasts: VisitForecast[] }) {
             </article>
           ))
         ) : (
-          <p className="muted-note">イベントとBBS投稿を追加するとランキングが出ます。</p>
+          <p className="muted-note">イベントと掲示板投稿を追加するとランキングが出ます。</p>
         )}
       </div>
       <a className="text-action" href="/forecast">
@@ -1246,9 +1484,35 @@ function hostLabel(value: string) {
   }
 }
 
-function storeSessionLabel(store: { hasDaytime: boolean; hasNight: boolean }) {
-  const sessions = [store.hasDaytime ? '昼' : '', store.hasNight ? '夜' : ''].filter(Boolean)
-  return sessions.length ? sessions.join('・') : '時間未設定'
+function formatPostSource(source: string) {
+  const labels: Record<string, string> = {
+    manual: '手入力',
+    csv: '取込',
+    scrape: '巡回',
+    ai: '分析',
+  }
+  return labels[source] ?? source
+}
+
+function formatCrawlStatus(status?: string) {
+  const labels: Record<string, string> = {
+    ok: '取得済み',
+    failed: '失敗',
+    blocked: 'ブロック',
+    pending: '確認待ち',
+  }
+  return labels[status ?? 'pending'] ?? status ?? '確認待ち'
+}
+
+function formatJobStatus(status?: string) {
+  const labels: Record<string, string> = {
+    sent: '送信済み',
+    failed: '失敗',
+    dry_run: '試行のみ',
+    queued: '待機中',
+    pending: '確認待ち',
+  }
+  return labels[status ?? 'pending'] ?? status ?? '確認待ち'
 }
 
 function OpsPanel({
@@ -1273,17 +1537,17 @@ function OpsPanel({
       <div className="ops-tile">
         <ShieldCheck size={17} weight="bold" />
         <span>保存</span>
-        <strong>{mode === 'database' ? 'DB' : mode === 'anonymous' ? 'ログイン待ち' : 'デモ'}</strong>
+        <strong>{mode === 'database' ? '保存済み' : mode === 'anonymous' ? 'ログイン待ち' : 'デモ'}</strong>
       </div>
       <div className="ops-tile">
         <Broadcast size={17} weight="bold" />
-        <span>BBS</span>
+        <span>掲示板</span>
         <strong>{sourceLimitLabel}</strong>
       </div>
       <div className="ops-tile">
         <GlobeHemisphereEast size={17} weight="bold" />
         <span>巡回</span>
-        <strong>{latestRun ? latestRun.status : '未実行'}</strong>
+        <strong>{latestRun ? formatCrawlStatus(latestRun.status) : '未実行'}</strong>
       </div>
       <div className="ops-tile">
         <FileCsv size={17} weight="bold" />
@@ -1299,10 +1563,10 @@ function CrawlRunList({ runs }: { runs: CrawlRun[] }) {
   if (!runs.length) return null
 
   return (
-    <div className="mini-history" aria-label="BBS巡回履歴">
+    <div className="mini-history" aria-label="掲示板巡回履歴">
       {runs.map((run) => (
         <article key={run.id}>
-          <span>{run.status}</span>
+          <span>{formatCrawlStatus(run.status)}</span>
           <strong>{run.message ?? hostLabel(run.url)}</strong>
           <em>{formatShortDate(run.fetchedAt)}</em>
         </article>
@@ -1370,7 +1634,7 @@ function ExactMatchList({ matches }: { matches: ExactTermMatch[] }) {
             <strong>{match.term}</strong>
           </div>
           <p>
-            {match.store.name} / {match.snippet}
+            {formatBarName(match.store.name)} / {match.snippet}
           </p>
         </article>
       ))}
@@ -1378,16 +1642,46 @@ function ExactMatchList({ matches }: { matches: ExactTermMatch[] }) {
   )
 }
 
+function buildObservationLines(body: string) {
+  const normalized = body.replace(/\s+/g, ' ').trim()
+  if (!normalized) return { lines: ['まだ投稿がありません。'], restCount: 0 }
+
+  const rawLines = normalized
+    .replace(/(投稿者[:：])/g, '\n$1')
+    .replace(/(\d{4}年\d{1,2}月\d{1,2}日\s*\d{1,2}:\d{2})/g, '\n$1')
+    .replace(/(【[^】]+】)/g, '\n$1')
+    .replace(/(本日の来店予告[:：]?)/g, '\n$1')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const lines = (rawLines.length ? rawLines : [normalized]).slice(0, 8).map((line) => (line.length > 86 ? `${line.slice(0, 86)}…` : line))
+
+  return {
+    lines,
+    restCount: Math.max(0, rawLines.length - lines.length),
+  }
+}
+
 function LatestPost({ source, body }: { source: string; body: string }) {
+  const { lines, restCount } = buildObservationLines(body)
+
   return (
     <section className="latest-card">
       <div className="section-heading">
-        <span>Latest intake</span>
+        <span>直近ログ</span>
         <h2>直近の観測ログ</h2>
       </div>
       <div className="log-ribbon">
         <span>{source}</span>
-        <p>{body}</p>
+        <div className="log-copy">
+          <ul>
+            {lines.map((line, index) => (
+              <li key={`${line}-${index}`}>{line}</li>
+            ))}
+          </ul>
+          {restCount > 0 && <small>ほか {restCount} 件の断片を省略</small>}
+        </div>
       </div>
     </section>
   )

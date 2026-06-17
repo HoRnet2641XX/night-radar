@@ -39,6 +39,15 @@ function clamp(value: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Math.round(value)))
 }
 
+function scaledSignal(count: number, halfSaturation: number, maxScore: number) {
+  if (count <= 0) return 0
+  return (count / (count + halfSaturation)) * maxScore
+}
+
+function average(values: number[]) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0
+}
+
 function normalizeBody(body: string) {
   return body.replace(/\s+/g, '').replace(/[0-9０-９]/g, '0').toLowerCase()
 }
@@ -121,14 +130,22 @@ export function buildBbsSnapshotMetrics(text: string): BbsSnapshotMetrics {
 }
 
 export function scoreBbsSnapshot(metrics: BbsSnapshotMetrics) {
+  const textUnits = Math.max(1, metrics.textLength / 1200)
+  const signalDensity = metrics.totalSignals / textUnits
+  const signalScore =
+    scaledSignal(metrics.femaleOnly, 18, 22) +
+    scaledSignal(metrics.firstVisit, 5, 18) +
+    scaledSignal(metrics.comeback, 4, 14) +
+    scaledSignal(metrics.groupVisit, 3, 10) +
+    scaledSignal(metrics.emoji, 28, 8)
+
   return clamp(
-    22 +
-      metrics.femaleOnly * 7 +
-      metrics.firstVisit * 10 +
-      metrics.comeback * 8 +
-      metrics.groupVisit * 9 +
-      metrics.emoji * 3 +
-      Math.min(18, metrics.textLength / 220),
+    30 +
+      signalScore +
+      scaledSignal(signalDensity, 12, 14) +
+      scaledSignal(metrics.textLength, 3600, 8),
+    0,
+    96,
   )
 }
 
@@ -291,17 +308,8 @@ export function buildStoreBbsAnalytics(stores: StoreProfile[], posts: PostRecord
 
 export function buildStoreRadarPoints(stores: StoreProfile[], posts: PostRecord[], snapshots: BbsSnapshot[] = []): StoreRadarPoint[] {
   const analytics = buildStoreBbsAnalytics(stores, posts)
-  const totalBase = Math.max(
-    1,
-    stores.reduce((sum, store) => {
-      const storeSnapshots = snapshots.filter((snapshot) => snapshot.storeId === store.id)
-      const snapshotScore = storeSnapshots.reduce((max, snapshot) => Math.max(max, snapshot.radarScore), 0)
-      const analytic = analytics.find((item) => item.store.id === store.id)
-      return sum + Math.max(snapshotScore, analytic?.excitement ?? 0)
-    }, 0),
-  )
 
-  return stores
+  const basePoints = stores
     .map((store) => {
       const analytic = analytics.find((item) => item.store.id === store.id)
       const storeSnapshots = snapshots.filter((snapshot) => snapshot.storeId === store.id)
@@ -312,22 +320,54 @@ export function buildStoreRadarPoints(stores: StoreProfile[], posts: PostRecord[
       const latestSnapshot = storeSnapshots.toSorted(
         (a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
       )[0]
-      const snapshotScore = storeSnapshots.reduce((max, snapshot) => Math.max(max, snapshot.radarScore), 0)
-      const score = clamp(Math.max(snapshotScore, analytic?.excitement ?? 0) + Math.min(12, mergedSignals.totalSignals * 1.2))
+      const snapshotScores = storeSnapshots.map((snapshot) => snapshot.radarScore)
+      const latestSnapshotScore = latestSnapshot?.radarScore ?? 0
+      const snapshotScore = snapshotScores.length ? latestSnapshotScore * 0.62 + average(snapshotScores) * 0.38 : 0
+      const fallbackScore = analytic?.excitement ?? 0
+      const mergedSignalScore = mergedSignals.totalSignals ? scoreBbsSnapshot(mergedSignals) : 0
+      const rawScore = snapshotScores.length
+        ? snapshotScore * 0.84 + fallbackScore * 0.1 + mergedSignalScore * 0.06
+        : fallbackScore
 
       return {
         store,
-        score,
-        tone: toneForScore(score),
-        share: clamp((score / totalBase) * 100),
+        score: clamp(rawScore, 0, 96),
+        tone: toneForScore(rawScore),
+        share: 0,
         rank: 0,
         postCount: analytic?.postCount ?? 0,
         snapshotCount: storeSnapshots.length,
         lastCapturedAt: latestSnapshot?.capturedAt,
         signals: mergedSignals,
-        verdict: score >= 78 ? 'Hot' : score >= 52 ? '検討余地' : '様子見',
+        verdict: rawScore >= 78 ? 'Hot' : rawScore >= 52 ? '検討余地' : '様子見',
       }
     })
+
+  const activeScores = basePoints.map((point) => point.score).filter((score) => score > 0)
+  const minScore = activeScores.length ? Math.min(...activeScores) : 0
+  const maxScore = activeScores.length ? Math.max(...activeScores) : 0
+  const scoreRange = maxScore - minScore
+  const normalizedPoints = basePoints.map((point) => {
+    const relativeScore = scoreRange >= 4 ? 42 + ((point.score - minScore) / scoreRange) * 54 : point.score
+    const score = point.score > 0 && scoreRange >= 4 ? clamp(point.score * 0.72 + relativeScore * 0.28, 0, 96) : point.score
+
+    return {
+      ...point,
+      score,
+      tone: toneForScore(score),
+      verdict: score >= 78 ? 'Hot' : score >= 52 ? '検討余地' : '様子見',
+    }
+  })
+  const totalBase = Math.max(
+    1,
+    normalizedPoints.reduce((sum, point) => sum + point.score, 0),
+  )
+
+  return normalizedPoints
+    .map((point) => ({
+      ...point,
+      share: clamp((point.score / totalBase) * 100),
+    }))
     .toSorted((a, b) => b.score - a.score)
     .map((point, index) => ({ ...point, rank: index + 1 }))
 }

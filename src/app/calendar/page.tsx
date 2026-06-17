@@ -1,3 +1,4 @@
+import { formatBarName } from '@/lib/display'
 import { getDashboardState } from '@/lib/server/repository'
 
 export const dynamic = 'force-dynamic'
@@ -15,10 +16,10 @@ export default async function CalendarPage() {
     <main className="insight-page">
       <section className="insight-sheet">
         <a className="back-link" href="/">
-          Night Radarへ戻る
+          ナイトレーダーへ戻る
         </a>
         <header className="insight-header">
-          <span>Monthly events</span>
+          <span>月間予定</span>
           <h1>月間イベント</h1>
           <p>登録済み店舗と取り込み済みイベントを日付ごとに集約します。</p>
         </header>
@@ -30,7 +31,7 @@ export default async function CalendarPage() {
                 {events.map((event) => (
                   <article key={event.id}>
                     <span>{event.weekday} {event.startsAt}</span>
-                    <strong>{storeMap.get(event.storeId)?.name ?? '未登録店舗'}</strong>
+                    <strong>{formatBarName(storeMap.get(event.storeId)?.name)}</strong>
                     <p>{event.title} / {event.category}</p>
                   </article>
                 ))}

@@ -36,7 +36,6 @@ insert into public.stores (
   ('club-zeus', null, 'CLUB ZEUS', '未設定', false, true, '', '19:00', '未分類', array[]::text[], array[]::text[], array[]::text[], 60),
   ('land-land', null, 'land land', '未設定', false, true, '', '19:00', '未分類', array[]::text[], array[]::text[], array[]::text[], 60),
   ('collabo', null, 'collabo', '未設定', false, true, '', '19:00', '未分類', array[]::text[], array[]::text[], array[]::text[], 60),
-  ('communication-bar-s', null, 'Communication Bar S', '未設定', false, true, '', '19:00', '未分類', array[]::text[], array[]::text[], array[]::text[], 60),
   ('neo', null, 'Neo', '未設定', false, true, '', '19:00', '未分類', array[]::text[], array[]::text[], array[]::text[], 60),
   ('communicationbar-sango', null, 'Communicationbar 珊瑚', '未設定', false, true, '', '19:00', '未分類', array[]::text[], array[]::text[], array[]::text[], 60)
 on conflict (id) do update set
@@ -87,7 +86,6 @@ insert into public.bbs_sources (
   ('club-zeus-bbs', 'club-zeus', 'BBS', 'http://sm-zeus.com/bbs/', 'auto', true, 5, 'pending'),
   ('land-land-bbs', 'land-land', 'BBS', 'https://land2021.com/bbs2/', 'auto', true, 5, 'pending'),
   ('collabo-bbs', 'collabo', 'BBS', 'https://www.collabo7.com/p/7/', 'auto', true, 5, 'pending'),
-  ('communication-bar-s-bbs', 'communication-bar-s', 'BBS', 'http://www.21style.jp/bbs/shangri/', 'auto', true, 5, 'pending'),
   ('neo-bbs', 'neo', 'BBS', 'https://neo-bbs.com/', 'auto', true, 5, 'pending'),
   ('communicationbar-sango-bbs', 'communicationbar-sango', 'BBS', 'https://bar-sango.com/bbs/', 'auto', true, 5, 'pending')
 on conflict (store_id, url) do update set

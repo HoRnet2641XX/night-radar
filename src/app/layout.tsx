@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Night Radar',
+  title: 'ナイトレーダー',
   description: '公開情報と投稿メモから、今日見るべき夜のシグナルをスマホで素早く判断するレーダーアプリ。',
   icons: {
     icon: '/favicon.svg',
   },
   openGraph: {
-    title: 'Night Radar',
+    title: 'ナイトレーダー',
     description: '公開情報と投稿メモから、今日見るべき夜のシグナルをスマホで素早く判断するレーダーアプリ。',
     type: 'website',
   },

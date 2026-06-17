@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import type { BbsSnapshot, BbsSnapshotMetrics } from './types'
 import { events, posts, stores } from './demo-data'
 import {
   buildBbsSnapshotMetrics,
@@ -60,6 +61,84 @@ describe('BBS radar signals', () => {
     assert.equal(metrics.groupVisit, 1)
     assert.ok(metrics.emoji >= 1)
     assert.ok(scoreBbsSnapshot(metrics) > 40)
+  })
+
+  it('normalizes large BBS pages without hard-clamping every store to 100', () => {
+    const noisyLargePage: BbsSnapshotMetrics = {
+      femaleOnly: 83,
+      firstVisit: 3,
+      comeback: 3,
+      groupVisit: 1,
+      emoji: 331,
+      totalSignals: 421,
+      textLength: 12000,
+    }
+    const focusedMediumPage: BbsSnapshotMetrics = {
+      femaleOnly: 11,
+      firstVisit: 14,
+      comeback: 0,
+      groupVisit: 0,
+      emoji: 26,
+      totalSignals: 51,
+      textLength: 4326,
+    }
+
+    const noisyScore = scoreBbsSnapshot(noisyLargePage)
+    const focusedScore = scoreBbsSnapshot(focusedMediumPage)
+
+    assert.ok(noisyScore < 100)
+    assert.ok(focusedScore < 100)
+    assert.ok(noisyScore > focusedScore)
+  })
+
+  it('keeps visible score differences across stores with BBS snapshots', () => {
+    const metricsList: BbsSnapshotMetrics[] = [
+      {
+        femaleOnly: 83,
+        firstVisit: 3,
+        comeback: 3,
+        groupVisit: 1,
+        emoji: 331,
+        totalSignals: 421,
+        textLength: 12000,
+      },
+      {
+        femaleOnly: 11,
+        firstVisit: 14,
+        comeback: 0,
+        groupVisit: 0,
+        emoji: 26,
+        totalSignals: 51,
+        textLength: 4326,
+      },
+      {
+        femaleOnly: 2,
+        firstVisit: 0,
+        comeback: 0,
+        groupVisit: 0,
+        emoji: 4,
+        totalSignals: 6,
+        textLength: 1800,
+      },
+    ]
+    const snapshots: BbsSnapshot[] = stores.slice(0, 3).map((store, index) => ({
+      id: `snapshot-${store.id}`,
+      sourceId: `${store.id}-bbs`,
+      storeId: store.id,
+      url: 'https://example.com/bbs',
+      extractedText: '',
+      metrics: metricsList[index],
+      radarScore: scoreBbsSnapshot(metricsList[index]),
+      capturedAt: `2026-06-13T0${index}:00:00.000Z`,
+    }))
+
+    const radar = buildStoreRadarPoints(stores.slice(0, 3), [], snapshots)
+    const scores = radar.map((point) => point.score)
+
+    assert.equal(radar[0].rank, 1)
+    assert.equal(scores.every((score) => score < 100), true)
+    assert.ok(new Set(scores).size > 1)
+    assert.ok(scores[0] > scores.at(-1)!)
   })
 
   it('builds store radar points and visit forecasts', () => {

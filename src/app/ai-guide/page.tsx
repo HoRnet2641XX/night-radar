@@ -1,4 +1,5 @@
 import { buildStoreRadarPoints, buildVisitForecasts } from '@/lib/scoring'
+import { formatBarName } from '@/lib/display'
 import { analyzeTextWithAi } from '@/lib/server/ai'
 import { getDashboardState } from '@/lib/server/repository'
 
@@ -21,23 +22,23 @@ export default async function AiGuidePage() {
     <main className="insight-page">
       <section className="insight-sheet">
         <a className="back-link" href="/">
-          Night Radarへ戻る
+          ナイトレーダーへ戻る
         </a>
         <header className="insight-header">
-          <span>AIガイド</span>
+          <span>自動分析ガイド</span>
           <h1>行く日を決める前の確認</h1>
           <p>公開情報から判断材料を整理します。個人追跡や来店保証ではなく、店舗単位の傾向確認として使います。</p>
         </header>
         <div className="guide-grid">
           <article>
             <span>今日の候補</span>
-            <strong>{topForecast ? `${topForecast.store.name} / ${topForecast.score}` : 'データ不足'}</strong>
-            <p>{topForecast?.reasons.join('、') ?? 'BBSとイベント情報を追加すると候補を出せます。'}</p>
+            <strong>{topForecast ? `${formatBarName(topForecast.store.name)} / ${topForecast.score}` : 'データ不足'}</strong>
+            <p>{topForecast?.reasons.join('、') ?? '掲示板とイベント情報を追加すると候補を出せます。'}</p>
           </article>
           <article>
-            <span>Hot店舗</span>
-            <strong>{topStore ? `${topStore.store.name} / ${topStore.score}` : '未観測'}</strong>
-            <p>{topStore ? `${topStore.verdict}。注目シグナル ${topStore.signals.totalSignals}件。` : 'BBSソース巡回後に表示されます。'}</p>
+            <span>盛り上がり店舗</span>
+            <strong>{topStore ? `${formatBarName(topStore.store.name)} / ${topStore.score}` : '未観測'}</strong>
+            <p>{topStore ? `${topStore.verdict}。注目シグナル ${topStore.signals.totalSignals}件。` : '掲示板の巡回後に表示されます。'}</p>
           </article>
           <article>
             <span>マナー</span>
@@ -45,7 +46,7 @@ export default async function AiGuidePage() {
             <p>{analysis.safetyNotes[0] ?? '店舗ルール、同意、距離感、清潔感、スタッフ指示を優先してください。公開情報だけを見る。'}</p>
           </article>
           <article>
-            <span>AI要約</span>
+            <span>自動要約</span>
             <strong>{analysis.eventCategory}</strong>
             <p>{analysis.summary}</p>
           </article>

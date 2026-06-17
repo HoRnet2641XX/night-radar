@@ -1,4 +1,5 @@
 import { buildVisitForecasts } from '@/lib/scoring'
+import { formatBarName } from '@/lib/display'
 import { getDashboardState } from '@/lib/server/repository'
 
 export const dynamic = 'force-dynamic'
@@ -11,12 +12,12 @@ export default async function ForecastPage() {
     <main className="insight-page">
       <section className="insight-sheet">
         <a className="back-link" href="/">
-          Night Radarへ戻る
+          ナイトレーダーへ戻る
         </a>
         <header className="insight-header">
-          <span>Arrival forecast</span>
+          <span>来店予告</span>
           <h1>来店予告ランキング</h1>
-          <p>BBS内の注目ワード、投稿鮮度、イベント相性から、検討しやすい順に並べます。</p>
+          <p>掲示板内の注目ワード、投稿鮮度、イベント相性から、検討しやすい順に並べます。</p>
         </header>
         <div className="forecast-page-list">
           {forecasts.map((forecast) => (
@@ -24,8 +25,8 @@ export default async function ForecastPage() {
               <div className="forecast-rank">{forecast.rank}</div>
               <div>
                 <span>{forecast.dateLabel} / {forecast.timeLabel}</span>
-                <h2>{forecast.store.name}</h2>
-                <p>{forecast.event?.title ?? 'BBS観測'}</p>
+                <h2>{formatBarName(forecast.store.name)}</h2>
+                <p>{forecast.event?.title ?? '掲示板観測'}</p>
                 <ul>
                   {forecast.reasons.map((reason) => (
                     <li key={reason}>{reason}</li>
