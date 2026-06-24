@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     return Response.json({
       url: '/',
       mode: 'demo',
-      message: 'Stripe env is not configured. Billing portal is running in demo mode.',
+      message: 'Stripeのキーが未設定です。請求ポータルはまだ開けません。',
     })
   }
 

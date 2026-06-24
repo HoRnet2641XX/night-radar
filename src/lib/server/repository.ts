@@ -26,6 +26,7 @@ import type {
 import { createSupabaseAdminClient, createSupabaseServerClient } from '../supabase/server'
 import { buildBbsSnapshot } from './bbs-snapshot'
 import { scrapePublicPage, scrapeResultToPost } from './scrape'
+import { getServiceSetupStatus } from './setup-status'
 
 type SupabaseServerClient = NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>
 type SupabaseAdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>
@@ -65,6 +66,7 @@ function demoDashboardState(mode: RuntimeMode = 'demo', connectionNote?: string)
   return {
     mode,
     connectionNote,
+    setupStatus: getServiceSetupStatus(),
     stores: demoStores,
     events: demoEvents,
     posts: demoPosts,
@@ -190,6 +192,7 @@ function toEvent(row: DbRow): EventInput {
     session: stringField(row, 'session') === 'day' ? 'day' : 'night',
     category: stringField(row, 'category', '未分類'),
     title: stringField(row, 'title'),
+    details: optionalStringField(row, 'details'),
     sourceUrl: optionalStringField(row, 'source_url'),
   }
 }
@@ -204,6 +207,7 @@ function toEventRow(event: EventInput) {
     session: event.session,
     category: event.category,
     title: event.title,
+    details: event.details || '',
     source_url: event.sourceUrl || null,
   }
 }
@@ -222,6 +226,7 @@ function normalizeEvent(input: Partial<EventInput>): EventInput {
     session: input.session === 'day' ? 'day' : 'night',
     category: String(input.category || '未分類'),
     title,
+    details: input.details ? String(input.details) : undefined,
     sourceUrl: input.sourceUrl || undefined,
   }
 }
@@ -543,12 +548,12 @@ export function exactStateToGroups(exactTerms: ExactTermState): ExactTermSearchG
   return [
     {
       group: 'popularSingleMale',
-      label: '人気単男',
+      label: '人気単独男性',
       terms: listValue(exactTerms.popularSingleMale),
     },
     {
       group: 'popularSingleFemale',
-      label: '人気単女',
+      label: '人気単独女性',
       terms: listValue(exactTerms.popularSingleFemale),
     },
     {
@@ -780,6 +785,7 @@ export async function getDashboardState(): Promise<DashboardState> {
   return {
     mode: 'database',
     userEmail: user.email ?? undefined,
+    setupStatus: getServiceSetupStatus(),
     stores,
     events,
     posts,

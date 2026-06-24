@@ -55,6 +55,7 @@ create table if not exists public.events (
   session text not null check (session in ('day', 'night')),
   category text not null default '未分類',
   title text not null,
+  details text not null default '',
   source_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

@@ -2,13 +2,7 @@ export function formatBarName(name?: string | null) {
   const raw = name?.trim()
   if (!raw) return '未登録店舗'
 
-  const normalized = raw
-    .replace(/^communication\s*bar\s*/i, '')
-    .replace(/^bar[\s_-]*/i, '')
-    .replace(/[\s_-]*bar$/i, '')
-    .trim()
-
-  return `bar ${normalized || raw}`
+  return `bar ${raw}`
 }
 
 export function formatStoreArea(area?: string | null) {

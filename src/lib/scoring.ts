@@ -19,6 +19,11 @@ import type {
 
 const femalePrPattern = /(女性|女の子|女性来店|女性予約|女性無料|女性一人|主婦|人妻|奥様|カップル)/i
 const specificityPattern = /(\d+人|\d{1,2}[:時]\d{0,2}|予約|確定|初参加|具体|本日|明日|残り|限定)/i
+const eventFemalePattern = /(女性|女の子|女性無料|女性一人|単女|主婦|人妻|奥様|カップル|女子)/i
+const eventBeginnerPattern = /(初めて|はじめて|初心者|初参加|初来店|ビギナー)/i
+const eventDemandPattern = /(予約|満席|残り|人気|来店予告|参加|募集|歓迎|無料|割引|限定)/i
+const eventDetailPattern =
+  /(\d{1,2}[:時]\d{0,2}|[0-9０-９,]+\s*円|飲み放題|食べ放題|カラオケ|ゲーム|コス|衣装|浴衣|制服|ドレス|SM|ソフトSM|24H|オープン)/i
 const femaleOnlyPattern = /女性/g
 const firstVisitPattern = /(初めて|はじめて|初参加|初来店)/g
 const comebackPattern = /((\d+|[０-９]+|[一二三四五六七八九十百]+)\s*(年|ヶ月|か月|カ月|月|週間|日)\s*ぶり|久しぶり|以来)/g
@@ -84,8 +89,43 @@ function buildSnippet(body: string, term: string) {
   return `${prefix}${body.slice(start, end)}${suffix}`
 }
 
+function normalizeExactSearchText(value: string) {
+  return value.normalize('NFKC').replace(/\s+/g, '').toLowerCase()
+}
+
+function includesExactTerm(body: string, term: string) {
+  if (body.includes(term)) return true
+  const normalizedTerm = normalizeExactSearchText(term)
+  if (!normalizedTerm) return false
+  return normalizeExactSearchText(body).includes(normalizedTerm)
+}
+
 function countMatches(body: string, pattern: RegExp) {
   return [...body.matchAll(pattern)].length
+}
+
+function stableOffset(seed: string, range = 5) {
+  let hash = 0
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) | 0
+  }
+  return Math.abs(hash) % (range * 2 + 1) - range
+}
+
+function eventContextBonus(event: EventInput) {
+  const text = `${event.title} ${event.details ?? ''} ${event.category}`.trim()
+  let score = 0
+
+  if (event.startsAt) score += 2
+  if (event.title.length >= 12) score += 2
+  if ((event.details?.length ?? 0) >= 28) score += 3
+  if (event.category && !/^(通常|イベント|未設定)$/.test(event.category)) score += 2
+  if (eventFemalePattern.test(text)) score += 5
+  if (eventBeginnerPattern.test(text)) score += 3
+  if (eventDemandPattern.test(text)) score += 3
+  if (eventDetailPattern.test(text)) score += 3
+
+  return Math.min(14, score)
 }
 
 function mergeMetrics(metrics: BbsSnapshotMetrics[]) {
@@ -191,6 +231,8 @@ export function scoreEvent(event: EventInput, store: StoreProfile, posts: PostRe
     (event.session === 'day' && store.hasDaytime) || (event.session === 'night' && store.hasNight) ? 8 : -10
   const postVolumeBonus = Math.min(14, metrics.postCount * 3)
   const femaleSignalBonus = Math.min(16, metrics.femalePrCount * 4)
+  const contextBonus = eventContextBonus(event)
+  const sparseDataOffset = metrics.postCount === 0 ? stableOffset(`${event.storeId}:${event.date}:${event.title}`, 3) : 0
 
   const score = clamp(
     28 +
@@ -199,6 +241,8 @@ export function scoreEvent(event: EventInput, store: StoreProfile, posts: PostRe
       sessionBonus +
       postVolumeBonus +
       femaleSignalBonus +
+      contextBonus +
+      sparseDataOffset +
       metrics.specificity * 0.12 +
       metrics.freshness * 0.1 +
       metrics.trust * 0.12 -
@@ -208,7 +252,7 @@ export function scoreEvent(event: EventInput, store: StoreProfile, posts: PostRe
   const reasons = [
     weekdayBonus > 0 ? `${event.weekday}との相性が高い` : `${event.weekday}は通常傾向`,
     eventBonus > 8 ? `${event.category}の過去実績が強い` : `${event.category}は要観測`,
-    metrics.specificity >= 70 ? '投稿の具体性が高い' : '投稿具体性は中程度',
+    contextBonus >= 9 ? '公式イベント情報が具体的' : metrics.specificity >= 70 ? '投稿の具体性が高い' : '投稿具体性は中程度',
     metrics.freshness >= 70 ? '直近投稿が動いている' : '鮮度は追加確認が必要',
   ].slice(0, 3)
 
@@ -257,7 +301,7 @@ export function parseExactTerms(value: string) {
     ...new Set(
       value
         .split(/[,\n、]/)
-        .map((term) => term.trim())
+        .map((term) => term.normalize('NFKC').trim())
         .filter(Boolean),
     ),
   ]
@@ -462,7 +506,7 @@ export function searchExactBbsTerms(
   groups.forEach((group) => {
     group.terms.forEach((term) => {
       posts.forEach((post) => {
-        if (!post.body.includes(term)) return
+        if (!includesExactTerm(post.body, term)) return
         const store = storeMap.get(post.storeId)
         if (!store) return
 

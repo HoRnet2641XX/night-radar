@@ -1,44 +1,176 @@
 import { formatBarName } from '@/lib/display'
+import officialEventsData from '@/lib/official-events.generated.json'
 import { getDashboardState } from '@/lib/server/repository'
+import type { EventInput, StoreProfile } from '@/lib/types'
+import { CalendarDayExplorer, type CalendarEventView, type CalendarMonthView } from '@/components/calendar-day-explorer'
 
 export const dynamic = 'force-dynamic'
+
+const officialEvents = officialEventsData as EventInput[]
+
+const officialStoreNames: Record<string, string> = {
+  collabo: 'collabo',
+  'honey-trap': 'HONEY TRAP',
+  'bar-rusk': 'BAR RUSK',
+  papillon: 'Papillon',
+  'harnes-tokyo': 'HARNES TOKYO',
+  'bar-face': 'BAR FACE',
+  'campo-bar': 'CAMPO BAR',
+  arabesque: 'ARABESQUE',
+  'colors-bar': 'COLORS BAR',
+  bar440: 'BAR440',
+  voluptuous: 'Voluptuous',
+  'retreat-bar': 'RETREAT BAR',
+  agreeable: 'AgreeAble',
+  ouvea: 'Ouvea',
+  'secret-bar-silent-moon': 'Secret Bar Silent Moon',
+  'bar-spear': 'BAR SPEAR',
+  'bar-canelo': 'BAR CANELO',
+  'b-dash': 'B-DASH',
+  'ogikubo-himitsu-club': '荻窪秘密倶楽部',
+  'club-zeus': 'CLUB ZEUS',
+  'land-land': 'land land',
+  'filt-shibuya': 'FILT SHIBUYA',
+  'communicationbar-sango': 'Communicationbar 珊瑚',
+  'off-white': 'Off White',
+}
+
+const monthFormatter = new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: 'long' })
+const dayFormatter = new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' })
+
+function eventTimeValue(event: EventInput) {
+  return event.startsAt || (event.session === 'day' ? '13:00' : '19:00')
+}
+
+function sortEvents(events: EventInput[]) {
+  return events.toSorted(
+    (a, b) =>
+      a.date.localeCompare(b.date) ||
+      eventTimeValue(a).localeCompare(eventTimeValue(b)) ||
+      a.storeId.localeCompare(b.storeId) ||
+      a.title.localeCompare(b.title),
+  )
+}
+
+function mergeEvents(databaseEvents: EventInput[]) {
+  const merged = new Map(officialEvents.map((event) => [event.id, event]))
+  for (const event of databaseEvents) {
+    const official = merged.get(event.id)
+    merged.set(event.id, {
+      ...official,
+      ...event,
+      details: event.details || official?.details,
+      sourceUrl: event.sourceUrl || official?.sourceUrl,
+    })
+  }
+  return sortEvents([...merged.values()]).filter((event) => /^\d{4}-\d{2}-\d{2}$/.test(event.date))
+}
+
+function storeNameFor(storeMap: Map<string, StoreProfile>, storeId: string) {
+  return storeMap.get(storeId)?.name ?? officialStoreNames[storeId] ?? storeId
+}
+
+function toCalendarEvent(event: EventInput, storeMap: Map<string, StoreProfile>): CalendarEventView {
+  return {
+    id: event.id,
+    date: event.date,
+    weekday: event.weekday,
+    startsAt: event.startsAt,
+    session: event.session,
+    category: event.category,
+    title: event.title,
+    details: event.details,
+    sourceUrl: event.sourceUrl,
+    storeLabel: formatBarName(storeNameFor(storeMap, event.storeId)),
+  }
+}
+
+function buildMonths(events: EventInput[], storeMap: Map<string, StoreProfile>) {
+  const monthKeys = [...new Set(events.map((event) => event.date.slice(0, 7)))].sort()
+  return monthKeys.map<CalendarMonthView>((key) => {
+    const [year, month] = key.split('-').map(Number)
+    const monthEvents = events.filter((event) => event.date.startsWith(key))
+    const eventsByDate = monthEvents.reduce<Map<string, EventInput[]>>((map, event) => {
+      map.set(event.date, [...(map.get(event.date) ?? []), event])
+      return map
+    }, new Map())
+
+    const firstDate = new Date(`${key}-01T00:00:00+09:00`)
+    const lastDay = new Date(year, month, 0).getDate()
+    const mondayBasedOffset = (firstDate.getDay() + 6) % 7
+    const cells: CalendarMonthView['cells'] = Array.from({ length: mondayBasedOffset }, () => null)
+
+    for (let day = 1; day <= lastDay; day += 1) {
+      const date = `${key}-${String(day).padStart(2, '0')}`
+      cells.push({
+        date,
+        day,
+        dateLabel: dayFormatter.format(new Date(`${date}T00:00:00+09:00`)),
+        events: sortEvents(eventsByDate.get(date) ?? []).map((event) => toCalendarEvent(event, storeMap)),
+      })
+    }
+
+    return {
+      key,
+      label: monthFormatter.format(firstDate),
+      cells,
+      eventCount: monthEvents.length,
+    }
+  })
+}
 
 export default async function CalendarPage() {
   const state = await getDashboardState()
   const storeMap = new Map(state.stores.map((store) => [store.id, store]))
-  const grouped = state.events.reduce<Map<string, typeof state.events>>((map, event) => {
-    const date = event.date || '日付未設定'
-    map.set(date, [...(map.get(date) ?? []), event])
-    return map
-  }, new Map())
+  const events = mergeEvents(state.events)
+  const months = buildMonths(events, storeMap)
+  const sourceCount = new Set(events.map((event) => event.sourceUrl).filter(Boolean)).size
 
   return (
-    <main className="insight-page">
-      <section className="insight-sheet">
-        <a className="back-link" href="/">
+    <main className="calendar-route" id="main">
+      <section className="calendar-app-shell">
+        <div className="calendar-page-backdrop" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+
+        <a className="calendar-back-link" href="/">
           ナイトレーダーへ戻る
         </a>
-        <header className="insight-header">
-          <span>月間予定</span>
-          <h1>月間イベント</h1>
-          <p>登録済み店舗と取り込み済みイベントを日付ごとに集約します。</p>
+
+        <header className="calendar-hero">
+          <div>
+            <span>月間イベント</span>
+            <h1>イベントカレンダー</h1>
+            <p>日付を選ぶと、その日の店舗別イベントを確認できます。PCは日付にカーソル、スマホはタップで詳細を開きます。</p>
+          </div>
+          <aside aria-label="掲載状況">
+            <strong>{events.length}</strong>
+            <span>掲載イベント</span>
+          </aside>
         </header>
-        <div className="calendar-list">
-          {[...grouped.entries()].map(([date, events]) => (
-            <section key={date}>
-              <h2>{date}</h2>
-              <div>
-                {events.map((event) => (
-                  <article key={event.id}>
-                    <span>{event.weekday} {event.startsAt}</span>
-                    <strong>{formatBarName(storeMap.get(event.storeId)?.name)}</strong>
-                    <p>{event.title} / {event.category}</p>
-                  </article>
-                ))}
-              </div>
-            </section>
-          ))}
+
+        <div className="calendar-summary-row" aria-label="取得状況">
+          <article>
+            <span>対象月</span>
+            <strong>{months.length}</strong>
+          </article>
+          <article>
+            <span>対象店舗</span>
+            <strong>{new Set(events.map((event) => event.storeId)).size}</strong>
+          </article>
+          <article>
+            <span>公式URL</span>
+            <strong>{sourceCount}</strong>
+          </article>
         </div>
+
+        <div className="calendar-source-note">
+          タイトルと詳細は公式ページ本文から短く整形しています。Off White は取得タイムアウト、Ouvea は 403 のため今回は未掲載です。
+        </div>
+
+        <CalendarDayExplorer months={months} />
       </section>
     </main>
   )

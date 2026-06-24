@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     return Response.json({
       url: '/',
       mode: 'demo',
-      message: 'Stripe env or price ID is not configured. Checkout is running in demo mode.',
+      message: 'StripeのキーまたはプランIDが未設定です。決済はまだ開始できません。',
     })
   }
 

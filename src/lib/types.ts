@@ -10,6 +10,7 @@ export type RuntimeMode = 'database' | 'anonymous' | 'demo'
 export type CrawlStatus = 'ok' | 'blocked' | 'failed' | 'pending'
 export type BbsParserType = 'auto' | 'body'
 export type WordBookmarkMatchType = 'exact' | 'regex' | 'emoji'
+export type SetupStatusTone = 'ready' | 'action' | 'check' | 'off'
 
 export type StoreProfile = {
   id: string
@@ -35,6 +36,7 @@ export type EventInput = {
   session: SessionKind
   category: string
   title: string
+  details?: string
   sourceUrl?: string
 }
 
@@ -243,6 +245,21 @@ export type ImportBatch = {
   createdAt: string
 }
 
+export type SetupStatusItem = {
+  id: string
+  label: string
+  tone: SetupStatusTone
+  summary: string
+  detail: string
+}
+
+export type ServiceSetupStatus = {
+  generatedAt: string
+  actionCount: number
+  checkCount: number
+  items: SetupStatusItem[]
+}
+
 export type ScrapeResult = {
   url: string
   title: string
@@ -266,6 +283,7 @@ export type DashboardState = {
   mode: RuntimeMode
   userEmail?: string
   connectionNote?: string
+  setupStatus: ServiceSetupStatus
   stores: StoreProfile[]
   events: EventInput[]
   posts: PostRecord[]

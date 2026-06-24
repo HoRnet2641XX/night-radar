@@ -27,6 +27,12 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+To check local setup without exposing secret values:
+
+```bash
+npm run check:ready -- --url=http://localhost:3000
+```
+
 Without Supabase keys, the app runs in demo mode. With Supabase connected, users can read the shared catalog and save only user-specific settings such as word bookmarks, notification preferences, exact terms, and billing state.
 
 ## Configure
@@ -74,7 +80,7 @@ Set `OPENAI_API_KEY`. If it is missing or the request fails, the app uses determ
 
 Set `SCRAPE_ALLOWED_HOSTS` if you want an allowlist. Empty means any public `http` or `https` host except local/private IPs.
 
-Set `CRON_SECRET` to protect `/api/cron/crawl`.
+Set `CRON_SECRET` to protect `/api/cron/crawl`. In production, the cron route refuses to run without this secret.
 
 BBS sources accept a 5-minute minimum crawl interval. The app route honors that interval, but your scheduler must call `/api/cron/crawl` every 5 minutes for true 5-minute operation. Vercel Hobby plans reject high-frequency cron schedules, so this project uses an external cron service by default. Use Vercel Pro if you want to re-add Vercel Cron. If the runtime cannot launch Playwright, set `DISABLE_BROWSER_SCREENSHOTS=true`; radar metrics still save from text snapshots.
 

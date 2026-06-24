@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { BbsSnapshot, BbsSnapshotMetrics } from './types'
+import type { BbsSnapshot, BbsSnapshotMetrics, EventInput } from './types'
 import { events, posts, stores } from './demo-data'
 import {
   buildBbsSnapshotMetrics,
@@ -24,6 +24,46 @@ describe('scoreEvents', () => {
     assert.ok(scored[0].store.name)
     assert.ok(scored[0].metrics.postCount > 0)
   })
+
+  it('keeps score differences when official event content is the main signal', () => {
+    const store = {
+      ...stores[0],
+      id: 'official-only-store',
+      strongDays: [],
+      strongEvents: [],
+      weakEvents: [],
+      trustSeed: 60,
+    }
+    const officialOnlyEvents: EventInput[] = [
+      {
+        id: 'event-detailed',
+        storeId: store.id,
+        date: '2026-06-20',
+        weekday: '土曜',
+        startsAt: '13:00',
+        session: 'day',
+        category: 'イベント',
+        title: '女性無料 初参加歓迎の昼イベント',
+        details: '13時から開催。女性無料、初めての方歓迎、予約参加と人数の条件が具体的。',
+      },
+      {
+        id: 'event-plain',
+        storeId: store.id,
+        date: '2026-06-20',
+        weekday: '土曜',
+        startsAt: '13:00',
+        session: 'day',
+        category: 'イベント',
+        title: '通常営業',
+      },
+    ]
+
+    const scored = scoreEvents(officialOnlyEvents, [store], [])
+    const scores = scored.map((event) => event.score)
+
+    assert.ok(new Set(scores).size > 1)
+    assert.equal(scored[0].id, 'event-detailed')
+  })
 })
 
 describe('buildStoreBbsAnalytics', () => {
@@ -42,13 +82,39 @@ describe('searchExactBbsTerms', () => {
     const matches = searchExactBbsTerms(posts, stores, [
       {
         group: 'popularSingleMale',
-        label: '人気単男',
+        label: '人気単独男性',
         terms: parseExactTerms('人気単男A\n存在しない語'),
       },
     ])
 
     assert.ok(matches.length > 0)
     assert.equal(matches.every((match) => match.term === '人気単男A'), true)
+  })
+
+  it('normalizes full-width characters and whitespace for exact term matching', () => {
+    const matches = searchExactBbsTerms(
+      [
+        {
+          id: 'normalized-post',
+          storeId: stores[0].id,
+          source: 'manual',
+          postedAt: '2026-06-13T12:00:00.000Z',
+          body: '人気 単男 A が反応しました。',
+          keywords: [],
+        },
+      ],
+      stores,
+      [
+        {
+          group: 'popularSingleMale',
+          label: '人気単独男性',
+          terms: parseExactTerms('人気単男Ａ'),
+        },
+      ],
+    )
+
+    assert.equal(matches.length, 1)
+    assert.equal(matches[0].term, '人気単男A')
   })
 })
 

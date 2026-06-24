@@ -15,9 +15,9 @@ export default async function ForecastPage() {
           ナイトレーダーへ戻る
         </a>
         <header className="insight-header">
-          <span>来店予告</span>
-          <h1>来店予告ランキング</h1>
-          <p>掲示板内の注目ワード、投稿鮮度、イベント相性から、検討しやすい順に並べます。</p>
+          <span>行き先候補</span>
+          <h1>検討候補ランキング</h1>
+          <p>掲示板内の注目ワード、投稿鮮度、曜日相性、イベント内容から、今日比較しやすい順に並べます。来店を保証するものではありません。</p>
         </header>
         <div className="forecast-page-list">
           {forecasts.map((forecast) => (
@@ -26,7 +26,7 @@ export default async function ForecastPage() {
               <div>
                 <span>{forecast.dateLabel} / {forecast.timeLabel}</span>
                 <h2>{formatBarName(forecast.store.name)}</h2>
-                <p>{forecast.event?.title ?? '掲示板観測'}</p>
+                <p>{forecast.event?.title ?? '掲示板観測'} / 優先度 {forecast.score}</p>
                 <ul>
                   {forecast.reasons.map((reason) => (
                     <li key={reason}>{reason}</li>
