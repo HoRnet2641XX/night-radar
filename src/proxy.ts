@@ -13,6 +13,10 @@ export function proxy(request: NextRequest) {
   const username = process.env.BASIC_AUTH_USER
   const password = process.env.BASIC_AUTH_PASSWORD
 
+  if (request.nextUrl.pathname === '/api/cron/crawl' || request.nextUrl.pathname === '/api/stripe/webhook') {
+    return NextResponse.next()
+  }
+
   if (!username || !password) return NextResponse.next()
 
   const authorization = request.headers.get('authorization')
