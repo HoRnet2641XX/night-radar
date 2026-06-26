@@ -1099,15 +1099,42 @@ export async function crawlUserBbsSources(sourceIds?: string[]) {
   throw new RepositoryError('BBS巡回は運営側の定期ジョブで実行します。', 403)
 }
 
-export async function crawlDueBbsSourcesForCron() {
+export type CronCrawlOptions = {
+  batch?: number | 'auto'
+  batchSize?: number
+}
+
+function normalizeCronBatchOptions(activeCount: number, options: CronCrawlOptions) {
+  if (!options.batchSize) return null
+  const size = Math.max(1, Math.min(10, Math.floor(options.batchSize)))
+  const totalBatches = Math.max(1, Math.ceil(activeCount / size))
+  const index =
+    options.batch === 'auto'
+      ? Math.floor(Date.now() / 300_000) % totalBatches
+      : Math.max(0, Math.min(totalBatches - 1, Math.floor(options.batch ?? 0)))
+  const start = index * size
+
+  return {
+    index,
+    size,
+    start,
+    endExclusive: Math.min(start + size, activeCount),
+    totalBatches,
+  }
+}
+
+export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) {
   const supabase = createSupabaseAdminClient()
   if (!supabase) throw new RepositoryError('Supabase service role env is not configured.', 503)
 
-  const { data, error } = await supabase.from('bbs_sources').select('*').eq('active', true).limit(30)
+  const { data, error } = await supabase.from('bbs_sources').select('*').eq('active', true).order('id').limit(30)
   if (error) throw new RepositoryError(error.message, 400)
 
+  const activeRows = data ?? []
+  const batch = normalizeCronBatchOptions(activeRows.length, options)
+  const selectedRows = batch ? activeRows.slice(batch.start, batch.endExclusive) : activeRows
   const now = Date.now()
-  const dueRows = (data ?? []).filter((row) => {
+  const dueRows = selectedRows.filter((row) => {
     if (!row.last_fetched_at) return true
     const elapsedMinutes = (now - new Date(row.last_fetched_at).getTime()) / 60_000
     return elapsedMinutes >= Number(row.crawl_interval_minutes ?? 360)
@@ -1118,7 +1145,15 @@ export async function crawlDueBbsSourcesForCron() {
     results.push(await crawlSourceRow(supabase, row))
   }
 
-  return { mode: 'database' as const, checked: data?.length ?? 0, crawled: results.length, results }
+  return {
+    mode: 'database' as const,
+    checked: activeRows.length,
+    selected: selectedRows.length,
+    due: dueRows.length,
+    crawled: results.length,
+    batch,
+    results,
+  }
 }
 
 export async function getCurrentSubscriptionForCheckout() {

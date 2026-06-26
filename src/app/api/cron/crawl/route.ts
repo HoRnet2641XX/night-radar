@@ -1,5 +1,6 @@
 import { jsonError } from '@/lib/env'
 import { crawlDueBbsSourcesForCron, RepositoryError } from '@/lib/server/repository'
+import type { CronCrawlOptions } from '@/lib/server/repository'
 
 export const runtime = 'nodejs'
 
@@ -17,11 +18,32 @@ function getCronAuthorizationError(request: Request) {
   return request.headers.get('authorization') === `Bearer ${secret}` ? null : 'BBS巡回の認証に失敗しました。'
 }
 
+function getCronCrawlOptions(request: Request): CronCrawlOptions {
+  const url = new URL(request.url)
+  const batchSizeValue = Number(url.searchParams.get('batchSize') ?? url.searchParams.get('size') ?? 0)
+  const batchSize = Number.isFinite(batchSizeValue) && batchSizeValue > 0 ? batchSizeValue : undefined
+  const batchValue = url.searchParams.get('batch')
+  let batch: CronCrawlOptions['batch']
+  if (batchValue === 'auto') batch = 'auto'
+  else if (batchValue != null) {
+    const parsedBatch = Number(batchValue)
+    batch = Number.isFinite(parsedBatch) && parsedBatch >= 0 ? parsedBatch : undefined
+  }
+
+  return {
+    batch,
+    batchSize,
+  }
+}
+
 function compactCronCrawlResult(result: CronCrawlResult) {
   return {
     mode: result.mode,
     checked: result.checked,
+    selected: result.selected,
+    due: result.due,
     crawled: result.crawled,
+    batch: result.batch,
     results: result.results.map(({ source, run, post, snapshot }) => ({
       source: {
         id: source.id,
@@ -68,7 +90,7 @@ export async function GET(request: Request) {
   if (authorizationError) return jsonError(authorizationError, authorizationError.includes('CRON_SECRET') ? 503 : 401)
 
   try {
-    return Response.json(compactCronCrawlResult(await crawlDueBbsSourcesForCron()))
+    return Response.json(compactCronCrawlResult(await crawlDueBbsSourcesForCron(getCronCrawlOptions(request))))
   } catch (error) {
     if (error instanceof RepositoryError && error.status === 503) {
       return Response.json({ mode: 'demo', checked: 0, crawled: 0, message: error.message })
