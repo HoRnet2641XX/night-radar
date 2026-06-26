@@ -1102,6 +1102,9 @@ export async function crawlUserBbsSources(sourceIds?: string[]) {
 export type CronCrawlOptions = {
   batch?: number | 'auto'
   batchSize?: number
+  excludeSourceIds?: string[]
+  force?: boolean
+  sourceIds?: string[]
 }
 
 function normalizeCronBatchOptions(activeCount: number, options: CronCrawlOptions) {
@@ -1123,6 +1126,15 @@ function normalizeCronBatchOptions(activeCount: number, options: CronCrawlOption
   }
 }
 
+function normalizeCronSourceFilter(values?: string[]) {
+  const normalized = values
+    ?.map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => value.toLowerCase())
+
+  return normalized?.length ? new Set(normalized) : null
+}
+
 export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) {
   const supabase = createSupabaseAdminClient()
   if (!supabase) throw new RepositoryError('Supabase service role env is not configured.', 503)
@@ -1130,15 +1142,26 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
   const { data, error } = await supabase.from('bbs_sources').select('*').eq('active', true).order('id').limit(30)
   if (error) throw new RepositoryError(error.message, 400)
 
-  const activeRows = data ?? []
+  const sourceFilter = normalizeCronSourceFilter(options.sourceIds)
+  const excludeFilter = normalizeCronSourceFilter(options.excludeSourceIds)
+  const activeRows = (data ?? []).filter((row) => {
+    const sourceId = stringField(row, 'id').toLowerCase()
+    if (sourceFilter && !sourceFilter.has(sourceId)) return false
+    if (excludeFilter?.has(sourceId)) return false
+    return true
+  })
+  if (sourceFilter && activeRows.length === 0) throw new RepositoryError('指定したBBSソースが見つかりません。', 404)
+
   const batch = normalizeCronBatchOptions(activeRows.length, options)
   const selectedRows = batch ? activeRows.slice(batch.start, batch.endExclusive) : activeRows
   const now = Date.now()
-  const dueRows = selectedRows.filter((row) => {
-    if (!row.last_fetched_at) return true
-    const elapsedMinutes = (now - new Date(row.last_fetched_at).getTime()) / 60_000
-    return elapsedMinutes >= Number(row.crawl_interval_minutes ?? 360)
-  })
+  const dueRows = options.force
+    ? selectedRows
+    : selectedRows.filter((row) => {
+        if (!row.last_fetched_at) return true
+        const elapsedMinutes = (now - new Date(row.last_fetched_at).getTime()) / 60_000
+        return elapsedMinutes >= Number(row.crawl_interval_minutes ?? 360)
+      })
 
   const results = []
   for (const row of dueRows) {
@@ -1152,6 +1175,11 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
     due: dueRows.length,
     crawled: results.length,
     batch,
+    filters: {
+      excludeSourceIds: options.excludeSourceIds ?? [],
+      force: Boolean(options.force),
+      sourceIds: options.sourceIds ?? [],
+    },
     results,
   }
 }

@@ -29,10 +29,16 @@ function getCronCrawlOptions(request: Request): CronCrawlOptions {
     const parsedBatch = Number(batchValue)
     batch = Number.isFinite(parsedBatch) && parsedBatch >= 0 ? parsedBatch : undefined
   }
+  const sourceIds = parseSourceIds(url.searchParams.get('source') ?? url.searchParams.get('sourceId') ?? url.searchParams.get('sources') ?? url.searchParams.get('ids'))
+  const excludeSourceIds = parseSourceIds(url.searchParams.get('exclude') ?? url.searchParams.get('excludeSource') ?? url.searchParams.get('excludeSourceId'))
+  const force = ['1', 'true', 'yes'].includes((url.searchParams.get('force') ?? '').toLowerCase())
 
   return {
     batch,
     batchSize,
+    excludeSourceIds,
+    force,
+    sourceIds,
   }
 }
 
@@ -44,6 +50,7 @@ function compactCronCrawlResult(result: CronCrawlResult) {
     due: result.due,
     crawled: result.crawled,
     batch: result.batch,
+    filters: result.filters,
     results: result.results.map(({ source, run, post, snapshot }) => ({
       source: {
         id: source.id,
@@ -83,6 +90,15 @@ function compactCronCrawlResult(result: CronCrawlResult) {
         : null,
     })),
   }
+}
+
+function parseSourceIds(value: string | null) {
+  return (
+    value
+      ?.split(',')
+      .map((item) => item.trim())
+      .filter(Boolean) ?? []
+  )
 }
 
 export async function GET(request: Request) {

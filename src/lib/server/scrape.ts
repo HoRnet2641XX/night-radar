@@ -21,6 +21,16 @@ function readPositiveIntEnv(name: string, fallback: number) {
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
 
+function getFetchTimeoutMs(url: URL) {
+  const standardTimeoutMs = readPositiveIntEnv('SCRAPE_FETCH_TIMEOUT_MS', 8_000)
+  if (url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com')) {
+    const slowHostTimeoutMs = readPositiveIntEnv('SCRAPE_SLOW_HOST_TIMEOUT_MS', 12_000)
+    return Math.max(standardTimeoutMs, readPositiveIntEnv('SCRAPE_NEO_FETCH_TIMEOUT_MS', slowHostTimeoutMs))
+  }
+
+  return standardTimeoutMs
+}
+
 function isAllowedHost(hostname: string) {
   if (blockedHostPatterns.some((pattern) => pattern.test(hostname))) return false
 
@@ -103,11 +113,12 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
   try {
     const response = await fetch(url, {
       redirect: 'follow',
-      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_FETCH_TIMEOUT_MS', 8_000)),
+      signal: AbortSignal.timeout(getFetchTimeoutMs(url)),
       headers: {
         'User-Agent': process.env.SCRAPE_USER_AGENT || defaultUserAgent,
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+        'Cache-Control': 'no-cache',
       },
     })
 
