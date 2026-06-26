@@ -11,6 +11,20 @@ function readPositiveIntEnv(name: string, fallback: number) {
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
 
+function getScreenshotTimeoutMs(url: string) {
+  const standardTimeoutMs = readPositiveIntEnv('BROWSER_SCREENSHOT_TIMEOUT_MS', 4_500)
+  try {
+    const hostname = new URL(url).hostname
+    if (hostname === 'neo-bbs.com' || hostname.endsWith('.neo-bbs.com')) {
+      return Math.max(standardTimeoutMs, readPositiveIntEnv('BROWSER_NEO_SCREENSHOT_TIMEOUT_MS', 8_000))
+    }
+  } catch {
+    return standardTimeoutMs
+  }
+
+  return standardTimeoutMs
+}
+
 async function captureBrowserSnapshot(url: string) {
   if (process.env.DISABLE_BROWSER_SCREENSHOTS === 'true') return null
 
@@ -26,7 +40,7 @@ async function captureBrowserSnapshot(url: string) {
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8' })
     await page.goto(url, {
       waitUntil: 'domcontentloaded',
-      timeout: readPositiveIntEnv('BROWSER_SCREENSHOT_TIMEOUT_MS', 4_500),
+      timeout: getScreenshotTimeoutMs(url),
     })
     await page.waitForTimeout(readPositiveIntEnv('BROWSER_SCREENSHOT_SETTLE_MS', 180))
     const text = ((await page.locator('body').textContent({ timeout: 1_000 })) ?? '').replace(/\s+/g, ' ').trim()
