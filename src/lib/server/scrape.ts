@@ -148,13 +148,15 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
       status: 'ok',
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown scrape error.'
+    const blockedByRuntime = message === 'fetch failed'
     return {
       url: url.toString(),
       title: '',
       extractedText: '',
       fetchedAt: new Date().toISOString(),
-      status: 'failed',
-      message: error instanceof Error ? error.message : 'Unknown scrape error.',
+      status: blockedByRuntime ? 'blocked' : 'failed',
+      message: blockedByRuntime ? 'Fetch blocked by runtime.' : message,
     }
   }
 }
