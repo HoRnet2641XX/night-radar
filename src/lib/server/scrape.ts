@@ -32,8 +32,46 @@ function getFetchTimeoutMs(url: URL) {
 }
 
 function getFetchAttemptCount(url: URL) {
-  const attempts = url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com') ? readPositiveIntEnv('SCRAPE_NEO_FETCH_ATTEMPTS', 2) : 1
+  const attempts = url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com') ? readPositiveIntEnv('SCRAPE_NEO_FETCH_ATTEMPTS', 1) : 1
   return Math.max(1, Math.min(3, attempts))
+}
+
+function shouldUseReaderFirst(url: URL) {
+  return url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com')
+}
+
+function readerUrlFor(url: URL) {
+  return `https://r.jina.ai/http://${url.toString()}`
+}
+
+async function scrapeReadableTextViaReader(url: URL): Promise<ScrapeResult | null> {
+  try {
+    const response = await fetch(readerUrlFor(url), {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_READER_TIMEOUT_MS', 10_000)),
+      headers: {
+        Accept: 'text/plain, text/markdown;q=0.9, */*;q=0.8',
+        'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+      },
+    })
+    if (!response.ok) return null
+
+    const text = await response.text()
+    const title = text.match(/^Title:\s*(.+)$/m)?.[1]?.trim() ?? ''
+    const content = text.split(/Markdown Content:\s*/).at(1) ?? text
+    const extractedText = compactText(content)
+    if (extractedText.length < 80) return null
+
+    return {
+      url: url.toString(),
+      title,
+      extractedText: extractedText.slice(0, 12_000),
+      fetchedAt: new Date().toISOString(),
+      status: 'ok',
+    }
+  } catch {
+    return null
+  }
 }
 
 function isAllowedHost(hostname: string) {
@@ -113,6 +151,11 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
       status: 'blocked',
       message: 'This host is blocked by the scraper safety policy.',
     }
+  }
+
+  if (shouldUseReaderFirst(url)) {
+    const readerResult = await scrapeReadableTextViaReader(url)
+    if (readerResult) return readerResult
   }
 
   const maxAttempts = getFetchAttemptCount(url)
