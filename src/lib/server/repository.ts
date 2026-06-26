@@ -1037,7 +1037,7 @@ async function crawlSourceRow(
   const result = await scrapePublicPage(source.url)
   const candidatePost = scrapeResultToPost(result, source.storeId)
   const post = candidatePost ? await savePostRow(supabase, candidatePost) : null
-  const snapshot = await buildBbsSnapshot(source, result)
+  const snapshot = result.status === 'ok' ? await buildBbsSnapshot(source, result) : null
   const fetchedAt = result.fetchedAt
 
   await supabase
@@ -1063,11 +1063,9 @@ async function crawlSourceRow(
     .select('*')
     .single()
 
-  const { data: snapshotRow } = await supabase
-    .from('bbs_snapshots')
-    .insert(toBbsSnapshotRow(snapshot))
-    .select('*')
-    .single()
+  const { data: snapshotRow } = snapshot
+    ? await supabase.from('bbs_snapshots').insert(toBbsSnapshotRow(snapshot)).select('*').single()
+    : { data: null }
 
   return {
     source: {

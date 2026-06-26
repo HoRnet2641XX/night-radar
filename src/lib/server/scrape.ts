@@ -31,6 +31,11 @@ function getFetchTimeoutMs(url: URL) {
   return standardTimeoutMs
 }
 
+function getFetchAttemptCount(url: URL) {
+  const attempts = url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com') ? readPositiveIntEnv('SCRAPE_NEO_FETCH_ATTEMPTS', 2) : 1
+  return Math.max(1, Math.min(3, attempts))
+}
+
 function isAllowedHost(hostname: string) {
   if (blockedHostPatterns.some((pattern) => pattern.test(hostname))) return false
 
@@ -110,65 +115,79 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
     }
   }
 
-  try {
-    const response = await fetch(url, {
-      redirect: 'follow',
-      signal: AbortSignal.timeout(getFetchTimeoutMs(url)),
-      headers: {
-        'User-Agent': process.env.SCRAPE_USER_AGENT || defaultUserAgent,
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-        'Cache-Control': 'no-cache',
-      },
-    })
+  const maxAttempts = getFetchAttemptCount(url)
+  let lastErrorMessage = 'Unknown scrape error.'
 
-    if (!response.ok) {
-      const blocked = response.status === 401 || response.status === 403 || response.status === 429
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const requestUrl = new URL(url)
+      if (attempt > 1) requestUrl.searchParams.set('nr_retry', `${Date.now()}`)
+      const response = await fetch(requestUrl, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(getFetchTimeoutMs(url)),
+        headers: {
+          'User-Agent': process.env.SCRAPE_USER_AGENT || defaultUserAgent,
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+          'Cache-Control': 'no-cache',
+        },
+      })
+
+      if (!response.ok) {
+        const blocked = response.status === 401 || response.status === 403 || response.status === 429
+        if (blocked || attempt === maxAttempts) {
+          return {
+            url: url.toString(),
+            title: '',
+            extractedText: '',
+            fetchedAt: new Date().toISOString(),
+            status: blocked ? 'blocked' : 'failed',
+            message: blocked ? `Fetch blocked with ${response.status}.` : `Fetch failed with ${response.status}.`,
+          }
+        }
+
+        lastErrorMessage = `Fetch failed with ${response.status}.`
+        continue
+      }
+
+      const contentType = response.headers.get('content-type') ?? ''
+      if (!contentType.includes('text/html')) {
+        return {
+          url: url.toString(),
+          title: '',
+          extractedText: '',
+          fetchedAt: new Date().toISOString(),
+          status: 'blocked',
+          message: 'Only public HTML pages are supported.',
+        }
+      }
+
+      const html = (await response.text()).slice(0, 500_000)
+      const $ = cheerio.load(html)
+      const title = $('title').first().text().trim()
+      const extractedText = extractReadableText($)
+
       return {
         url: url.toString(),
-        title: '',
-        extractedText: '',
+        title,
+        extractedText,
         fetchedAt: new Date().toISOString(),
-        status: blocked ? 'blocked' : 'failed',
-        message: blocked ? `Fetch blocked with ${response.status}.` : `Fetch failed with ${response.status}.`,
+        status: 'ok',
       }
+    } catch (error) {
+      lastErrorMessage = error instanceof Error ? error.message : 'Unknown scrape error.'
+      if (attempt < maxAttempts) continue
     }
+  }
 
-    const contentType = response.headers.get('content-type') ?? ''
-    if (!contentType.includes('text/html')) {
-      return {
-        url: url.toString(),
-        title: '',
-        extractedText: '',
-        fetchedAt: new Date().toISOString(),
-        status: 'blocked',
-        message: 'Only public HTML pages are supported.',
-      }
-    }
-
-    const html = (await response.text()).slice(0, 500_000)
-    const $ = cheerio.load(html)
-    const title = $('title').first().text().trim()
-    const extractedText = extractReadableText($)
-
-    return {
-      url: url.toString(),
-      title,
-      extractedText,
-      fetchedAt: new Date().toISOString(),
-      status: 'ok',
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown scrape error.'
-    const blockedByRuntime = message === 'fetch failed' || /timeout|aborted/i.test(message)
-    return {
-      url: url.toString(),
-      title: '',
-      extractedText: '',
-      fetchedAt: new Date().toISOString(),
-      status: blockedByRuntime ? 'blocked' : 'failed',
-      message: blockedByRuntime ? 'Fetch blocked or timed out by runtime.' : message,
-    }
+  const blockedByRuntime = lastErrorMessage === 'fetch failed' || /timeout|aborted/i.test(lastErrorMessage)
+  return {
+    url: url.toString(),
+    title: '',
+    extractedText: '',
+    fetchedAt: new Date().toISOString(),
+    status: blockedByRuntime ? 'blocked' : 'failed',
+    message: blockedByRuntime ? 'Fetch blocked or timed out by runtime.' : lastErrorMessage,
   }
 }
 
