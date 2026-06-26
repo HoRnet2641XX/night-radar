@@ -3,23 +3,38 @@ import { buildBbsSnapshotMetrics, scoreBbsSnapshot } from '../scoring'
 import type { BbsSnapshot, BbsSource, ScrapeResult } from '../types'
 
 const screenshotViewport = { width: 390, height: 844 }
+const defaultUserAgent =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
+
+function readPositiveIntEnv(name: string, fallback: number) {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
 
 async function captureBrowserSnapshot(url: string) {
   if (process.env.DISABLE_BROWSER_SCREENSHOTS === 'true') return null
 
+  let closeBrowser: (() => Promise<void>) | null = null
   try {
     const { chromium } = await import('playwright')
     const browser = await chromium.launch({ headless: true })
-    const page = await browser.newPage({ viewport: screenshotViewport })
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 12_000 })
-    await page.waitForTimeout(600)
-    const text = ((await page.locator('body').textContent({ timeout: 2_000 })) ?? '').replace(/\s+/g, ' ').trim()
+    closeBrowser = () => browser.close()
+    const page = await browser.newPage({
+      viewport: screenshotViewport,
+      userAgent: process.env.SCRAPE_USER_AGENT || defaultUserAgent,
+    })
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8' })
+    await page.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: readPositiveIntEnv('BROWSER_SCREENSHOT_TIMEOUT_MS', 4_500),
+    })
+    await page.waitForTimeout(readPositiveIntEnv('BROWSER_SCREENSHOT_SETTLE_MS', 180))
+    const text = ((await page.locator('body').textContent({ timeout: 1_000 })) ?? '').replace(/\s+/g, ' ').trim()
     const image = await page.screenshot({
       type: 'jpeg',
       quality: 42,
       fullPage: false,
     })
-    await browser.close()
 
     return {
       screenshotDataUrl: `data:image/jpeg;base64,${image.toString('base64')}`,
@@ -27,6 +42,8 @@ async function captureBrowserSnapshot(url: string) {
     }
   } catch {
     return null
+  } finally {
+    await closeBrowser?.().catch(() => {})
   }
 }
 

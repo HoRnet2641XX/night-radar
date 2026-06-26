@@ -13,6 +13,14 @@ const blockedHostPatterns = [
   /\.local$/i,
 ]
 
+const defaultUserAgent =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
+
+function readPositiveIntEnv(name: string, fallback: number) {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
 function isAllowedHost(hostname: string) {
   if (blockedHostPatterns.some((pattern) => pattern.test(hostname))) return false
 
@@ -95,21 +103,23 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
   try {
     const response = await fetch(url, {
       redirect: 'follow',
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_FETCH_TIMEOUT_MS', 8_000)),
       headers: {
-        'User-Agent': 'NightRadarBot/0.1 (+https://example.com; public-info aggregation)',
-        Accept: 'text/html,application/xhtml+xml',
+        'User-Agent': process.env.SCRAPE_USER_AGENT || defaultUserAgent,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
       },
     })
 
     if (!response.ok) {
+      const blocked = response.status === 401 || response.status === 403 || response.status === 429
       return {
         url: url.toString(),
         title: '',
         extractedText: '',
         fetchedAt: new Date().toISOString(),
-        status: 'failed',
-        message: `Fetch failed with ${response.status}.`,
+        status: blocked ? 'blocked' : 'failed',
+        message: blocked ? `Fetch blocked with ${response.status}.` : `Fetch failed with ${response.status}.`,
       }
     }
 
