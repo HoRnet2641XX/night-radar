@@ -3,6 +3,7 @@ import { crawlDueBbsSourcesForCron, RepositoryError } from '@/lib/server/reposit
 import type { CronCrawlOptions } from '@/lib/server/repository'
 
 export const runtime = 'nodejs'
+export const maxDuration = 30
 
 type CronCrawlResult = Awaited<ReturnType<typeof crawlDueBbsSourcesForCron>>
 

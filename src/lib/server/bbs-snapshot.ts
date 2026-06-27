@@ -25,13 +25,30 @@ function getScreenshotTimeoutMs(url: string) {
   return standardTimeoutMs
 }
 
+async function launchChromiumBrowser() {
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    const [{ default: chromium }, { chromium: playwrightChromium }] = await Promise.all([
+      import('@sparticuz/chromium'),
+      import('playwright-core'),
+    ])
+
+    return playwrightChromium.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    })
+  }
+
+  const { chromium } = await import('playwright')
+  return chromium.launch({ headless: true })
+}
+
 async function captureBrowserSnapshot(url: string) {
   if (process.env.DISABLE_BROWSER_SCREENSHOTS === 'true') return null
 
   let closeBrowser: (() => Promise<void>) | null = null
   try {
-    const { chromium } = await import('playwright')
-    const browser = await chromium.launch({ headless: true })
+    const browser = await launchChromiumBrowser()
     closeBrowser = () => browser.close()
     const page = await browser.newPage({
       viewport: screenshotViewport,
