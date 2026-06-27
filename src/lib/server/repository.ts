@@ -24,7 +24,8 @@ import type {
   WordBookmark,
 } from '../types'
 import { createSupabaseAdminClient, createSupabaseServerClient } from '../supabase/server'
-import { buildBbsSnapshot } from './bbs-snapshot'
+import { buildBbsSnapshot, createBrowserSnapshotSession } from './bbs-snapshot'
+import type { BrowserSnapshotSession } from './bbs-snapshot'
 import { scrapePublicPage, scrapeResultToPost } from './scrape'
 import { getServiceSetupStatus } from './setup-status'
 
@@ -1032,12 +1033,13 @@ export async function getCurrentNotificationDelivery() {
 async function crawlSourceRow(
   supabase: DataClient,
   row: DbRow,
+  browserSession?: BrowserSnapshotSession | null,
 ): Promise<{ source: BbsSource; run: CrawlRun; post: PostRecord | null; snapshot: BbsSnapshot | null }> {
   const source = toBbsSource(row)
   const result = await scrapePublicPage(source.url)
   const candidatePost = scrapeResultToPost(result, source.storeId)
   const post = candidatePost ? await savePostRow(supabase, candidatePost) : null
-  const snapshot = result.status === 'ok' ? await buildBbsSnapshot(source, result) : null
+  const snapshot = result.status === 'ok' ? await buildBbsSnapshot(source, result, browserSession) : null
   const fetchedAt = result.fetchedAt
 
   await supabase
@@ -1162,8 +1164,13 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
       })
 
   const results = []
-  for (const row of dueRows) {
-    results.push(await crawlSourceRow(supabase, row))
+  const browserSession = dueRows.length ? await createBrowserSnapshotSession() : null
+  try {
+    for (const row of dueRows) {
+      results.push(await crawlSourceRow(supabase, row, browserSession))
+    }
+  } finally {
+    await browserSession?.close()
   }
 
   return {

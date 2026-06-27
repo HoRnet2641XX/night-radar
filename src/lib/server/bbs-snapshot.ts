@@ -2,6 +2,18 @@ import { randomUUID } from 'node:crypto'
 import { buildBbsSnapshotMetrics, scoreBbsSnapshot } from '../scoring'
 import type { BbsSnapshot, BbsSource, ScrapeResult } from '../types'
 
+type BrowserSnapshot = {
+  screenshotDataUrl: string
+  extractedText: string
+}
+
+type BrowserLike = Awaited<ReturnType<typeof launchChromiumBrowser>>
+
+export type BrowserSnapshotSession = {
+  capture: (url: string) => Promise<BrowserSnapshot | null>
+  close: () => Promise<void>
+}
+
 const screenshotViewport = { width: 390, height: 844 }
 const defaultUserAgent =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
@@ -43,34 +55,46 @@ async function launchChromiumBrowser() {
   return chromium.launch({ headless: true })
 }
 
-async function captureBrowserSnapshot(url: string) {
+async function captureBrowserSnapshotWithBrowser(url: string, browser: BrowserLike): Promise<BrowserSnapshot | null> {
+  try {
+    const page = await browser.newPage({
+      viewport: screenshotViewport,
+      userAgent: process.env.SCRAPE_USER_AGENT || defaultUserAgent,
+    })
+    try {
+      await page.setExtraHTTPHeaders({ 'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8' })
+      await page.goto(url, {
+        waitUntil: 'domcontentloaded',
+        timeout: getScreenshotTimeoutMs(url),
+      })
+      await page.waitForTimeout(readPositiveIntEnv('BROWSER_SCREENSHOT_SETTLE_MS', 180))
+      const text = ((await page.locator('body').textContent({ timeout: 1_000 })) ?? '').replace(/\s+/g, ' ').trim()
+      const image = await page.screenshot({
+        type: 'jpeg',
+        quality: 42,
+        fullPage: false,
+      })
+
+      return {
+        screenshotDataUrl: `data:image/jpeg;base64,${image.toString('base64')}`,
+        extractedText: text.slice(0, 12_000),
+      }
+    } finally {
+      await page.close().catch(() => {})
+    }
+  } catch {
+    return null
+  }
+}
+
+async function captureBrowserSnapshot(url: string): Promise<BrowserSnapshot | null> {
   if (process.env.DISABLE_BROWSER_SCREENSHOTS === 'true') return null
 
   let closeBrowser: (() => Promise<void>) | null = null
   try {
     const browser = await launchChromiumBrowser()
     closeBrowser = () => browser.close()
-    const page = await browser.newPage({
-      viewport: screenshotViewport,
-      userAgent: process.env.SCRAPE_USER_AGENT || defaultUserAgent,
-    })
-    await page.setExtraHTTPHeaders({ 'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8' })
-    await page.goto(url, {
-      waitUntil: 'domcontentloaded',
-      timeout: getScreenshotTimeoutMs(url),
-    })
-    await page.waitForTimeout(readPositiveIntEnv('BROWSER_SCREENSHOT_SETTLE_MS', 180))
-    const text = ((await page.locator('body').textContent({ timeout: 1_000 })) ?? '').replace(/\s+/g, ' ').trim()
-    const image = await page.screenshot({
-      type: 'jpeg',
-      quality: 42,
-      fullPage: false,
-    })
-
-    return {
-      screenshotDataUrl: `data:image/jpeg;base64,${image.toString('base64')}`,
-      extractedText: text.slice(0, 12_000),
-    }
+    return await captureBrowserSnapshotWithBrowser(url, browser)
   } catch {
     return null
   } finally {
@@ -78,8 +102,35 @@ async function captureBrowserSnapshot(url: string) {
   }
 }
 
-export async function buildBbsSnapshot(source: BbsSource, scrapeResult: ScrapeResult): Promise<BbsSnapshot> {
-  const browserSnapshot = scrapeResult.status === 'ok' ? await captureBrowserSnapshot(scrapeResult.url) : null
+export async function createBrowserSnapshotSession(): Promise<BrowserSnapshotSession> {
+  if (process.env.DISABLE_BROWSER_SCREENSHOTS === 'true') {
+    return {
+      capture: async () => null,
+      close: async () => {},
+    }
+  }
+
+  try {
+    const browser = await launchChromiumBrowser()
+    return {
+      capture: (url) => captureBrowserSnapshotWithBrowser(url, browser),
+      close: () => browser.close().catch(() => {}),
+    }
+  } catch {
+    return {
+      capture: async () => null,
+      close: async () => {},
+    }
+  }
+}
+
+export async function buildBbsSnapshot(
+  source: BbsSource,
+  scrapeResult: ScrapeResult,
+  browserSession?: BrowserSnapshotSession | null,
+): Promise<BbsSnapshot> {
+  const browserSnapshot =
+    scrapeResult.status === 'ok' ? await (browserSession ? browserSession.capture(scrapeResult.url) : captureBrowserSnapshot(scrapeResult.url)) : null
   const extractedText = browserSnapshot?.extractedText || scrapeResult.extractedText || scrapeResult.message || ''
   const metrics = buildBbsSnapshotMetrics(extractedText)
 
