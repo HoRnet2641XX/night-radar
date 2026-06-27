@@ -100,6 +100,28 @@ function includesExactTerm(body: string, term: string) {
   return normalizeExactSearchText(body).includes(normalizedTerm)
 }
 
+export function buildSearchableBbsRecords(posts: PostRecord[], snapshots: BbsSnapshot[] = []): PostRecord[] {
+  const snapshotPosts = snapshots
+    .filter((snapshot) => snapshot.extractedText.trim())
+    .map<PostRecord>((snapshot) => ({
+      id: `snapshot-${snapshot.id}`,
+      storeId: snapshot.storeId,
+      source: 'scrape',
+      sourceUrl: snapshot.url,
+      postedAt: snapshot.capturedAt,
+      body: snapshot.extractedText,
+      keywords: [],
+    }))
+
+  const seen = new Set<string>()
+  return [...snapshotPosts, ...posts].filter((record) => {
+    const key = `${record.storeId}:${record.body.slice(0, 180)}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function countMatches(body: string, pattern: RegExp) {
   return [...body.matchAll(pattern)].length
 }

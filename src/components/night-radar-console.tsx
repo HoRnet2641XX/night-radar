@@ -32,6 +32,7 @@ import { planLimits, planRank } from '@/lib/plans'
 import {
   buildStoreBbsAnalytics,
   buildStoreRadarPoints,
+  buildSearchableBbsRecords,
   buildVisitForecasts,
   buildWatchedWordHits,
   parseExactTerms,
@@ -226,12 +227,19 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   const summary = useMemo(() => summarizeSignals(scoredEvents), [scoredEvents])
   const storeAnalytics = useMemo(() => buildStoreBbsAnalytics(stores, posts), [stores, posts])
   const storeRadar = useMemo(() => buildStoreRadarPoints(stores, posts, bbsSnapshots), [stores, posts, bbsSnapshots])
-  const watchedWordHits = useMemo(() => buildWatchedWordHits(posts, stores, wordBookmarks), [posts, stores, wordBookmarks])
-  const searchedWatchedWordHits = useMemo(() => buildCustomWatchedWordHits(posts, stores, watchSearchTerm), [posts, stores, watchSearchTerm])
+  const searchableBbsRecords = useMemo(() => buildSearchableBbsRecords(posts, bbsSnapshots), [bbsSnapshots, posts])
+  const watchedWordHits = useMemo(
+    () => buildWatchedWordHits(searchableBbsRecords, stores, wordBookmarks),
+    [searchableBbsRecords, stores, wordBookmarks],
+  )
+  const searchedWatchedWordHits = useMemo(
+    () => buildCustomWatchedWordHits(searchableBbsRecords, stores, watchSearchTerm),
+    [searchableBbsRecords, stores, watchSearchTerm],
+  )
   const visitForecasts = useMemo(() => buildVisitForecasts(events, stores, posts), [events, stores, posts])
   const exactMatches = useMemo(
     () =>
-      searchExactBbsTerms(posts, stores, [
+      searchExactBbsTerms(searchableBbsRecords, stores, [
         {
           group: 'popularSingleMale',
           label: exactTermLabels.popularSingleMale,
@@ -248,7 +256,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
           terms: parseExactTerms(exactTerms.negativePerson),
         },
       ]),
-    [exactTerms, posts, stores],
+    [exactTerms, searchableBbsRecords, stores],
   )
   const activeExactMatches = serverMatches ?? exactMatches
   const exactMatchCounts = useMemo(

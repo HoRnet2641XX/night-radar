@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { User } from '@supabase/supabase-js'
 import { events as demoEvents, posts as demoPosts, stores as demoStores, storeSituations, wordCategories } from '../demo-data'
 import { highestAudienceForPlan, normalizePlan, planLimitMessage, planLimits, planRank } from '../plans'
-import { scoreEvents, searchExactBbsTerms } from '../scoring'
+import { buildSearchableBbsRecords, scoreEvents, searchExactBbsTerms } from '../scoring'
 import type {
   BbsSnapshot,
   BbsSource,
@@ -907,10 +907,11 @@ export async function saveAndSearchExactTerms(exactTerms: ExactTermState, fallba
   }
 
   const state = await getDashboardState()
-  const matches = searchExactBbsTerms(state.posts, state.stores, groups)
-  if (matches.length) {
+  const matches = searchExactBbsTerms(buildSearchableBbsRecords(state.posts, state.bbsSnapshots), state.stores, groups)
+  const persistableMatches = matches.filter((match) => !match.post.id.startsWith('snapshot-'))
+  if (persistableMatches.length) {
     await access.supabase.from('exact_matches').upsert(
-      matches.slice(0, 500).map((match) => ({
+      persistableMatches.slice(0, 500).map((match) => ({
         id: match.id,
         user_id: access.user.id,
         post_id: match.post.id,

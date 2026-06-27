@@ -4,6 +4,7 @@ import type { BbsSnapshot, BbsSnapshotMetrics, EventInput } from './types'
 import { events, posts, stores } from './demo-data'
 import {
   buildBbsSnapshotMetrics,
+  buildSearchableBbsRecords,
   buildStoreBbsAnalytics,
   buildStoreRadarPoints,
   buildVisitForecasts,
@@ -115,6 +116,52 @@ describe('searchExactBbsTerms', () => {
 
     assert.equal(matches.length, 1)
     assert.equal(matches[0].term, '人気単男A')
+  })
+
+  it('searches full BBS snapshot text in addition to truncated scrape posts', () => {
+    const longBody = `${'通常テキスト'.repeat(180)} 人気単女Z が来店予告しました。`
+    const searchableRecords = buildSearchableBbsRecords(
+      [
+        {
+          id: 'truncated-scrape-post',
+          storeId: stores[0].id,
+          source: 'scrape',
+          postedAt: '2026-06-13T12:00:00.000Z',
+          body: longBody.slice(0, 1500),
+          keywords: [],
+        },
+      ],
+      [
+        {
+          id: 'full-snapshot',
+          storeId: stores[0].id,
+          url: 'https://example.com/bbs',
+          extractedText: longBody,
+          metrics: {
+            femaleOnly: 0,
+            firstVisit: 0,
+            comeback: 0,
+            groupVisit: 0,
+            emoji: 0,
+            totalSignals: 0,
+            textLength: longBody.length,
+          },
+          radarScore: 60,
+          capturedAt: '2026-06-13T12:05:00.000Z',
+        },
+      ],
+    )
+
+    const matches = searchExactBbsTerms(searchableRecords, stores, [
+      {
+        group: 'popularSingleFemale',
+        label: '人気単独女性',
+        terms: parseExactTerms('人気単女Z'),
+      },
+    ])
+
+    assert.equal(matches.length, 1)
+    assert.equal(matches[0].post.id, 'snapshot-full-snapshot')
   })
 })
 
