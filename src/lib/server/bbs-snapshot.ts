@@ -108,24 +108,9 @@ async function captureBrowserSnapshot(url: string): Promise<BrowserSnapshot | nu
 }
 
 export async function createBrowserSnapshotSession(): Promise<BrowserSnapshotSession> {
-  if (process.env.DISABLE_BROWSER_SCREENSHOTS === 'true') {
-    return {
-      capture: async () => null,
-      close: async () => {},
-    }
-  }
-
-  try {
-    const browser = await launchChromiumBrowser()
-    return {
-      capture: (url) => captureBrowserSnapshotWithBrowser(url, browser),
-      close: () => browser.close().catch(() => {}),
-    }
-  } catch {
-    return {
-      capture: async () => null,
-      close: async () => {},
-    }
+  return {
+    capture: (url) => captureBrowserSnapshot(url),
+    close: async () => {},
   }
 }
 
