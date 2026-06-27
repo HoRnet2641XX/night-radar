@@ -1135,6 +1135,16 @@ function normalizeCronSourceFilter(values?: string[]) {
   return normalized?.length ? new Set(normalized) : null
 }
 
+function prioritizeBbsRowsForCrawl(rows: DbRow[]) {
+  return [...rows].sort((a, b) => {
+    const aId = stringField(a, 'id')
+    const bId = stringField(b, 'id')
+    if (aId === 'neo-bbs') return -1
+    if (bId === 'neo-bbs') return 1
+    return 0
+  })
+}
+
 export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) {
   const supabase = createSupabaseAdminClient()
   if (!supabase) throw new RepositoryError('Supabase service role env is not configured.', 503)
@@ -1162,11 +1172,12 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
         const elapsedMinutes = (now - new Date(row.last_fetched_at).getTime()) / 60_000
         return elapsedMinutes >= Number(row.crawl_interval_minutes ?? 360)
       })
+  const orderedDueRows = prioritizeBbsRowsForCrawl(dueRows)
 
   const results = []
-  const browserSession = dueRows.length ? await createBrowserSnapshotSession() : null
+  const browserSession = orderedDueRows.length ? await createBrowserSnapshotSession() : null
   try {
-    for (const row of dueRows) {
+    for (const row of orderedDueRows) {
       results.push(await crawlSourceRow(supabase, row, browserSession))
     }
   } finally {
