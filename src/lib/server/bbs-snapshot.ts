@@ -28,7 +28,7 @@ function getScreenshotTimeoutMs(url: string) {
   try {
     const hostname = new URL(url).hostname
     if (hostname === 'neo-bbs.com' || hostname.endsWith('.neo-bbs.com')) {
-      return Math.max(standardTimeoutMs, readPositiveIntEnv('BROWSER_NEO_SCREENSHOT_TIMEOUT_MS', 8_000))
+      return Math.max(standardTimeoutMs, readPositiveIntEnv('BROWSER_NEO_SCREENSHOT_TIMEOUT_MS', 12_000))
     }
   } catch {
     return standardTimeoutMs
