@@ -23,6 +23,45 @@ function readPositiveIntEnv(name: string, fallback: number) {
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
 
+function escapeSvgText(value: string) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function wrapSnapshotText(value: string, maxLineLength = 26, maxLines = 34) {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  const lines: string[] = []
+  for (let index = 0; index < normalized.length && lines.length < maxLines; index += maxLineLength) {
+    lines.push(normalized.slice(index, index + maxLineLength))
+  }
+  return lines
+}
+
+function buildTextSnapshotDataUrl(source: BbsSource, scrapeResult: ScrapeResult, extractedText: string) {
+  if (!extractedText.trim()) return undefined
+
+  const lines = wrapSnapshotText(extractedText)
+  const textRows = lines
+    .map((line, index) => `<text x="22" y="${118 + index * 19}" class="body">${escapeSvgText(line)}</text>`)
+    .join('')
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844">
+  <rect width="390" height="844" fill="#08111f"/>
+  <rect x="14" y="14" width="362" height="816" rx="18" fill="#101827" stroke="#27364b"/>
+  <text x="22" y="48" class="label">BBS本文スナップショット</text>
+  <text x="22" y="78" class="title">${escapeSvgText(source.storeId)}</text>
+  <text x="22" y="100" class="meta">${escapeSvgText(scrapeResult.url)}</text>
+  ${textRows}
+  <text x="22" y="808" class="meta">${escapeSvgText(scrapeResult.fetchedAt)}</text>
+  <style>
+    .label{font:700 11px -apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;letter-spacing:.08em;fill:#6ea8c7}
+    .title{font:700 22px -apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;fill:#e8f4ff}
+    .meta{font:500 10px -apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;fill:#8da0b7}
+    .body{font:600 13px -apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;fill:#cbd7e6}
+  </style>
+</svg>`
+
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
+}
+
 function getScreenshotTimeoutMs(url: string) {
   const standardTimeoutMs = readPositiveIntEnv('BROWSER_SCREENSHOT_TIMEOUT_MS', 4_500)
   try {
@@ -117,6 +156,7 @@ export async function buildBbsSnapshot(
   const browserSnapshot =
     scrapeResult.status === 'ok' ? await (browserSession ? browserSession.capture(scrapeResult.url) : captureBrowserSnapshot(scrapeResult.url)) : null
   const extractedText = browserSnapshot?.extractedText || scrapeResult.extractedText || scrapeResult.message || ''
+  const fallbackSnapshotDataUrl = browserSnapshot ? undefined : buildTextSnapshotDataUrl(source, scrapeResult, extractedText)
   const metrics = buildBbsSnapshotMetrics(extractedText)
 
   return {
@@ -124,7 +164,7 @@ export async function buildBbsSnapshot(
     sourceId: source.id,
     storeId: source.storeId,
     url: scrapeResult.url,
-    screenshotDataUrl: browserSnapshot?.screenshotDataUrl,
+    screenshotDataUrl: browserSnapshot?.screenshotDataUrl || fallbackSnapshotDataUrl,
     extractedText,
     metrics,
     radarScore: scoreBbsSnapshot(metrics),
