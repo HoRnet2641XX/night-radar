@@ -56,11 +56,14 @@ async function launchChromiumBrowser() {
 }
 
 async function captureBrowserSnapshotWithBrowser(url: string, browser: BrowserLike): Promise<BrowserSnapshot | null> {
+  let closeContext: (() => Promise<void>) | null = null
   try {
-    const page = await browser.newPage({
+    const context = await browser.newContext({
       viewport: screenshotViewport,
       userAgent: process.env.SCRAPE_USER_AGENT || defaultUserAgent,
     })
+    closeContext = () => context.close()
+    const page = await context.newPage()
     try {
       await page.setExtraHTTPHeaders({ 'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8' })
       await page.goto(url, {
@@ -84,6 +87,8 @@ async function captureBrowserSnapshotWithBrowser(url: string, browser: BrowserLi
     }
   } catch {
     return null
+  } finally {
+    await closeContext?.().catch(() => {})
   }
 }
 
