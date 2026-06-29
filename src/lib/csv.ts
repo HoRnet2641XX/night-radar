@@ -1,6 +1,7 @@
 import Papa from 'papaparse'
 import { z } from 'zod'
 import type { EventInput, PostRecord, StoreProfile } from './types'
+import { eventWeekday } from './date'
 
 const storeSchema = z.object({
   id: z.string().min(1),
@@ -154,7 +155,8 @@ export function parseCsvText(text: string, kind: 'stores' | 'events' | 'posts') 
       return
     }
 
-    items.push(result.data as EventInput)
+    const event = result.data as EventInput
+    items.push({ ...event, weekday: eventWeekday(event) })
   })
 
   return { items, errors }

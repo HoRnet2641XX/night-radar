@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { events as demoEvents, posts as demoPosts, stores as demoStores } from '@/lib/demo-data'
 import { jsonError } from '@/lib/env'
+import { requireAppUser } from '@/lib/server/auth-guard'
 import { persistScoreSnapshot, RepositoryError } from '@/lib/server/repository'
 import { scoreEvents } from '@/lib/scoring'
 import type { EventInput, PostRecord, StoreProfile } from '@/lib/types'
@@ -15,8 +16,11 @@ const payloadSchema = z.object({
 })
 
 export async function POST(request: Request) {
+  const auth = await requireAppUser()
+  if (auth.response) return auth.response
+
   const parsed = payloadSchema.safeParse(await request.json().catch(() => ({})))
-  if (!parsed.success) return jsonError('Invalid scoring payload.', 422, parsed.error.issues)
+  if (!parsed.success) return jsonError('スコア計算の内容が不正です。', 422, parsed.error.issues)
 
   const stores = (parsed.data.stores?.length ? parsed.data.stores : demoStores) as StoreProfile[]
   const events = (parsed.data.events?.length ? parsed.data.events : demoEvents) as EventInput[]
@@ -29,7 +33,7 @@ export async function POST(request: Request) {
       snapshot = await persistScoreSnapshot(scoredEvents)
     } catch (error) {
       if (error instanceof RepositoryError) return jsonError(error.message, error.status)
-      return jsonError(error instanceof Error ? error.message : 'Score snapshot failed.', 400)
+      return jsonError(error instanceof Error ? error.message : 'スコア履歴を保存できませんでした。', 400)
     }
   }
 

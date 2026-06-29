@@ -152,6 +152,15 @@ create table if not exists public.word_bookmarks (
   unique (user_id, pattern, match_type)
 );
 
+create table if not exists public.user_store_decisions (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  store_id text not null references public.stores(id) on delete cascade,
+  decision text not null check (decision in ('candidate', 'favorite', 'hidden')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, store_id)
+);
+
 create table if not exists public.exact_matches (
   id text primary key default gen_random_uuid()::text,
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -239,6 +248,7 @@ alter table public.bbs_snapshots enable row level security;
 alter table public.exact_terms enable row level security;
 alter table public.exact_matches enable row level security;
 alter table public.word_bookmarks enable row level security;
+alter table public.user_store_decisions enable row level security;
 alter table public.ai_analyses enable row level security;
 alter table public.score_snapshots enable row level security;
 alter table public.import_batches enable row level security;
@@ -300,6 +310,10 @@ create policy "exact terms owner manage" on public.exact_terms
 
 drop policy if exists "word bookmarks owner manage" on public.word_bookmarks;
 create policy "word bookmarks owner manage" on public.word_bookmarks
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "store decisions owner manage" on public.user_store_decisions;
+create policy "store decisions owner manage" on public.user_store_decisions
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 drop policy if exists "exact matches owner manage" on public.exact_matches;
@@ -364,4 +378,8 @@ create trigger notification_preferences_updated_at before update on public.notif
 
 drop trigger if exists word_bookmarks_updated_at on public.word_bookmarks;
 create trigger word_bookmarks_updated_at before update on public.word_bookmarks
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists user_store_decisions_updated_at on public.user_store_decisions;
+create trigger user_store_decisions_updated_at before update on public.user_store_decisions
   for each row execute function public.set_updated_at();

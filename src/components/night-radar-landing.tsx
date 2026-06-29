@@ -91,7 +91,7 @@ function cardMotion(index = 0, reduce = false) {
   }
 }
 
-export function NightRadarLanding() {
+export function NightRadarLanding({ isSignedIn = false }: { isSignedIn?: boolean }) {
   const rootRef = useRef<HTMLElement>(null)
   const reduceMotion = useReducedMotion()
   const shouldReduceMotion = Boolean(reduceMotion)
@@ -158,9 +158,20 @@ export function NightRadarLanding() {
           <a href="#workflow">仕組み</a>
           <a href="#contact">導入</a>
         </nav>
-        <Link className={styles.navCta} href="/">
-          アプリを開く
-        </Link>
+        {isSignedIn ? (
+          <Link className={styles.navCta} href="/">
+            アプリを開く
+          </Link>
+        ) : (
+          <div className={styles.navActions}>
+            <Link className={styles.navTextLink} href="/login">
+              ログイン
+            </Link>
+            <Link className={styles.navCta} href="/signup">
+              無料で始める
+            </Link>
+          </div>
+        )}
       </header>
 
       <section className={styles.hero}>
@@ -172,9 +183,20 @@ export function NightRadarLanding() {
           </h1>
           <p>公開BBS、店舗イベント、曜日傾向を一画面に圧縮。迷う前に見るべき店舗と日付だけを残します。</p>
           <div className={styles.heroActions}>
-            <Link className={styles.primaryButton} href="/">
-              アプリを開く
-            </Link>
+            {isSignedIn ? (
+              <Link className={styles.primaryButton} href="/">
+                アプリを開く
+              </Link>
+            ) : (
+              <Link className={styles.primaryButton} href="/signup">
+                無料で始める
+              </Link>
+            )}
+            {!isSignedIn && (
+              <Link className={styles.secondaryButton} href="/login">
+                ログイン
+              </Link>
+            )}
             <a className={styles.secondaryButton} href="#features">
               機能を見る
             </a>
@@ -284,11 +306,17 @@ export function NightRadarLanding() {
 
       <MotionSection className={styles.ctaPanel} id="contact" {...sectionMotion(shouldReduceMotion)}>
         <ShieldCheck size={34} weight="bold" />
-        <h2>まずはデモで判断できます。</h2>
-        <p>登録店舗、BBS、イベント、検索条件の流れをそのまま確認できます。</p>
-        <Link className={styles.primaryButton} href="/">
-          アプリを開く
-        </Link>
+        <h2>登録後すぐに判断材料を確認できます。</h2>
+        <p>BBS、月間イベント、注目ワード検索、店舗別ランキングを同じアプリ画面で確認できます。</p>
+        {isSignedIn ? (
+          <Link className={styles.primaryButton} href="/">
+            アプリを開く
+          </Link>
+        ) : (
+          <Link className={styles.primaryButton} href="/signup">
+            会員登録してアプリへ
+          </Link>
+        )}
       </MotionSection>
 
       <footer className={styles.footer}>
@@ -296,7 +324,7 @@ export function NightRadarLanding() {
         <nav aria-label="法務リンク">
           <Link href="/privacy">プライバシー</Link>
           <Link href="/terms">利用規約</Link>
-          <Link href="/">アプリへ戻る</Link>
+          {isSignedIn ? <Link href="/">アプリへ戻る</Link> : <Link href="/login">ログイン</Link>}
         </nav>
       </footer>
     </main>

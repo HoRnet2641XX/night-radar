@@ -59,16 +59,29 @@
 
 .brand,
 .navCta,
+.navTextLink,
 .primaryButton,
 .secondaryButton {
+  appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 42px;
+  border: 0;
   border-radius: 999px;
   font-weight: 820;
+  font-family: inherit;
+  font-size: 14px;
   text-decoration: none;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.navActions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .brand {
@@ -99,6 +112,13 @@
   border: 1px solid var(--lp-line-strong);
   color: var(--lp-text);
   padding: 0 16px;
+}
+
+.navTextLink {
+  min-height: 38px;
+  color: var(--lp-soft);
+  font-size: 13px;
+  padding: 0 2px;
 }
 
 .hero {
@@ -188,6 +208,7 @@
 .primaryButton,
 .secondaryButton,
 .navCta,
+.navTextLink,
 .nav nav a {
   transition:
     transform 180ms ease,
@@ -199,6 +220,7 @@
 .primaryButton:hover,
 .secondaryButton:hover,
 .navCta:hover,
+.navTextLink:hover,
 .nav nav a:hover {
   transform: translateY(-1px);
   color: var(--lp-text);
@@ -206,7 +228,8 @@
 
 .primaryButton:active,
 .secondaryButton:active,
-.navCta:active {
+.navCta:active,
+.navTextLink:active {
   transform: translateY(1px) scale(0.99);
 }
 
@@ -643,6 +666,15 @@
 
   .brand span {
     font-size: 14px;
+  }
+
+  .navActions {
+    gap: 9px;
+  }
+
+  .navTextLink {
+    min-height: 34px;
+    font-size: 12px;
   }
 
   .navCta {

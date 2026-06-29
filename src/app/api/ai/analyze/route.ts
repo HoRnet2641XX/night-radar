@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { jsonError } from '@/lib/env'
+import { requireAppUser } from '@/lib/server/auth-guard'
 import { analyzeTextWithAi } from '@/lib/server/ai'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 
@@ -12,8 +13,11 @@ const payloadSchema = z.object({
 })
 
 export async function POST(request: Request) {
+  const auth = await requireAppUser()
+  if (auth.response) return auth.response
+
   const parsed = payloadSchema.safeParse(await request.json().catch(() => ({})))
-  if (!parsed.success) return jsonError('AI analysis payload is invalid.', 422, parsed.error.issues)
+  if (!parsed.success) return jsonError('自動分析の内容が不正です。', 422, parsed.error.issues)
 
   const analysis = await analyzeTextWithAi(parsed.data.text)
   const mode = process.env.OPENAI_API_KEY ? 'openai_or_heuristic_fallback' : 'heuristic'

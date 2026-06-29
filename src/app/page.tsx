@@ -1,6 +1,8 @@
 import { NightRadarConsole } from '@/components/night-radar-console'
+import { NightRadarLanding } from '@/components/night-radar-landing'
 import officialEventsData from '@/lib/official-events.generated.json'
 import { getDashboardState } from '@/lib/server/repository'
+import { getCurrentUser } from '@/lib/supabase/server'
 import type { EventInput } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -22,6 +24,9 @@ function mergeOfficialEvents(events: EventInput[]) {
 }
 
 export default async function Page() {
+  const user = await getCurrentUser()
+  if (!user) return <NightRadarLanding />
+
   const state = await getDashboardState()
 
   return (

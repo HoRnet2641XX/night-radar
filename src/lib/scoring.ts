@@ -16,6 +16,9 @@ import type {
   WeekdayPostStat,
   WordBookmark,
 } from './types'
+import { eventWeekday, formatEventDateLabel, parseDateInJapan, weekdayFromDate, weekdayLabels } from './date'
+
+export { weekdayLabels }
 
 const femalePrPattern = /(女性|女の子|女性来店|女性予約|女性無料|女性一人|主婦|人妻|奥様|カップル)/i
 const specificityPattern = /(\d+人|\d{1,2}[:時]\d{0,2}|予約|確定|初参加|具体|本日|明日|残り|限定)/i
@@ -29,8 +32,6 @@ const firstVisitPattern = /(初めて|はじめて|初参加|初来店)/g
 const comebackPattern = /((\d+|[０-９]+|[一二三四五六七八九十百]+)\s*(年|ヶ月|か月|カ月|月|週間|日)\s*ぶり|久しぶり|以来)/g
 const groupVisitPattern = /((\d+|[０-９]+|[二三四五六七八九十]+)\s*人組|二人組|三人組|複数人|友達と|ペア)/g
 const emojiPattern = /(\p{Extended_Pictographic}|[\u{1F300}-\u{1FAFF}]|[（(][^（）()]{0,10}[;；:：=xX＾^・ω∀Д▽△_<>><][^（）()]{0,10}[）)])/gu
-
-export const weekdayLabels = ['月曜', '火曜', '水曜', '木曜', '金曜', '土曜', '日曜']
 
 export const defaultWatchedWordLabels = [
   '女性',
@@ -70,13 +71,6 @@ function hoursSince(date: string, now: number) {
   const time = new Date(date).getTime()
   if (Number.isNaN(time)) return 72
   return Math.max(0, (now - time) / (1000 * 60 * 60))
-}
-
-function weekdayFromDate(date: string) {
-  const time = new Date(date)
-  if (Number.isNaN(time.getTime())) return '未設定'
-  const labels = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜']
-  return labels[time.getUTCDay()]
 }
 
 function buildSnippet(body: string, term: string) {
@@ -247,7 +241,9 @@ export function buildPrMetrics(store: StoreProfile, posts: PostRecord[]): PrMetr
 
 export function scoreEvent(event: EventInput, store: StoreProfile, posts: PostRecord[]): ScoredEvent {
   const metrics = buildPrMetrics(store, posts)
-  const weekdayBonus = store.strongDays.includes(event.weekday) ? 12 : 0
+  const resolvedWeekday = eventWeekday(event)
+  const normalizedEvent = { ...event, weekday: resolvedWeekday }
+  const weekdayBonus = store.strongDays.includes(resolvedWeekday) ? 12 : 0
   const eventBonus = store.strongEvents.includes(event.category) ? 14 : store.weakEvents.includes(event.category) ? -9 : 3
   const sessionBonus =
     (event.session === 'day' && store.hasDaytime) || (event.session === 'night' && store.hasNight) ? 8 : -10
@@ -272,14 +268,14 @@ export function scoreEvent(event: EventInput, store: StoreProfile, posts: PostRe
   )
 
   const reasons = [
-    weekdayBonus > 0 ? `${event.weekday}との相性が高い` : `${event.weekday}は通常傾向`,
+    weekdayBonus > 0 ? `${resolvedWeekday}との相性が高い` : `${resolvedWeekday}は通常傾向`,
     eventBonus > 8 ? `${event.category}の過去実績が強い` : `${event.category}は要観測`,
     contextBonus >= 9 ? '公式イベント情報が具体的' : metrics.specificity >= 70 ? '投稿の具体性が高い' : '投稿具体性は中程度',
     metrics.freshness >= 70 ? '直近投稿が動いている' : '鮮度は追加確認が必要',
   ].slice(0, 3)
 
   return {
-    ...event,
+    ...normalizedEvent,
     score,
     rank: 0,
     tone: toneForScore(score),
@@ -492,19 +488,74 @@ export function buildWatchedWordHits(posts: PostRecord[], stores: StoreProfile[]
   return hits.toSorted((a, b) => new Date(b.post.postedAt).getTime() - new Date(a.post.postedAt).getTime())
 }
 
-export function buildVisitForecasts(events: EventInput[], stores: StoreProfile[], posts: PostRecord[]): VisitForecast[] {
+const japanDateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+function startOfJapanDate(date: Date) {
+  const parts = Object.fromEntries(japanDateKeyFormatter.formatToParts(date).map((part) => [part.type, part.value]))
+  return new Date(`${parts.year}-${parts.month}-${parts.day}T00:00:00+09:00`)
+}
+
+function resolveForecastDate(event: EventInput, referenceDate: Date) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(event.date)) return parseDateInJapan(event.date)
+
+  const reference = startOfJapanDate(referenceDate)
+  if (event.date === '今日') return reference
+  if (event.date === '明日') return new Date(reference.getTime() + 24 * 60 * 60 * 1000)
+
+  const weekdayIndex = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜'].indexOf(eventWeekday(event))
+  if (weekdayIndex < 0) return null
+  const offset = (weekdayIndex - reference.getDay() + 7) % 7
+  return new Date(reference.getTime() + offset * 24 * 60 * 60 * 1000)
+}
+
+function dateWindowBoost(event: EventInput, referenceDate: Date) {
+  const eventDate = resolveForecastDate(event, referenceDate)
+  if (!eventDate) return 0
+  const diffDays = Math.round((eventDate.getTime() - startOfJapanDate(referenceDate).getTime()) / (24 * 60 * 60 * 1000))
+  if (diffDays < 0) return -18
+  if (diffDays === 0) return 14
+  if (diffDays === 1) return 10
+  if (diffDays <= 3) return 6
+  if (diffDays <= 7) return 2
+  return 0
+}
+
+export function buildVisitForecasts(
+  events: EventInput[],
+  stores: StoreProfile[],
+  posts: PostRecord[],
+  options: { referenceDate?: Date; windowDays?: number } = {},
+): VisitForecast[] {
   const watchedHits = buildWatchedWordHits(posts, stores)
-  return scoreEvents(events, stores, posts)
+  const referenceDate = options.referenceDate ?? new Date()
+  const scored = scoreEvents(events, stores, posts)
+  const windowed =
+    typeof options.windowDays === 'number'
+      ? scored.filter((event) => {
+          const eventDate = resolveForecastDate(event, referenceDate)
+          if (!eventDate) return false
+          const diffDays = Math.round((eventDate.getTime() - startOfJapanDate(referenceDate).getTime()) / (24 * 60 * 60 * 1000))
+          return diffDays >= 0 && diffDays <= options.windowDays!
+        })
+      : scored
+  const targetEvents = windowed.length ? windowed : scored
+
+  return targetEvents
     .map((event) => {
       const watchedSignalCount = watchedHits.filter((hit) => hit.store.id === event.storeId).length
-      const score = clamp(event.score + Math.min(12, watchedSignalCount * 2))
+      const score = clamp(event.score + Math.min(12, watchedSignalCount * 2) + dateWindowBoost(event, referenceDate))
       return {
         id: event.id,
         store: event.store,
         event,
         score,
         rank: 0,
-        dateLabel: event.date,
+        dateLabel: formatEventDateLabel(event),
         timeLabel: event.startsAt,
         watchedSignalCount,
         reasons: [

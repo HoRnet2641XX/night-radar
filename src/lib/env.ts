@@ -11,7 +11,7 @@ export function getBaseUrl(request?: Request) {
     const url = new URL(request.url)
     return `${url.protocol}//${url.host}`
   }
-  return 'http://localhost:3000'
+  return 'http://localhost:3010'
 }
 
 export function hasSupabaseEnv() {

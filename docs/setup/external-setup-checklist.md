@@ -16,10 +16,10 @@ Dashboard: https://supabase.com/dashboard/projects
 5. 実店舗カタログを入れる場合は `supabase/seed-store-catalog.sql` を実行する。
 6. テスト用の共通カタログだけでよい場合は `supabase/seed-demo-catalog.sql` を実行する。
 7. Authentication > URL Configuration を開く。
-   - Site URL local: `http://localhost:3000`
+   - Site URL local: `http://localhost:3010`
    - Site URL production: `https://YOUR_VERCEL_DOMAIN`
    - Redirect URLs:
-     - `http://localhost:3000/api/auth/callback`
+     - `http://localhost:3010/api/auth/callback`
      - `https://YOUR_VERCEL_DOMAIN/api/auth/callback`
 
 ## 2. Google OAuth
@@ -64,7 +64,7 @@ Dashboard: https://dashboard.stripe.com/
 Local webhook test:
 
 ```bash
-stripe listen --forward-to localhost:3000/api/stripe/webhook
+stripe listen --forward-to localhost:3010/api/stripe/webhook
 ```
 
 ## 5. OpenAI
@@ -143,12 +143,12 @@ npm run dev
 ```
 
 4. 開く。
-   - http://localhost:3000
+   - http://localhost:3010
 5. 画面右上が `DB保存中` になることを確認する。
-6. Plan画面でGoogle/X/メール認証を確認する。
+6. ログイン画面でGoogle/X/メール認証を確認する。
 7. SQL Editorで `supabase/seed-store-catalog.sql` または `supabase/seed-demo-catalog.sql` を流す。
 8. BBSトップでStore radarとWatch wordsが更新されることを確認する。
 9. 下層ページを確認する。
-   - http://localhost:3000/forecast
-   - http://localhost:3000/calendar
-   - http://localhost:3000/ai-guide
+   - http://localhost:3010/forecast
+   - http://localhost:3010/calendar
+   - http://localhost:3010/ai-guide

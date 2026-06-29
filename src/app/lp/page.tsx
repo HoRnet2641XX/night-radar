@@ -1,5 +1,8 @@
 import type { Metadata } from 'next'
 import { NightRadarLanding } from '@/components/night-radar-landing'
+import { getCurrentUser } from '@/lib/supabase/server'
+
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3010'),
@@ -14,6 +17,8 @@ export const metadata: Metadata = {
   },
 }
 
-export default function LandingPage() {
-  return <NightRadarLanding />
+export default async function LandingPage() {
+  const user = await getCurrentUser()
+
+  return <NightRadarLanding isSignedIn={Boolean(user)} />
 }

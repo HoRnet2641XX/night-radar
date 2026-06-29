@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { jsonError } from '@/lib/env'
+import { requireAppUser } from '@/lib/server/auth-guard'
 import { RepositoryError, saveRecord } from '@/lib/server/repository'
 import { scrapePublicPage, scrapeResultToPost } from '@/lib/server/scrape'
 import type { PostRecord } from '@/lib/types'
@@ -13,8 +14,11 @@ const payloadSchema = z.object({
 })
 
 export async function POST(request: Request) {
+  const auth = await requireAppUser()
+  if (auth.response) return auth.response
+
   const parsed = payloadSchema.safeParse(await request.json().catch(() => ({})))
-  if (!parsed.success) return jsonError('Scrape payload is invalid.', 422, parsed.error.issues)
+  if (!parsed.success) return jsonError('巡回対象の内容が不正です。', 422, parsed.error.issues)
 
   const result = await scrapePublicPage(parsed.data.url)
   const post = parsed.data.storeId ? scrapeResultToPost(result, parsed.data.storeId) : null
@@ -30,7 +34,7 @@ export async function POST(request: Request) {
       })
     } catch (error) {
       if (error instanceof RepositoryError) return jsonError(error.message, error.status)
-      return jsonError(error instanceof Error ? error.message : 'Scrape persistence failed.', 400)
+      return jsonError(error instanceof Error ? error.message : '巡回結果を保存できませんでした。', 400)
     }
   }
 

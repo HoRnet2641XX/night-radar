@@ -1,12 +1,17 @@
+import { redirect } from 'next/navigation'
 import { buildVisitForecasts } from '@/lib/scoring'
 import { formatBarName } from '@/lib/display'
 import { getDashboardState } from '@/lib/server/repository'
+import { getCurrentUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ForecastPage() {
+  const user = await getCurrentUser()
+  if (!user) redirect('/login?next=/forecast')
+
   const state = await getDashboardState()
-  const forecasts = buildVisitForecasts(state.events, state.stores, state.posts)
+  const forecasts = buildVisitForecasts(state.events, state.stores, state.posts, { windowDays: 14 })
 
   return (
     <main className="insight-page">

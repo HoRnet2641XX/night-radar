@@ -1,0 +1,320 @@
+.authPage {
+  --auth-bg: oklch(8% 0.028 253);
+  --auth-panel: oklch(14% 0.035 252 / 0.94);
+  --auth-line: oklch(72% 0.08 236 / 0.18);
+  --auth-line-strong: oklch(78% 0.095 221 / 0.34);
+  --auth-text: oklch(96% 0.02 235);
+  --auth-soft: oklch(80% 0.055 235 / 0.76);
+  --auth-muted: oklch(66% 0.05 235 / 0.72);
+  --auth-accent: oklch(78% 0.105 214);
+  --auth-warn: oklch(82% 0.13 82);
+  --auth-danger: oklch(70% 0.14 28);
+  --auth-font:
+    'Noto Sans JP Variable', 'LINE Seed JP', 'Hiragino Sans',
+    'Hiragino Kaku Gothic ProN', 'BIZ UDPGothic', 'Yu Gothic', Meiryo,
+    sans-serif;
+
+  position: relative;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 0%, oklch(34% 0.08 230 / 0.22), transparent 34rem),
+    linear-gradient(180deg, oklch(12% 0.04 253), var(--auth-bg));
+  color: var(--auth-text);
+  font-family: var(--auth-font);
+  padding: clamp(18px, 5vw, 42px);
+}
+
+.authPage::before {
+  position: fixed;
+  inset: 0;
+  background:
+    linear-gradient(90deg, oklch(78% 0.105 214 / 0.045) 1px, transparent 1px),
+    linear-gradient(180deg, oklch(78% 0.105 214 / 0.035) 1px, transparent 1px);
+  background-size: 64px 64px;
+  content: '';
+  mask-image: linear-gradient(180deg, black, transparent 72%);
+  pointer-events: none;
+}
+
+.authCard {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: min(100%, 430px);
+  gap: 16px;
+}
+
+.brand {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.brandMark,
+.brandLogo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brandLogo {
+  gap: 10px;
+  color: var(--auth-text);
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-decoration: none;
+}
+
+.brandMark {
+  width: 46px;
+  height: 46px;
+  border: 1px solid oklch(81% 0.1 77 / 0.32);
+  border-radius: 16px;
+  background: oklch(17% 0.04 252 / 0.84);
+  color: oklch(81% 0.1 77);
+  box-shadow: 0 18px 48px oklch(4% 0.02 253 / 0.42);
+}
+
+.brand p {
+  margin: 0;
+  color: var(--auth-soft);
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.panel {
+  display: grid;
+  gap: 18px;
+  border: 1px solid var(--auth-line);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 38%),
+    var(--auth-panel);
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.075);
+  padding: clamp(20px, 5vw, 26px);
+}
+
+.heading {
+  display: grid;
+  gap: 7px;
+  text-align: center;
+}
+
+.heading span {
+  color: oklch(81% 0.1 77);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.heading h1 {
+  margin: 0;
+  color: var(--auth-text);
+  font-size: clamp(24px, 7vw, 30px);
+  font-weight: 900;
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+
+.heading p {
+  margin: 0;
+  color: var(--auth-soft);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.7;
+}
+
+.oauthStack,
+.emailForm {
+  display: grid;
+  gap: 10px;
+}
+
+.oauthButton,
+.submitButton,
+.ghostLink {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border-radius: 15px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease,
+    color 180ms ease,
+    opacity 180ms ease;
+}
+
+.oauthButton {
+  gap: 9px;
+  border: 1px solid var(--auth-line-strong);
+  background: oklch(18% 0.04 252 / 0.62);
+  color: var(--auth-text);
+}
+
+.submitButton {
+  border: 1px solid oklch(88% 0.08 214 / 0.58);
+  background: var(--auth-accent);
+  color: oklch(10% 0.03 251);
+}
+
+.ghostLink {
+  border: 1px solid var(--auth-line);
+  background: transparent;
+  color: var(--auth-soft);
+}
+
+.oauthButton:hover,
+.submitButton:hover,
+.ghostLink:hover {
+  transform: translateY(-1px);
+}
+
+.oauthButton:disabled,
+.submitButton:disabled {
+  cursor: wait;
+  opacity: 0.56;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--auth-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.divider::before,
+.divider::after {
+  flex: 1;
+  height: 1px;
+  background: var(--auth-line);
+  content: '';
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field label {
+  color: var(--auth-soft);
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.inputShell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  border: 1px solid var(--auth-line);
+  border-radius: 15px;
+  background: oklch(9% 0.03 253 / 0.68);
+  padding: 0 13px;
+}
+
+.inputShell svg {
+  flex: 0 0 auto;
+  color: var(--auth-soft);
+}
+
+.inputShell input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--auth-text);
+  font-family: inherit;
+  font-size: 15px;
+}
+
+.inputShell:focus-within {
+  border-color: oklch(78% 0.105 214 / 0.62);
+  box-shadow: 0 0 0 3px oklch(78% 0.105 214 / 0.14);
+}
+
+.message {
+  margin: 0;
+  border: 1px solid var(--auth-line);
+  border-radius: 13px;
+  background: oklch(18% 0.04 252 / 0.5);
+  color: var(--auth-soft);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 720;
+  line-height: 1.6;
+}
+
+.message.good {
+  border-color: oklch(78% 0.075 198 / 0.32);
+  color: oklch(84% 0.07 198);
+}
+
+.message.warn {
+  border-color: oklch(82% 0.13 82 / 0.34);
+  color: var(--auth-warn);
+}
+
+.message.error {
+  border-color: oklch(70% 0.14 28 / 0.34);
+  color: var(--auth-danger);
+}
+
+.switchText {
+  margin: 0;
+  color: var(--auth-soft);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.switchText a {
+  color: var(--auth-text);
+  font-weight: 900;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.backLink {
+  justify-self: center;
+  color: var(--auth-muted);
+  font-size: 13px;
+  font-weight: 820;
+  text-decoration: none;
+}
+
+.verifyActions {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 440px) {
+  .authPage {
+    align-items: start;
+    padding: 22px 14px;
+  }
+
+  .brandLogo {
+    font-size: 21px;
+  }
+
+  .panel {
+    border-radius: 20px;
+  }
+}

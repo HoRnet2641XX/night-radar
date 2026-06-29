@@ -1,34 +1,33 @@
 'use client'
 
-import { useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import {
-  BellRinging,
   Broadcast,
   CalendarDots,
-  ChartBarHorizontal,
   ChartLineUp,
   Crosshair,
-  EnvelopeSimple,
-  FileCsv,
-  GlobeHemisphereEast,
-  GoogleLogo,
   Lightning,
-  ListChecks,
-  MagicWand,
   MagnifyingGlass,
-  MapPin,
   ShieldCheck,
-  Sparkle,
+  Star,
   Storefront,
-  StripeLogo,
   Trash,
   UsersThree,
   WarningCircle,
-  XLogo,
 } from '@phosphor-icons/react'
-import { plans } from '@/lib/demo-data'
-import { planLimits, planRank } from '@/lib/plans'
+import {
+  dateKeyInJapan,
+  daysInMonthInJapan,
+  dateFromJapanParts,
+  eventWeekday,
+  formatEventDateLabel,
+  monthKeyInJapan,
+  relativeDateInJapan,
+  weekdayIndexForJapanDate,
+  weekdayLabelForJapanDate,
+} from '@/lib/date'
+import { planLimits } from '@/lib/plans'
 import {
   buildStoreBbsAnalytics,
   buildStoreRadarPoints,
@@ -41,28 +40,21 @@ import {
 } from '@/lib/scoring'
 import { formatBarName, formatStoreArea, formatStoreSessionLabel } from '@/lib/display'
 import type {
-  AiAnalysis,
   BbsSnapshot,
   BbsSource,
-  CrawlRun,
   DashboardState,
   ExactTermMatch,
   ExactTermGroup,
   ExactTermState,
   EventInput,
-  ImportBatch,
-  NotificationChannel,
-  NotificationJob,
-  NotificationPreference,
   PlanKey,
   PostRecord,
   RuntimeMode,
   ScoredEvent,
-  ServiceSetupStatus,
-  SetupStatusTone,
+  StoreDecisionState,
   StoreProfile,
+  StoreBbsAnalytics,
   StoreRadarPoint,
-  StoreSituation,
   VisitForecast,
   WatchedWordHit,
   WordBookmark,
@@ -71,27 +63,35 @@ import './night-radar-console.css'
 
 type ApiState = { tone: 'idle' | 'good' | 'warn'; message: string }
 type ViewKey = 'radar' | 'analytics' | 'capture' | 'automate' | 'account'
-type AnalyticsPanelKey = 'words' | 'forecast' | 'search' | 'weekday'
+type NavKey = 'today' | 'search' | 'calendar' | 'stores' | 'settings'
 type ExactMatchFilter = ExactTermGroup | 'all'
+type StoreSortKey = 'hot' | 'share' | 'signals' | 'updated'
+type StoreSessionFilter = 'all' | 'day' | 'night'
+type StoreSignalFilter = 'all' | 'female' | 'first' | 'group' | 'emoji'
+type SourceHealth = { ok: number; blocked: number; failed: number; pending: number; total: number }
+type GenderPostRanking = {
+  store: StoreProfile
+  rank: number
+  postCount: number
+  femaleSignals: number
+  maleSignals: number
+  femaleRatio: number
+  maleRatio: number
+  signalTotal: number
+  verdict: string
+}
 
 type Props = {
   calendarEvents?: EventInput[]
   initialState: DashboardState
 }
 
-const navItems: Array<{ key: ViewKey; label: string; icon: ReactNode }> = [
-  { key: 'analytics', label: '今日', icon: <Broadcast size={20} weight="bold" /> },
-  { key: 'radar', label: '候補', icon: <ChartLineUp size={20} weight="bold" /> },
-  { key: 'capture', label: '店舗', icon: <Storefront size={20} weight="bold" /> },
-  { key: 'automate', label: '分析', icon: <MagicWand size={20} weight="bold" /> },
-  { key: 'account', label: '設定', icon: <ShieldCheck size={20} weight="bold" /> },
-]
-
-const analyticsPanels: Array<{ key: AnalyticsPanelKey; label: string }> = [
-  { key: 'words', label: '注目' },
-  { key: 'forecast', label: '候補' },
-  { key: 'search', label: '検索' },
-  { key: 'weekday', label: '曜日' },
+const navItems: Array<{ key: NavKey; view: ViewKey; label: string; icon: ReactNode; targetId?: string }> = [
+  { key: 'today', view: 'analytics', label: '今日', icon: <Broadcast size={20} weight="bold" /> },
+  { key: 'search', view: 'automate', label: '検索', icon: <MagnifyingGlass size={20} weight="bold" /> },
+  { key: 'calendar', view: 'analytics', label: 'カレンダー', icon: <CalendarDots size={20} weight="bold" />, targetId: 'top-calendar' },
+  { key: 'stores', view: 'capture', label: '店舗', icon: <Storefront size={20} weight="bold" /> },
+  { key: 'settings', view: 'account', label: '設定', icon: <ShieldCheck size={20} weight="bold" /> },
 ]
 
 const exactTermLabels = {
@@ -138,30 +138,28 @@ const planLabels: Record<PlanKey, string> = {
   premium: 'プレミアム',
 }
 
-const paidPlans = plans.filter(
-  (plan): plan is (typeof plans)[number] & { key: 'light' | 'standard' | 'premium' } => plan.key !== 'free',
-)
-
-const notificationChannelLabels: Record<NotificationChannel, string> = {
-  in_app: 'アプリ内',
-  email: 'メール',
-  webhook: '外部通知',
+function buildSourceHealth(sources: BbsSource[]): SourceHealth {
+  return sources.reduce<SourceHealth>(
+    (health, source) => {
+      const status = source.lastStatus ?? 'pending'
+      if (status === 'ok') health.ok += 1
+      else if (status === 'blocked') health.blocked += 1
+      else if (status === 'failed') health.failed += 1
+      else health.pending += 1
+      health.total += 1
+      return health
+    },
+    { ok: 0, blocked: 0, failed: 0, pending: 0, total: 0 },
+  )
 }
 
-const setupToneLabels: Record<SetupStatusTone, string> = {
-  ready: '接続済み',
-  action: '要設定',
-  check: '要確認',
-  off: '停止中',
+function sourceHealthLabel(health: SourceHealth) {
+  if (!health.total) return '取得待ち'
+  const trouble = health.blocked + health.failed
+  if (!trouble && health.ok === health.total) return '取得済み'
+  if (health.ok > 0) return '一部未取得'
+  return '未取得'
 }
-
-const situationStatuses: Array<{ value: StoreSituation['status']; label: string }> = [
-  { value: 'open', label: '通常営業' },
-  { value: 'event', label: 'イベント' },
-  { value: 'crowded', label: '盛況' },
-  { value: 'watch', label: '要観測' },
-  { value: 'closed', label: '休止/不明' },
-]
 
 async function postJson<T>(url: string, payload: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -170,7 +168,7 @@ async function postJson<T>(url: string, payload: unknown): Promise<T> {
     body: JSON.stringify(payload),
   })
   const json = await response.json()
-  if (!response.ok) throw new Error(json.error ?? 'Request failed')
+  if (!response.ok) throw new Error(json.error ?? '通信に失敗しました。')
   return json as T
 }
 
@@ -181,7 +179,7 @@ async function deleteJson<T>(url: string, payload: unknown): Promise<T> {
     body: JSON.stringify(payload),
   })
   const json = await response.json()
-  if (!response.ok) throw new Error(json.error ?? 'Request failed')
+  if (!response.ok) throw new Error(json.error ?? '通信に失敗しました。')
   return json as T
 }
 
@@ -191,43 +189,112 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   const calendarEvents = initialCalendarEvents?.length ? initialCalendarEvents : initialEvents
   const initialPosts = initialState.posts
   const initialScoredEvents = initialState.scoredEvents
-  const initialSituations = initialState.situations
   const wordCategories = initialState.wordCategories
   const subscription = initialState.subscription
-  const setupStatus = initialState.setupStatus
+  const isSignedIn = Boolean(initialState.userEmail)
+  const storeDecisionStorageKey = `night-radar-store-decisions:${initialState.userEmail ?? 'anonymous'}`
   const [view, setView] = useState<ViewKey>('analytics')
+  const [activeNav, setActiveNav] = useState<NavKey>('today')
   const [mode, setMode] = useState<RuntimeMode>(initialState.mode)
   const [stores] = useState(initialStores)
   const [events] = useState(initialEvents)
   const [posts] = useState(initialPosts)
   const [scoredEvents, setScoredEvents] = useState(initialScoredEvents)
-  const [situations] = useState(initialSituations)
   const [bbsSources] = useState<BbsSource[]>(initialState.bbsSources)
   const [exactTerms, setExactTerms] = useState<ExactTermState>(initialState.exactTerms)
   const [serverMatches, setServerMatches] = useState<ExactTermMatch[] | null>(null)
   const [exactMatchFilter, setExactMatchFilter] = useState<ExactMatchFilter>('all')
-  const [analysisText, setAnalysisText] = useState(initialPosts[0]?.body ?? '')
-  const [analysis, setAnalysis] = useState<AiAnalysis | null>(null)
-  const [email, setEmail] = useState(initialState.userEmail ?? '')
   const [apiState, setApiState] = useState<ApiState>({
     tone: initialState.connectionNote ? 'warn' : 'idle',
     message: initialState.connectionNote ?? (initialState.mode === 'database' ? '同期済み' : '待機中'),
   })
-  const [jobs, setJobs] = useState<NotificationJob[]>(initialState.notificationJobs)
-  const [notificationPreference, setNotificationPreference] = useState<NotificationPreference>(initialState.notificationPreference)
-  const [importBatches] = useState<ImportBatch[]>(initialState.importBatches)
-  const [crawlRuns] = useState<CrawlRun[]>(initialState.crawlRuns)
   const [bbsSnapshots] = useState<BbsSnapshot[]>(initialState.bbsSnapshots)
   const [wordBookmarks, setWordBookmarks] = useState<WordBookmark[]>(initialState.wordBookmarks)
   const [bookmarkDraft, setBookmarkDraft] = useState('')
   const [watchSearchTerm, setWatchSearchTerm] = useState('')
-  const [homePanel, setHomePanel] = useState<AnalyticsPanelKey>('words')
+  const [storeQuery, setStoreQuery] = useState('')
+  const [storeSort, setStoreSort] = useState<StoreSortKey>('hot')
+  const [storeSessionFilter, setStoreSessionFilter] = useState<StoreSessionFilter>('all')
+  const [storeSignalFilter, setStoreSignalFilter] = useState<StoreSignalFilter>('all')
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
+  const [storeDecisions, setStoreDecisions] = useState<Record<string, StoreDecisionState>>(() => {
+    const initialDecisions = initialState.storeDecisions ?? {}
+    if (typeof window === 'undefined') return initialDecisions
+    try {
+      const stored = window.localStorage.getItem(storeDecisionStorageKey)
+      if (!stored) return initialDecisions
+      const parsed = JSON.parse(stored) as Record<string, StoreDecisionState>
+      return { ...parsed, ...initialDecisions }
+    } catch {
+      window.localStorage.removeItem(storeDecisionStorageKey)
+      return initialDecisions
+    }
+  })
   const [busy, setBusy] = useState('')
+  const reduceMotion = useReducedMotion()
+
+  useEffect(() => {
+    window.localStorage.setItem(storeDecisionStorageKey, JSON.stringify(storeDecisions))
+  }, [storeDecisionStorageKey, storeDecisions])
 
   const summary = useMemo(() => summarizeSignals(scoredEvents), [scoredEvents])
   const storeAnalytics = useMemo(() => buildStoreBbsAnalytics(stores, posts), [stores, posts])
   const storeRadar = useMemo(() => buildStoreRadarPoints(stores, posts, bbsSnapshots), [stores, posts, bbsSnapshots])
+  const storeAnalyticsById = useMemo(
+    () => new Map(storeAnalytics.map((item) => [item.store.id, item])),
+    [storeAnalytics],
+  )
+  const bbsSourceByStoreId = useMemo(() => {
+    const map = new Map<string, BbsSource>()
+    bbsSources.forEach((source) => {
+      if (!map.has(source.storeId) || source.lastStatus === 'ok') map.set(source.storeId, source)
+    })
+    return map
+  }, [bbsSources])
+  const eventCountByStoreId = useMemo(() => {
+    const map = new Map<string, number>()
+    calendarEvents.forEach((event) => map.set(event.storeId, (map.get(event.storeId) ?? 0) + 1))
+    return map
+  }, [calendarEvents])
+  const filteredStoreRadar = useMemo(() => {
+    const query = normalizeLocalSearchText(storeQuery)
+    const filtered = storeRadar.filter((point) => {
+      if (storeDecisions[point.store.id] === 'hidden') return false
+
+      if (query) {
+        const haystack = normalizeLocalSearchText(
+          [point.store.name, point.store.area, point.store.prStructure, point.verdict].join(' '),
+        )
+        if (!haystack.includes(query)) return false
+      }
+
+      if (storeSessionFilter === 'day' && !point.store.hasDaytime) return false
+      if (storeSessionFilter === 'night' && !point.store.hasNight) return false
+
+      if (storeSignalFilter === 'female' && point.signals.femaleOnly < 1) return false
+      if (storeSignalFilter === 'first' && point.signals.firstVisit < 1) return false
+      if (storeSignalFilter === 'group' && point.signals.groupVisit < 1) return false
+      if (storeSignalFilter === 'emoji' && point.signals.emoji < 1) return false
+
+      return true
+    })
+
+    return filtered.toSorted((a, b) => {
+      if (storeSort === 'share') return b.share - a.share || b.score - a.score
+      if (storeSort === 'signals') return b.signals.totalSignals - a.signals.totalSignals || b.score - a.score
+      if (storeSort === 'updated') {
+        const bTime = b.lastCapturedAt ? new Date(b.lastCapturedAt).getTime() : 0
+        const aTime = a.lastCapturedAt ? new Date(a.lastCapturedAt).getTime() : 0
+        return bTime - aTime || b.score - a.score
+      }
+      return b.score - a.score || b.share - a.share
+    })
+  }, [storeDecisions, storeQuery, storeRadar, storeSessionFilter, storeSignalFilter, storeSort])
   const searchableBbsRecords = useMemo(() => buildSearchableBbsRecords(posts, bbsSnapshots), [bbsSnapshots, posts])
+  const genderPostRankings = useMemo(
+    () => buildGenderPostRankings(searchableBbsRecords, stores),
+    [searchableBbsRecords, stores],
+  )
   const watchedWordHits = useMemo(
     () => buildWatchedWordHits(searchableBbsRecords, stores, wordBookmarks),
     [searchableBbsRecords, stores, wordBookmarks],
@@ -236,7 +303,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     () => buildCustomWatchedWordHits(searchableBbsRecords, stores, watchSearchTerm),
     [searchableBbsRecords, stores, watchSearchTerm],
   )
-  const visitForecasts = useMemo(() => buildVisitForecasts(events, stores, posts), [events, stores, posts])
+  const visitForecasts = useMemo(() => buildVisitForecasts(events, stores, posts, { windowDays: 14 }), [events, stores, posts])
   const exactMatches = useMemo(
     () =>
       searchExactBbsTerms(searchableBbsRecords, stores, [
@@ -273,20 +340,17 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     [activeExactMatches, exactMatchFilter],
   )
   const featuredEvent = summary.dayTop ?? summary.nightTop ?? scoredEvents[0]
-  const focusedStores = storeAnalytics.slice(0, 3)
-  const visibleSituations = situations.slice(0, 3)
   const visibleMatches = filteredExactMatches.slice(0, 16)
   const currentPlan = subscription.plan
   const currentLimits = planLimits[currentPlan]
-  const visibleImports = importBatches.slice(0, 4)
-  const visibleCrawlRuns = crawlRuns.slice(0, 4)
   const activeWatchedHits = watchSearchTerm.trim() ? searchedWatchedWordHits : watchedWordHits
   const visibleWatchedHits = activeWatchedHits.slice(0, 8)
   const topForecasts = visitForecasts.slice(0, 3)
   const latestPost = posts[0]
   const hotStore = storeRadar[0]
   const watchStore = storeRadar.find((point) => point.rank > 1 && point.score >= 35) ?? storeRadar[1]
-  const latestCaptureLabel = bbsSnapshots.length ? `${bbsSnapshots.length}件` : '巡回待ち'
+  const sourceHealth = useMemo(() => buildSourceHealth(bbsSources), [bbsSources])
+  const latestCaptureLabel = bbsSnapshots[0]?.capturedAt ? formatRadarCapturedAt(bbsSnapshots[0].capturedAt) : '取得待ち'
   const activeWords = wordCategories.filter((word) =>
     posts.some((post) => word.examples.some((example) => post.body.includes(example))),
   )
@@ -294,10 +358,27 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   const radarScore = featuredEvent?.score ?? 0
   const modeLabel = mode === 'database' ? '保存済み' : mode === 'anonymous' ? 'ログイン待ち' : 'デモ'
   const busyLabel = busy ? '処理中…' : apiState.message === modeLabel ? '待機中' : apiState.message
-  const sourceLimitLabel = `${bbsSources.length}件`
-  const isSignedIn = Boolean(initialState.userEmail)
+  const selectedStorePoint = selectedStoreId ? storeRadar.find((point) => point.store.id === selectedStoreId) : undefined
+  const selectedStoreSource = selectedStorePoint ? bbsSourceByStoreId.get(selectedStorePoint.store.id) : undefined
+  const selectedStoreAnalytics = selectedStorePoint ? storeAnalyticsById.get(selectedStorePoint.store.id) : undefined
+  const selectedStoreEventCount = selectedStorePoint ? eventCountByStoreId.get(selectedStorePoint.store.id) ?? 0 : 0
+  const candidateStoreCount = Object.values(storeDecisions).filter((state) => state === 'candidate').length
+  const favoriteStoreCount = Object.values(storeDecisions).filter((state) => state === 'favorite').length
+  const hiddenStoreCount = Object.values(storeDecisions).filter((state) => state === 'hidden').length
+
+  function navigateTo(item: (typeof navItems)[number]) {
+    setActiveNav(item.key)
+    setView(item.view)
+    const targetId = item.targetId
+    if (targetId) {
+      window.setTimeout(() => {
+        document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 0)
+    }
+  }
 
   function openTopCalendar() {
+    setActiveNav('calendar')
     setView('analytics')
     window.setTimeout(() => {
       document.getElementById('top-calendar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -321,6 +402,38 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     setBookmarkDraft('')
   }
 
+  function updateStoreDecision(storeId: string, state: StoreDecisionState) {
+    const nextDecision: StoreDecisionState = storeDecisions[storeId] === state ? 'watch' : state
+    setStoreDecisions((current) => {
+      if (current[storeId] === state) {
+        const next = { ...current }
+        delete next[storeId]
+        return next
+      }
+      return { ...current, [storeId]: state }
+    })
+
+    if (!isSignedIn) return
+    void postJson<{ mode?: RuntimeMode; message?: string }>('/api/store-decisions', {
+      storeId,
+      decision: nextDecision,
+    })
+      .then((result) => {
+        applyMode(result.mode, result.message)
+        if (!result.message) flash(nextDecision === 'watch' ? '候補状態を戻しました。' : '候補状態を保存しました。')
+      })
+      .catch((error) => {
+        flash(error instanceof Error ? error.message : '候補状態は端末内に保存しました。', 'warn')
+      })
+  }
+
+  function resetStoreExplorer() {
+    setStoreQuery('')
+    setStoreSort('hot')
+    setStoreSessionFilter('all')
+    setStoreSignalFilter('all')
+  }
+
   function flash(message: string, tone: ApiState['tone'] = 'good') {
     setApiState({ message, tone })
   }
@@ -341,20 +454,6 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
       flash('スコアを再計算しました。')
     } catch (error) {
       flash(error instanceof Error ? error.message : 'スコア算出に失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function runAiAnalysis() {
-    if (!analysisText.trim()) return flash('分析するテキストが必要です。', 'warn')
-    setBusy('ai')
-    try {
-      const result = await postJson<{ analysis: AiAnalysis; mode: string }>('/api/ai/analyze', { text: analysisText, persist: true })
-      setAnalysis(result.analysis)
-      flash(`分析を完了しました（${result.mode === 'heuristic' ? '簡易分析' : 'AI分析'}）。`)
-    } catch (error) {
-      flash(error instanceof Error ? error.message : '分析に失敗しました。', 'warn')
     } finally {
       setBusy('')
     }
@@ -450,119 +549,6 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     }
   }
 
-  async function sendNotifications() {
-    setBusy('notify')
-    try {
-      const result = await postJson<{
-        jobs: NotificationJob[]
-        mode?: RuntimeMode
-        message?: string
-        preference?: NotificationPreference
-      }>('/api/notifications/dispatch', {
-        channel: notificationPreference.channel,
-        audience: notificationPreference.audience,
-        recipient: notificationPreference.email || undefined,
-        webhookUrl: notificationPreference.webhookUrl || undefined,
-        events: scoredEvents,
-      })
-      setJobs(result.jobs)
-      if (result.preference) setNotificationPreference(result.preference)
-      applyMode(result.mode, result.message)
-      if (!result.message) flash('通知ジョブを作成しました。')
-    } catch (error) {
-      flash(error instanceof Error ? error.message : '通知配信に失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function saveNotificationSettings(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (notificationPreference.channel === 'email' && !notificationPreference.email) {
-      return flash('メール通知には送信先メールが必要です。', 'warn')
-    }
-    if (notificationPreference.channel === 'webhook' && !notificationPreference.webhookUrl) {
-      return flash('外部通知を使う場合は、送信先のアドレスが必要です。', 'warn')
-    }
-
-    setBusy('notification-settings')
-    try {
-      const result = await postJson<{
-        preference: NotificationPreference
-        mode?: RuntimeMode
-        message?: string
-      }>('/api/notifications/preferences', notificationPreference)
-      setNotificationPreference(result.preference)
-      applyMode(result.mode, result.message)
-      if (!result.message) flash('通知設定を保存しました。')
-    } catch (error) {
-      flash(error instanceof Error ? error.message : '通知設定を保存できません。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function startOAuth(provider: 'google' | 'x') {
-    setBusy(provider)
-    try {
-      const result = await postJson<{ url: string; mode?: string; message?: string }>('/api/auth/oauth', { provider })
-      if (result.mode === 'demo') {
-        flash(result.message ?? '認証はデモモードです。', 'warn')
-      } else if (result.url) {
-        window.location.assign(result.url)
-      }
-    } catch (error) {
-      flash(error instanceof Error ? error.message : 'OAuth開始に失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function sendEmailLink() {
-    if (!email) return flash('メールアドレスを入力してください。', 'warn')
-    setBusy('email')
-    try {
-      const result = await postJson<{ mode?: string; message?: string }>('/api/auth/email', { email })
-      flash(result.message ?? '認証メールを送信しました。', result.mode === 'demo' ? 'warn' : 'good')
-    } catch (error) {
-      flash(error instanceof Error ? error.message : 'メール認証に失敗しました。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function checkout(plan: 'light' | 'standard' | 'premium') {
-    setBusy(`checkout-${plan}`)
-    try {
-      const result = await postJson<{ url: string; mode?: string; message?: string }>('/api/stripe/checkout', { plan })
-      if (result.mode === 'demo') {
-        flash(result.message ?? '決済はデモモードです。', 'warn')
-      } else if (result.url) {
-        window.location.assign(result.url)
-      }
-    } catch (error) {
-      flash(error instanceof Error ? error.message : '決済画面を開始できません。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function openBillingPortal() {
-    setBusy('portal')
-    try {
-      const result = await postJson<{ url: string; mode?: string; message?: string }>('/api/stripe/portal', {})
-      if (result.mode === 'demo') {
-        flash(result.message ?? '決済はデモモードです。', 'warn')
-      } else if (result.url) {
-        window.location.assign(result.url)
-      }
-    } catch (error) {
-      flash(error instanceof Error ? error.message : '請求ポータルを開けません。', 'warn')
-    } finally {
-      setBusy('')
-    }
-  }
-
   async function signOut() {
     setBusy('signout')
     try {
@@ -580,7 +566,15 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
       <section className="mobile-app-shell">
         <RadarBackdrop />
         <header className="app-topbar">
-          <button className="brand-chip" type="button" onClick={() => setView('analytics')} aria-label="今日の画面へ戻る">
+          <button
+            className="brand-chip"
+            type="button"
+            onClick={() => {
+              setActiveNav('today')
+              setView('analytics')
+            }}
+            aria-label="今日の画面へ戻る"
+          >
             <Crosshair size={18} weight="bold" />
             <span>ナイトレーダー</span>
           </button>
@@ -591,18 +585,25 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
         </header>
 
         <nav className="bottom-nav" aria-label="主要ナビゲーション">
-          {navItems.map((item) => (
-            <button
-              aria-pressed={view === item.key}
-              className={view === item.key ? 'is-active' : ''}
-              key={item.key}
-              type="button"
-              onClick={() => setView(item.key)}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </button>
-          ))}
+          {navItems.map((item) => {
+            const isActive = activeNav === item.key
+
+            return (
+              <motion.button
+                aria-pressed={isActive}
+                className={isActive ? 'is-active' : ''}
+                key={item.key}
+                type="button"
+                onClick={() => navigateTo(item)}
+                whileHover={reduceMotion ? undefined : { y: -1 }}
+                whileTap={reduceMotion ? undefined : { scale: 0.96 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+              >
+                <span className="nav-icon-shell">{item.icon}</span>
+                <span className="nav-label">{item.label}</span>
+              </motion.button>
+            )
+          })}
         </nav>
 
         {view === 'radar' && (
@@ -645,14 +646,28 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
 
             <section className="quick-actions" aria-label="主要操作">
               <ActionButton icon={<ChartLineUp size={20} weight="bold" />} label="再計算" onClick={runScoring} disabled={busy === 'score'} />
-              <ActionButton icon={<ChartBarHorizontal size={20} weight="bold" />} label="今日" onClick={() => setView('analytics')} />
-              <ActionButton icon={<Storefront size={20} weight="bold" />} label="店舗" onClick={() => setView('capture')} />
+              <ActionButton
+                icon={<Broadcast size={20} weight="bold" />}
+                label="今日"
+                onClick={() => {
+                  setActiveNav('today')
+                  setView('analytics')
+                }}
+              />
+              <ActionButton
+                icon={<Storefront size={20} weight="bold" />}
+                label="店舗"
+                onClick={() => {
+                  setActiveNav('stores')
+                  setView('capture')
+                }}
+              />
               <ActionButton
                 icon={<MagnifyingGlass size={20} weight="bold" />}
                 label="検索"
                 onClick={() => {
-                  setHomePanel('search')
-                  setView('analytics')
+                  setActiveNav('search')
+                  setView('automate')
                 }}
               />
             </section>
@@ -695,155 +710,75 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
               featuredEvent={featuredEvent}
               hotStore={hotStore}
               latestCaptureLabel={latestCaptureLabel}
-              onOpenPanel={setHomePanel}
+              onOpenForecast={() => {
+                setActiveNav('stores')
+                setView('capture')
+              }}
               onRunScoring={runScoring}
+              sourceHealth={sourceHealth}
               topForecast={topForecasts[0]}
               watchStore={watchStore}
               busy={busy}
             />
 
-            <HotCompactBar points={storeRadar} />
+            <StoreMomentumRanking points={storeRadar} />
 
             <MonthlyCalendarPreview events={calendarEvents} stores={stores} />
 
-            <PanelSwitcher active={homePanel} onChange={setHomePanel} />
-
-            {homePanel === 'words' && (
-              <WatchedWordsPanel
-                hits={visibleWatchedHits}
-                bookmarks={wordBookmarks}
-                bookmarkDraft={bookmarkDraft}
-                searchTerm={watchSearchTerm}
-                busy={busy}
-                onDraftChange={setBookmarkDraft}
-                onAddBookmark={addWordBookmark}
-                onDeleteBookmark={deleteWordBookmark}
-                onSearch={runWatchedWordSearch}
-                onClearSearch={clearWatchedWordSearch}
-                onUseBookmark={(bookmark) => {
-                  setBookmarkDraft(bookmark.pattern)
-                  setWatchSearchTerm(bookmark.pattern)
-                }}
-              />
-            )}
-
-            {homePanel === 'forecast' && <ForecastPreview forecasts={topForecasts} />}
-
-            {homePanel === 'search' && (
-              <section className="app-card form-card compact-search-card">
-                <FormTitle icon={<MagnifyingGlass size={19} weight="bold" />} title="全店掲示板の完全一致" />
-                <p className="form-note">カンマ・読点・改行で複数指定できます。全角半角と空白は吸収して照合します。</p>
-                <div className="term-grid">
-                  <label>
-                    <span>人気単独男性</span>
-                    <input
-                      autoComplete="off"
-                      name="popularSingleMale"
-                      placeholder="例: 人気単男A"
-                      spellCheck={false}
-                      value={exactTerms.popularSingleMale}
-                      onChange={(event) => updateExactTerm('popularSingleMale', event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    <span>人気単独女性</span>
-                    <input
-                      autoComplete="off"
-                      name="popularSingleFemale"
-                      placeholder="例: 人気単女B"
-                      spellCheck={false}
-                      value={exactTerms.popularSingleFemale}
-                      onChange={(event) => updateExactTerm('popularSingleFemale', event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    <span>不人気・苦手</span>
-                    <input
-                      autoComplete="off"
-                      name="negativePerson"
-                      placeholder="例: 苦手さんC"
-                      spellCheck={false}
-                      value={exactTerms.negativePerson}
-                      onChange={(event) => updateExactTerm('negativePerson', event.target.value)}
-                    />
-                  </label>
-                </div>
-                <button type="button" onClick={saveExactTerms} disabled={!isSignedIn || busy === 'exact'}>
-                  <MagnifyingGlass size={17} weight="bold" />
-                  {isSignedIn ? '条件を保存' : 'ログイン後に保存'}
-                </button>
-                <ExactMatchList
-                  activeFilter={exactMatchFilter}
-                  counts={exactMatchCounts}
-                  matches={visibleMatches}
-                  total={activeExactMatches.length}
-                  onFilterChange={setExactMatchFilter}
-                />
-              </section>
-            )}
-
-            {homePanel === 'weekday' && (
-              <section className="app-card">
-                <div className="section-heading">
-                  <span>曜日</span>
-                  <h2>曜日別の反応</h2>
-                </div>
-                <div className="weekday-matrix">
-                  {focusedStores.map((item) => (
-                    <article className="weekday-row" key={item.store.id}>
-                      <div>
-                        <strong>{formatBarName(item.store.name)}</strong>
-                        <span>{item.dominantWeekday}が最多</span>
-                      </div>
-                      <div className="weekday-bars">
-                        {item.weekdayStats.map((stat) => (
-                          <span className="weekday-bar" key={stat.weekday}>
-                            <i style={{ blockSize: `${Math.max(6, stat.ratio)}%` }} />
-                            <em>{stat.weekday.replace('曜', '')}</em>
-                          </span>
-                        ))}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            <section className="app-card form-card">
-              <FormTitle icon={<MapPin size={19} weight="bold" />} title="店舗状況" />
-              <div className="situation-list">
-                {visibleSituations.length ? (
-                  visibleSituations.map((situation) => (
-                    <SituationCard
-                      key={situation.id}
-                      situation={situation}
-                      storeName={resolveStoreDisplayName(stores, situation.storeId)}
-                    />
-                  ))
-                ) : (
-                  <p className="muted-note">運営側の観測メモが入ると表示されます。</p>
-                )}
-              </div>
-            </section>
+            <WatchedWordsPanel
+              hits={visibleWatchedHits}
+              bookmarks={wordBookmarks}
+              bookmarkDraft={bookmarkDraft}
+              searchTerm={watchSearchTerm}
+              busy={busy}
+              onDraftChange={setBookmarkDraft}
+              onAddBookmark={addWordBookmark}
+              onDeleteBookmark={deleteWordBookmark}
+              onSearch={runWatchedWordSearch}
+              onClearSearch={clearWatchedWordSearch}
+              onUseBookmark={(bookmark) => {
+                setBookmarkDraft(bookmark.pattern)
+                setWatchSearchTerm(bookmark.pattern)
+              }}
+            />
           </section>
         )}
 
         {view === 'capture' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="店舗管理" title="店舗・巡回先" body="店舗、イベント、掲示板の巡回先は運営側で更新します。" />
+            <ViewIntro eyebrow="店舗" title="盛り上がり順に店舗を見る" body="BBS、月間イベント、注目シグナルをまとめて、候補店舗だけを見比べます。" />
 
-            <OpsPanel
-              mode={mode}
-              sourceLimitLabel={sourceLimitLabel}
-              crawlRuns={visibleCrawlRuns}
-              importBatches={visibleImports}
-              jobs={jobs}
+            <StoreDiscoveryPanel
+              analyticsByStoreId={storeAnalyticsById}
+              candidateCount={candidateStoreCount}
+              eventCountByStoreId={eventCountByStoreId}
+              favoriteCount={favoriteStoreCount}
+              hiddenCount={hiddenStoreCount}
+              points={filteredStoreRadar}
+              query={storeQuery}
+              sourceByStoreId={bbsSourceByStoreId}
+              sort={storeSort}
+              sessionFilter={storeSessionFilter}
+              signalFilter={storeSignalFilter}
+              totalCount={storeRadar.length}
+              storeDecisions={storeDecisions}
+              onDecisionChange={updateStoreDecision}
+              onOpenDetail={setSelectedStoreId}
+              onQueryChange={setStoreQuery}
+              onReset={resetStoreExplorer}
+              onSessionFilterChange={setStoreSessionFilter}
+              onSignalFilterChange={setStoreSignalFilter}
+              onSortChange={setStoreSort}
             />
+
+            <PostCountRankingCard rankings={genderPostRankings.slice(0, 6)} />
+
+            <GenderWordRatioRankingCard rankings={genderPostRankings} />
 
             <section className="app-card catalog-card">
               <div className="section-heading">
                 <span>登録店舗</span>
-                <h2>登録店舗</h2>
+                <h2>店舗一覧</h2>
               </div>
               <div className="catalog-list">
                 {stores.length ? (
@@ -866,31 +801,6 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
 
             <section className="app-card catalog-card">
               <div className="section-heading">
-                <span>掲示板巡回</span>
-                <h2>巡回対象</h2>
-              </div>
-              <div className="source-list">
-                {bbsSources.length ? (
-                  bbsSources.slice(0, 10).map((source) => (
-                    <article key={source.id}>
-                      <div>
-                        <strong>{source.label === 'BBS' ? '掲示板' : source.label}</strong>
-                        <span>
-                          {resolveStoreDisplayName(stores, source.storeId)} / {formatCrawlStatus(source.lastStatus)}
-                        </span>
-                      </div>
-                      <em>{source.crawlIntervalMinutes}分</em>
-                    </article>
-                  ))
-                ) : (
-                  <p className="muted-note">掲示板のアドレスは管理側の登録データで追加します。</p>
-                )}
-              </div>
-              <CrawlRunList runs={visibleCrawlRuns} />
-            </section>
-
-            <section className="app-card catalog-card">
-              <div className="section-heading">
                 <span>月間予定</span>
                 <h2>月間イベント</h2>
               </div>
@@ -900,7 +810,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
                     <div>
                       <strong>{event.title}</strong>
                       <small>
-                        {resolveStoreDisplayName(stores, event.storeId)} / {event.date} {event.startsAt}
+                        {resolveStoreDisplayName(stores, event.storeId)} / {formatEventDateLabel(event)} {event.startsAt}
                       </small>
                     </div>
                     <em>{event.session === 'day' ? '昼' : '夜'}</em>
@@ -911,194 +821,80 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
                 TOPで確認
               </button>
             </section>
+            {selectedStorePoint ? (
+              <StoreDetailDrawer
+                analytics={selectedStoreAnalytics}
+                decision={storeDecisions[selectedStorePoint.store.id]}
+                eventCount={selectedStoreEventCount}
+                point={selectedStorePoint}
+                source={selectedStoreSource}
+                onClose={() => setSelectedStoreId(null)}
+                onDecisionChange={updateStoreDecision}
+              />
+            ) : null}
           </section>
         )}
 
         {view === 'automate' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="分析と通知" title="分析・通知" body="店舗と掲示板データは運営側で巡回し、ユーザーは分析と通知設定を扱います。" />
+            <ViewIntro eyebrow="検索" title="掲示板から気になるワードを探す" body="保存した注目ワードと完全一致条件を使って、全店のBBS本文とスクショ抽出テキストを確認します。" />
 
-            <section className="app-card form-card">
-              <FormTitle icon={<MagicWand size={19} weight="bold" />} title="自動分析" />
-              <p className="form-note">入力欄の文章だけを分類します。初期表示は直近の掲示板投稿です。</p>
-              <textarea aria-label="分析対象テキスト" name="analysisText" value={analysisText} onChange={(event) => setAnalysisText(event.target.value)} rows={5} />
-              <button type="button" onClick={runAiAnalysis} disabled={busy === 'ai'}>
-                <Sparkle size={17} weight="fill" />
-                分類する
-              </button>
-              {analysis && (
-                <div className="analysis-result">
-                  <strong>
-                    {analysis.eventCategory}・{analysis.session === 'day' ? '昼向き' : '夜向き'}
-                  </strong>
-                  <p>{analysis.summary}</p>
-                  <small>具体性 {analysis.specificity} / {analysis.keywords.join('、') || 'キーワードなし'}</small>
-                </div>
-              )}
-            </section>
+            <WatchedWordsPanel
+              hits={visibleWatchedHits}
+              bookmarks={wordBookmarks}
+              bookmarkDraft={bookmarkDraft}
+              searchTerm={watchSearchTerm}
+              busy={busy}
+              onDraftChange={setBookmarkDraft}
+              onAddBookmark={addWordBookmark}
+              onDeleteBookmark={deleteWordBookmark}
+              onSearch={runWatchedWordSearch}
+              onClearSearch={clearWatchedWordSearch}
+              onUseBookmark={(bookmark) => {
+                setBookmarkDraft(bookmark.pattern)
+                setWatchSearchTerm(bookmark.pattern)
+              }}
+            />
 
-            <section className="app-card form-card">
-              <FormTitle icon={<BellRinging size={19} weight="bold" />} title="通知配信" />
-              <form className="nested-form" onSubmit={saveNotificationSettings}>
-                <div className="inline-grid">
-                  <select
-                    aria-label="通知チャンネル"
-                    value={notificationPreference.channel}
-                    onChange={(event) =>
-                      setNotificationPreference((current) => ({
-                        ...current,
-                        channel: event.target.value as NotificationChannel,
-                      }))
-                    }
-                  >
-                    <option value="in_app">アプリ内</option>
-                    <option value="email">メール</option>
-                    <option value="webhook">外部通知</option>
-                  </select>
-                  <select
-                    aria-label="通知対象プラン"
-                    value={notificationPreference.audience}
-                    onChange={(event) =>
-                      setNotificationPreference((current) => ({
-                        ...current,
-                        audience: event.target.value as PlanKey,
-                      }))
-                    }
-                  >
-                    {plans.map((plan) => (
-                      <option key={plan.key} value={plan.key} disabled={mode === 'database' && planRank[plan.key] > planRank[currentPlan]}>
-                        {plan.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <input
-                  aria-label="通知メール"
-                  autoComplete="email"
-                  name="notificationEmail"
-                  placeholder="通知メール…"
-                  type="email"
-                  value={notificationPreference.email}
-                  onChange={(event) => setNotificationPreference((current) => ({ ...current, email: event.target.value }))}
-                />
-                <input
-                  aria-label="外部通知の送信先"
-                  autoComplete="off"
-                  name="notificationWebhookUrl"
-                  placeholder="外部通知の送信先…"
-                  type="url"
-                  value={notificationPreference.webhookUrl}
-                  onChange={(event) => setNotificationPreference((current) => ({ ...current, webhookUrl: event.target.value }))}
-                />
-                <button className="secondary-action" type="submit" disabled={busy === 'notification-settings'}>
-                  <BellRinging size={17} weight="bold" />
-                  通知設定を保存
-                </button>
-              </form>
-              <NotificationPreferenceSummary preference={notificationPreference} />
-              <button type="button" onClick={sendNotifications} disabled={busy === 'notify'}>
-                <BellRinging size={17} weight="bold" />
-                通知ジョブを作成
-              </button>
-              <div className="job-list">
-                {jobs.length ? (
-                  jobs.map((job) => (
-                    <article key={job.id}>
-                      <strong>{job.title}</strong>
-                      <span>
-                        {notificationChannelLabels[job.channel]} / {formatJobStatus(job.status)}
-                      </span>
-                    </article>
-                  ))
-                ) : (
-                  <p className="muted-note">メール配信または外部通知の送信先が未設定の場合は、試行記録として通知だけ作成します。</p>
-                )}
-              </div>
-            </section>
+            <ExactSearchCard
+              activeFilter={exactMatchFilter}
+              busy={busy}
+              counts={exactMatchCounts}
+              exactTerms={exactTerms}
+              isSignedIn={isSignedIn}
+              matches={visibleMatches}
+              total={activeExactMatches.length}
+              onFilterChange={setExactMatchFilter}
+              onSave={saveExactTerms}
+              onUpdateTerm={updateExactTerm}
+            />
           </section>
         )}
 
         {view === 'account' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="設定" title="アカウント" body="ログイン、支払い、公開情報ポリシーを管理します。" />
-
-            <SetupStatusPanel status={setupStatus} />
+            <ViewIntro eyebrow="設定" title="アカウント" body="ログインと公開情報ポリシーを管理します。" />
 
             <section className="app-card form-card">
               <FormTitle icon={<ShieldCheck size={19} weight="bold" />} title="認証" />
               <div className="account-state">
                 <span>{initialState.userEmail ? initialState.userEmail : '未ログイン'}</span>
-                <strong>{planLabels[subscription.plan]} / {subscription.status}</strong>
+                <strong>{isSignedIn ? 'ログイン中' : 'ログイン待ち'}</strong>
               </div>
-              <button type="button" onClick={() => startOAuth('x')} disabled={busy === 'x'}>
-                <XLogo size={19} weight="bold" />
-                Xでログイン
-              </button>
-              <button className="secondary-action" type="button" onClick={() => startOAuth('google')} disabled={busy === 'google'}>
-                <GoogleLogo size={19} weight="bold" />
-                Googleでログイン
-              </button>
-              <label className="email-row">
-                <EnvelopeSimple size={18} weight="bold" />
-                <input
-                  aria-label="メールアドレス"
-                  autoComplete="email"
-                  name="email"
-                  placeholder="メールアドレス…"
-                  spellCheck={false}
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </label>
-              <button type="button" onClick={sendEmailLink} disabled={busy === 'email'}>
-                認証メールを送る
-              </button>
-              {initialState.userEmail && (
+              {isSignedIn ? (
+                <div className="signed-in-panel">
+                  <p>ログイン済みのため、追加のログインボタンは停止しています。別アカウントで入り直す場合はログアウトしてください。</p>
+                </div>
+              ) : (
+                <a className="secondary-action" href="/login">
+                  ログインページへ
+                </a>
+              )}
+              {isSignedIn && (
                 <button className="secondary-action" type="button" onClick={signOut} disabled={busy === 'signout'}>
                   ログアウト
                 </button>
               )}
-            </section>
-
-            <section className="app-card billing-panel">
-              <div className="billing-head">
-                <FormTitle icon={<StripeLogo size={19} weight="bold" />} title="支払い・プラン" />
-                <span>{planLabels[currentPlan]}プラン</span>
-              </div>
-              <div className="billing-route" aria-label="決済開始ルート">
-                <span>認証</span>
-                <span>プラン</span>
-                <span>決済</span>
-              </div>
-              <section className="plan-stack">
-                {paidPlans.map((plan) => (
-                  <button
-                    className={`plan-card ${subscription.plan === plan.key ? 'is-current' : ''}`}
-                    disabled={!isSignedIn || busy === `checkout-${plan.key}`}
-                    key={plan.key}
-                    type="button"
-                    onClick={() => checkout(plan.key)}
-                  >
-                    <span>
-                      <StripeLogo size={20} weight="bold" />
-                      {plan.label}
-                      {subscription.plan === plan.key ? <em>現在</em> : null}
-                    </span>
-                    <strong>{plan.price}</strong>
-                    <small>{plan.summary}</small>
-                    <small>
-                      掲示板 {planLimits[plan.key].bbsSources}件 / 完全一致 各{planLimits[plan.key].exactTermsPerGroup}語
-                    </small>
-                    <small>{isSignedIn ? '決済画面へ進む' : 'ログイン後に開始'}</small>
-                  </button>
-                ))}
-              </section>
-
-              <button className="billing-portal-button" type="button" onClick={openBillingPortal} disabled={!isSignedIn || busy === 'portal'}>
-                <StripeLogo size={18} weight="bold" />
-                請求ポータルを開く
-              </button>
             </section>
 
             <section className="legal-note">
@@ -1222,18 +1018,20 @@ function TodayDecisionCard({
   featuredEvent,
   topForecast,
   latestCaptureLabel,
+  sourceHealth,
   busy,
   onRunScoring,
-  onOpenPanel,
+  onOpenForecast,
 }: {
   hotStore?: StoreRadarPoint
   watchStore?: StoreRadarPoint
   featuredEvent?: ScoredEvent
   topForecast?: VisitForecast
   latestCaptureLabel: string
+  sourceHealth: SourceHealth
   busy: string
   onRunScoring: () => void
-  onOpenPanel: (panel: AnalyticsPanelKey) => void
+  onOpenForecast: () => void
 }) {
   const score = hotStore?.score ?? featuredEvent?.score ?? 0
   const scoreProgress = `${Math.max(0, Math.min(100, score))}%`
@@ -1272,14 +1070,18 @@ function TodayDecisionCard({
           <dt>余地</dt>
           <dd>{watchStore ? `${formatBarName(watchStore.store.name)} / ${watchStore.verdict}` : '比較対象なし'}</dd>
         </div>
+        <div>
+          <dt>取得</dt>
+          <dd>{sourceHealthLabel(sourceHealth)}</dd>
+        </div>
       </dl>
       <div className="decision-actions">
         <button type="button" onClick={onRunScoring} disabled={busy === 'score'}>
           <ChartLineUp size={17} weight="bold" />
           再計算
         </button>
-        <button type="button" onClick={() => onOpenPanel('forecast')}>
-          候補詳細
+        <button type="button" onClick={onOpenForecast}>
+          店舗を比較
         </button>
         <a href="#top-calendar">
           月間イベント
@@ -1289,65 +1091,616 @@ function TodayDecisionCard({
   )
 }
 
-function HotCompactBar({ points }: { points: StoreRadarPoint[] }) {
-  const topThree = points.slice(0, 3)
-  const top = topThree[0]
+function formatRadarCapturedAt(value?: string) {
+  if (!value) return '巡回待ち'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '巡回待ち'
+  return date.toLocaleString('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function StoreMomentumRanking({ points }: { points: StoreRadarPoint[] }) {
+  const rankedPoints = points.slice(0, 5)
+  const strongest = rankedPoints[0]
 
   return (
-    <section className="hot-compact-card" aria-label="盛り上がり比率と上位店舗">
-      <div className="hot-compact-head">
-        <span>盛り上がり比率</span>
-        <strong>{top ? `${formatBarName(top.store.name)} ${top.share}%` : '未観測'}</strong>
+    <section className="momentum-ranking-card" aria-label="お店の盛り上がりランキング">
+      <div className="momentum-ranking-head">
+        <div>
+          <span>盛り上がりランキング</span>
+          <h2>今、反応が濃いお店</h2>
+          <p>直近のBBS巡回、スクリーンショット本文、注目ワードの出方から並べています。</p>
+        </div>
+        <strong>{strongest ? `${strongest.share}%` : '--'}</strong>
       </div>
-      <div className="hot-share-track" aria-hidden="true">
-        {topThree.map((point, index) => (
-          <i
-            className={`${point.tone} ${index === 0 ? 'is-leading' : ''}`}
-            key={point.store.id}
-            style={{ inlineSize: `${Math.max(8, point.share)}%` }}
-          />
-        ))}
+
+      {rankedPoints.length ? (
+        <div className="momentum-ranking-list">
+          {rankedPoints.map((point) => {
+            const storeName = formatBarName(point.store.name)
+            const signalText = [
+              `投稿${point.postCount}`,
+              `画面${point.snapshotCount}`,
+              `注目${point.signals.totalSignals}`,
+            ].join(' / ')
+
+            return (
+              <article className={`momentum-ranking-row ${point.tone}`} key={point.store.id}>
+                <span className="momentum-rank">{point.rank}</span>
+                <div className="momentum-store">
+                  <div className="momentum-store-title">
+                    <strong>{storeName}</strong>
+                    <em>{point.score}点</em>
+                  </div>
+                  <div className="momentum-meter" aria-hidden="true">
+                    <i style={{ inlineSize: `${Math.max(5, Math.min(100, point.score))}%` }} />
+                  </div>
+                  <p>{point.verdict}</p>
+                </div>
+                <dl className="momentum-meta">
+                  <div>
+                    <dt>比率</dt>
+                    <dd>{point.share}%</dd>
+                  </div>
+                  <div>
+                    <dt>根拠</dt>
+                    <dd>{signalText}</dd>
+                  </div>
+                  <div>
+                    <dt>更新</dt>
+                    <dd>{formatRadarCapturedAt(point.lastCapturedAt)}</dd>
+                  </div>
+                </dl>
+              </article>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="muted-note">掲示板を巡回すると、盛り上がりの強い順に表示されます。</p>
+      )}
+    </section>
+  )
+}
+
+const femaleGenderPattern = /(女性|女の子|女子|単女|単独女性|主婦|人妻|奥様|女性予約|女性来店|女性無料|女性一人)/g
+const maleGenderPattern = /(男性|男の子|男子|単男|単独男性|男性予約|男性来店|男性一人|紳士|旦那)/g
+const postMarkerPattern = /(20\d{2}年\d{1,2}月\d{1,2}日|\d{4}[-/]\d{1,2}[-/]\d{1,2}|投稿者|書き込み|来店予告|No\.\d+)/g
+
+function countGenderSignals(text: string, pattern: RegExp) {
+  return text.match(pattern)?.length ?? 0
+}
+
+function estimatePostCount(record: PostRecord) {
+  if (record.source !== 'scrape') return 1
+  const markers = record.body.match(postMarkerPattern)?.length ?? 0
+  return Math.max(1, Math.min(80, markers || Math.ceil(record.body.length / 700)))
+}
+
+function buildGenderPostRankings(records: PostRecord[], stores: StoreProfile[]): GenderPostRanking[] {
+  const recordsByStore = new Map<string, PostRecord[]>()
+  records.forEach((record) => {
+    recordsByStore.set(record.storeId, [...(recordsByStore.get(record.storeId) ?? []), record])
+  })
+
+  return stores
+    .map((store) => {
+      const storeRecords = recordsByStore.get(store.id) ?? []
+      const postCount = storeRecords.reduce((sum, record) => sum + estimatePostCount(record), 0)
+      const body = storeRecords.map((record) => record.body).join('\n')
+      const femaleSignals = countGenderSignals(body, femaleGenderPattern)
+      const maleSignals = countGenderSignals(body, maleGenderPattern)
+      const signalTotal = femaleSignals + maleSignals
+      const femaleRatio = signalTotal ? Math.round((femaleSignals / signalTotal) * 100) : 0
+      const maleRatio = signalTotal ? 100 - femaleRatio : 0
+      const verdict = signalTotal
+        ? femaleRatio >= 62
+          ? '女性記述が多め'
+          : maleRatio >= 62
+            ? '男性記述が多め'
+            : '男女記述が近い'
+        : '判定語が少ない'
+
+      return {
+        store,
+        rank: 0,
+        postCount,
+        femaleSignals,
+        maleSignals,
+        femaleRatio,
+        maleRatio,
+        signalTotal,
+        verdict,
+      }
+    })
+    .toSorted((a, b) => b.postCount - a.postCount || b.signalTotal - a.signalTotal || b.femaleRatio - a.femaleRatio)
+    .map((ranking, index) => ({ ...ranking, rank: index + 1 }))
+}
+
+function PostCountRankingCard({ rankings }: { rankings: GenderPostRanking[] }) {
+  const visibleRankings = rankings.filter((ranking) => ranking.postCount > 0).slice(0, 6)
+
+  return (
+    <section className="gender-ranking-card" aria-label="書き込み数ランキング">
+      <div className="gender-ranking-head">
+        <div>
+          <span>書き込み数</span>
+          <h2>投稿量が多い店舗</h2>
+          <p>BBS本文とスクショ抽出本文から、投稿のまとまり数を推定して並べます。</p>
+        </div>
+        <strong>{visibleRankings[0] ? `${visibleRankings[0].postCount}件` : '--'}</strong>
       </div>
-      <div className="top-store-strip">
-        {topThree.length ? (
-          topThree.map((point) => (
-            <article key={point.store.id}>
-              <span>{point.rank}</span>
-              <div>
-                <strong>{formatBarName(point.store.name)}</strong>
-                <small>{point.verdict}</small>
+
+      <div className="gender-ranking-list">
+        {visibleRankings.length ? (
+          visibleRankings.map((ranking) => (
+            <article className="gender-ranking-row" key={ranking.store.id}>
+              <span className="gender-rank">{ranking.rank}</span>
+              <div className="gender-store">
+                <div className="gender-store-title">
+                  <strong>{formatBarName(ranking.store.name)}</strong>
+                  <em>{ranking.postCount}件</em>
+                </div>
+                <div className="gender-ratio-bar" aria-label={`女性 ${ranking.femaleRatio}% 男性 ${ranking.maleRatio}%`}>
+                  <i style={{ inlineSize: `${ranking.femaleRatio}%` }} />
+                </div>
+                <p>
+                  女性ワード {ranking.femaleSignals} / 男性ワード {ranking.maleSignals}
+                </p>
               </div>
-              <em>{point.score}</em>
+              <dl className="gender-meta">
+                <div>
+                  <dt>女性語</dt>
+                  <dd>{ranking.femaleSignals}</dd>
+                </div>
+                <div>
+                  <dt>男性語</dt>
+                  <dd>{ranking.maleSignals}</dd>
+                </div>
+              </dl>
             </article>
           ))
         ) : (
-          <p className="muted-note">掲示板を取り込むと上位店舗が出ます。</p>
+          <p className="muted-note">BBS巡回または投稿取り込みが入ると、書き込み数を表示します。</p>
         )}
       </div>
     </section>
   )
 }
 
-function PanelSwitcher({
-  active,
-  onChange,
-}: {
-  active: AnalyticsPanelKey
-  onChange: (panel: AnalyticsPanelKey) => void
-}) {
+function GenderWordRatioRankingCard({ rankings }: { rankings: GenderPostRanking[] }) {
+  const visibleRankings = rankings
+    .filter((ranking) => ranking.signalTotal > 0)
+    .toSorted((a, b) => b.signalTotal - a.signalTotal || b.femaleRatio - a.femaleRatio)
+    .slice(0, 6)
+
   return (
-    <nav className="home-panel-tabs" aria-label="掲示板分析パネル">
-      {analyticsPanels.map((panel) => (
-        <button
-          className={active === panel.key ? 'is-active' : ''}
-          key={panel.key}
-          type="button"
-          onClick={() => onChange(panel.key)}
-        >
-          {panel.label}
+    <section className="gender-ranking-card" aria-label="女性ワード比率と男性ワード比率">
+      <div className="gender-ranking-head">
+        <div>
+          <span>ワード比率</span>
+          <h2>女性ワード比率・男性ワード比率</h2>
+          <p>実人数ではなく、投稿文に出てくる女性系/男性系ワードの比率です。</p>
+        </div>
+        <strong>{visibleRankings[0] ? `${visibleRankings[0].femaleRatio}%` : '--'}</strong>
+      </div>
+
+      <div className="gender-ranking-list">
+        {visibleRankings.length ? (
+          visibleRankings.map((ranking, index) => (
+            <article className="gender-ranking-row" key={ranking.store.id}>
+              <span className="gender-rank">{index + 1}</span>
+              <div className="gender-store">
+                <div className="gender-store-title">
+                  <strong>{formatBarName(ranking.store.name)}</strong>
+                  <em>{ranking.signalTotal}語</em>
+                </div>
+                <div className="gender-ratio-bar" aria-label={`女性ワード ${ranking.femaleRatio}% 男性ワード ${ranking.maleRatio}%`}>
+                  <i style={{ inlineSize: `${ranking.femaleRatio}%` }} />
+                </div>
+                <p>
+                  女性ワード {ranking.femaleRatio}% / 男性ワード {ranking.maleRatio}% ・ {ranking.verdict}
+                </p>
+              </div>
+              <dl className="gender-meta">
+                <div>
+                  <dt>女性語</dt>
+                  <dd>{ranking.femaleSignals}</dd>
+                </div>
+                <div>
+                  <dt>男性語</dt>
+                  <dd>{ranking.maleSignals}</dd>
+                </div>
+              </dl>
+            </article>
+          ))
+        ) : (
+          <p className="muted-note">女性系/男性系ワードが検出されると比率を表示します。</p>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function StoreDiscoveryPanel({
+  analyticsByStoreId,
+  candidateCount,
+  eventCountByStoreId,
+  favoriteCount,
+  hiddenCount,
+  points,
+  query,
+  sourceByStoreId,
+  sort,
+  sessionFilter,
+  signalFilter,
+  storeDecisions,
+  totalCount,
+  onDecisionChange,
+  onOpenDetail,
+  onQueryChange,
+  onReset,
+  onSessionFilterChange,
+  onSignalFilterChange,
+  onSortChange,
+}: {
+  analyticsByStoreId: Map<string, StoreBbsAnalytics>
+  candidateCount: number
+  eventCountByStoreId: Map<string, number>
+  favoriteCount: number
+  hiddenCount: number
+  points: StoreRadarPoint[]
+  query: string
+  sourceByStoreId: Map<string, BbsSource>
+  sort: StoreSortKey
+  sessionFilter: StoreSessionFilter
+  signalFilter: StoreSignalFilter
+  storeDecisions: Record<string, StoreDecisionState>
+  totalCount: number
+  onDecisionChange: (storeId: string, state: StoreDecisionState) => void
+  onOpenDetail: (storeId: string) => void
+  onQueryChange: (value: string) => void
+  onReset: () => void
+  onSessionFilterChange: (value: StoreSessionFilter) => void
+  onSignalFilterChange: (value: StoreSignalFilter) => void
+  onSortChange: (value: StoreSortKey) => void
+}) {
+  const visibleTop = points.slice(0, 9)
+  const strongest = points[0]
+
+  return (
+    <section className="store-discovery-card" aria-label="店舗探索">
+      <div className="store-discovery-head">
+        <div>
+          <span>店舗を探す</span>
+          <h2>盛り上がりと根拠で比較</h2>
+          <p>一覧ではなく、今日見る価値があるお店だけを絞り込みます。</p>
+        </div>
+        <dl>
+          <div>
+            <dt>最上位</dt>
+            <dd>{strongest ? formatBarName(strongest.store.name) : '未判定'}</dd>
+          </div>
+          <div>
+            <dt>候補</dt>
+            <dd>{candidateCount}件</dd>
+          </div>
+          <div>
+            <dt>お気に入り</dt>
+            <dd>{favoriteCount}件</dd>
+          </div>
+          <div>
+            <dt>表示</dt>
+            <dd>
+              {points.length}/{totalCount}
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      <div className="store-explorer-controls">
+        <label className="store-search-box">
+          <MagnifyingGlass size={17} weight="bold" />
+          <input
+            aria-label="店舗名やエリアで探す"
+            autoComplete="off"
+            placeholder="店舗名・エリアで探す"
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+          />
+        </label>
+        <select aria-label="並び替え" value={sort} onChange={(event) => onSortChange(event.target.value as StoreSortKey)}>
+          <option value="hot">盛り上がり順</option>
+          <option value="share">比率が高い順</option>
+          <option value="signals">根拠が多い順</option>
+          <option value="updated">更新が新しい順</option>
+        </select>
+      </div>
+
+      <div className="store-filter-row" aria-label="店舗フィルタ">
+        <button type="button" aria-pressed={sessionFilter === 'all'} onClick={() => onSessionFilterChange('all')}>
+          全時間
         </button>
-      ))}
-    </nav>
+        <button type="button" aria-pressed={sessionFilter === 'day'} onClick={() => onSessionFilterChange('day')}>
+          昼あり
+        </button>
+        <button type="button" aria-pressed={sessionFilter === 'night'} onClick={() => onSessionFilterChange('night')}>
+          夜あり
+        </button>
+        <button type="button" aria-pressed={signalFilter === 'all'} onClick={() => onSignalFilterChange('all')}>
+          全根拠
+        </button>
+        <button type="button" aria-pressed={signalFilter === 'female'} onClick={() => onSignalFilterChange('female')}>
+          女性
+        </button>
+        <button type="button" aria-pressed={signalFilter === 'first'} onClick={() => onSignalFilterChange('first')}>
+          初回
+        </button>
+        <button type="button" aria-pressed={signalFilter === 'group'} onClick={() => onSignalFilterChange('group')}>
+          複数
+        </button>
+        <button type="button" aria-pressed={signalFilter === 'emoji'} onClick={() => onSignalFilterChange('emoji')}>
+          絵文字
+        </button>
+      </div>
+
+      <div className="store-decision-strip" aria-label="候補整理">
+        <article>
+          <span>候補入り</span>
+          <strong>{candidateCount}件</strong>
+        </article>
+        <article>
+          <span>お気に入り</span>
+          <strong>{favoriteCount}件</strong>
+        </article>
+        <article>
+          <span>今回は非表示</span>
+          <strong>{hiddenCount}件</strong>
+        </article>
+        <button type="button" onClick={onReset}>
+          条件を戻す
+        </button>
+      </div>
+
+      <div className="store-explorer-grid">
+        {visibleTop.length ? (
+          visibleTop.map((point) => (
+            <StoreExplorerCard
+              analytics={analyticsByStoreId.get(point.store.id)}
+              decision={storeDecisions[point.store.id]}
+              eventCount={eventCountByStoreId.get(point.store.id) ?? 0}
+              key={point.store.id}
+              point={point}
+              source={sourceByStoreId.get(point.store.id)}
+              onDecisionChange={onDecisionChange}
+              onOpenDetail={onOpenDetail}
+            />
+          ))
+        ) : (
+          <p className="muted-note">条件に合う店舗がありません。絞り込みを戻してください。</p>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function StoreExplorerCard({
+  analytics,
+  decision,
+  eventCount,
+  point,
+  source,
+  onDecisionChange,
+  onOpenDetail,
+}: {
+  analytics?: StoreBbsAnalytics
+  decision?: StoreDecisionState
+  eventCount: number
+  point: StoreRadarPoint
+  source?: BbsSource
+  onDecisionChange: (storeId: string, state: StoreDecisionState) => void
+  onOpenDetail: (storeId: string) => void
+}) {
+  const signalItems = [
+    { label: '女性', value: point.signals.femaleOnly },
+    { label: '初回', value: point.signals.firstVisit },
+    { label: '複数', value: point.signals.groupVisit },
+    { label: '絵文字', value: point.signals.emoji },
+  ]
+  const sourceStatus = formatUserBbsStatus(source?.lastStatus)
+
+  return (
+    <article className={`store-explorer-card is-${point.tone} ${decision ? `decision-${decision}` : ''}`}>
+      <div className="store-card-top">
+        <div>
+          <span>
+            {formatStoreArea(point.store.area)} / {formatStoreSessionLabel(point.store)}
+          </span>
+          <strong>{formatBarName(point.store.name)}</strong>
+        </div>
+        <em>{point.score}</em>
+      </div>
+
+      <div className="store-card-meter" aria-label={`盛り上がり ${point.score}点`}>
+        <i style={{ inlineSize: `${Math.max(4, Math.min(100, point.score))}%` }} />
+      </div>
+
+      <p>{point.verdict}</p>
+
+      <div className="store-signal-grid">
+        {signalItems.map((item) => (
+          <span key={item.label} className={item.value ? 'is-detected' : ''}>
+            {item.label}
+            <em>{item.value}</em>
+          </span>
+        ))}
+      </div>
+
+      <dl className="store-card-facts">
+        <div>
+          <dt>比率</dt>
+          <dd>{point.share}%</dd>
+        </div>
+        <div>
+          <dt>投稿</dt>
+          <dd>{point.postCount}</dd>
+        </div>
+        <div>
+          <dt>予定</dt>
+          <dd>{eventCount}</dd>
+        </div>
+        <div>
+          <dt>巡回</dt>
+          <dd>{sourceStatus}</dd>
+        </div>
+      </dl>
+
+      <div className="store-card-note">
+        <span>{analytics?.dominantWeekday ?? '曜日未判定'}</span>
+        <em>{formatRadarCapturedAt(point.lastCapturedAt)}</em>
+      </div>
+
+      <div className="store-card-actions">
+        <button
+          type="button"
+          className={decision === 'candidate' ? 'is-active' : ''}
+          onClick={() => onDecisionChange(point.store.id, 'candidate')}
+        >
+          {decision === 'candidate' ? '候補入り' : '候補に入れる'}
+        </button>
+        <button
+          type="button"
+          className={decision === 'favorite' ? 'is-active' : ''}
+          onClick={() => onDecisionChange(point.store.id, 'favorite')}
+        >
+          <Star size={13} weight={decision === 'favorite' ? 'fill' : 'bold'} />
+          {decision === 'favorite' ? 'お気に入り' : '保存'}
+        </button>
+        <button type="button" onClick={() => onOpenDetail(point.store.id)}>
+          詳細
+        </button>
+        <button type="button" className="quiet" onClick={() => onDecisionChange(point.store.id, 'hidden')}>
+          外す
+        </button>
+      </div>
+    </article>
+  )
+}
+
+function StoreDetailDrawer({
+  analytics,
+  decision,
+  eventCount,
+  point,
+  source,
+  onClose,
+  onDecisionChange,
+}: {
+  analytics?: StoreBbsAnalytics
+  decision?: StoreDecisionState
+  eventCount: number
+  point: StoreRadarPoint
+  source?: BbsSource
+  onClose: () => void
+  onDecisionChange: (storeId: string, state: StoreDecisionState) => void
+}) {
+  const signalReasons = [
+    point.signals.femaleOnly ? `女性関連 ${point.signals.femaleOnly}件` : '',
+    point.signals.firstVisit ? `初回系 ${point.signals.firstVisit}件` : '',
+    point.signals.comeback ? `久しぶり系 ${point.signals.comeback}件` : '',
+    point.signals.groupVisit ? `複数来店 ${point.signals.groupVisit}件` : '',
+    eventCount ? `月間イベント ${eventCount}件` : '',
+  ].filter(Boolean)
+
+  return (
+    <div className="store-detail-layer" role="presentation" onClick={onClose}>
+      <aside className="store-detail-panel" aria-label={`${formatBarName(point.store.name)}の詳細`} onClick={(event) => event.stopPropagation()}>
+        <header>
+          <button type="button" onClick={onClose}>
+            閉じる
+          </button>
+          <span>店舗詳細</span>
+          <h2>{formatBarName(point.store.name)}</h2>
+          <p>{point.verdict}</p>
+        </header>
+
+        <div className="store-detail-score">
+          <strong>{point.score}</strong>
+          <div>
+            <span>盛り上がり</span>
+            <i style={{ inlineSize: `${Math.max(4, Math.min(100, point.score))}%` }} />
+          </div>
+          <em>{point.share}%</em>
+        </div>
+
+        <dl className="store-detail-metrics">
+          <div>
+            <dt>掲示板投稿</dt>
+            <dd>{point.postCount}件</dd>
+          </div>
+          <div>
+            <dt>スクショ</dt>
+            <dd>{point.snapshotCount}件</dd>
+          </div>
+          <div>
+            <dt>イベント</dt>
+            <dd>{eventCount}件</dd>
+          </div>
+          <div>
+            <dt>曜日傾向</dt>
+            <dd>{analytics?.dominantWeekday ?? '未判定'}</dd>
+          </div>
+        </dl>
+
+        <section className="store-detail-section">
+          <span>見るべき根拠</span>
+          {signalReasons.length ? (
+            <ul>
+              {signalReasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          ) : (
+            <p>巡回データが増えると、注目根拠がここにまとまります。</p>
+          )}
+        </section>
+
+        <section className="store-detail-section">
+          <span>運用メモ</span>
+          <p>{analytics?.verdict ?? 'BBS投稿とスクリーンショットを蓄積中です。'}</p>
+          <small>最終更新: {formatRadarCapturedAt(point.lastCapturedAt)} / BBS: {formatUserBbsStatus(source?.lastStatus)}</small>
+        </section>
+
+        {source?.url ? (
+          <a className="store-source-link" href={source.url} target="_blank" rel="noreferrer">
+            掲示板を開く
+          </a>
+        ) : null}
+
+        <div className="store-detail-actions">
+          <button
+            type="button"
+            className={decision === 'candidate' ? 'is-active' : ''}
+            onClick={() => onDecisionChange(point.store.id, 'candidate')}
+          >
+            {decision === 'candidate' ? '候補から戻す' : '候補に入れる'}
+          </button>
+          <button
+            type="button"
+            className={decision === 'favorite' ? 'is-active' : ''}
+            onClick={() => onDecisionChange(point.store.id, 'favorite')}
+          >
+            {decision === 'favorite' ? 'お気に入り解除' : 'お気に入り'}
+          </button>
+          <button type="button" onClick={() => onDecisionChange(point.store.id, 'watch')}>
+            保留にする
+          </button>
+        </div>
+      </aside>
+    </div>
   )
 }
 
@@ -1376,7 +1729,7 @@ function ScoreRow({ event }: { event: ScoredEvent }) {
           {formatBarName(event.store.name)} / {event.title}
         </strong>
         <small>
-          {event.date} {event.startsAt} / {event.reasons.join('、')}
+          {formatEventDateLabel(event)} {event.startsAt} / {event.reasons.join('、')}
         </small>
       </div>
       <em>{event.score}</em>
@@ -1385,7 +1738,12 @@ function ScoreRow({ event }: { event: ScoredEvent }) {
 }
 
 function MonthlyCalendarPreview({ events, stores }: { events: EventInput[]; stores: StoreProfile[] }) {
-  const cells = useMemo(() => buildCalendarPreviewCells(events, stores), [events, stores])
+  const monthOptions = useMemo(() => buildCalendarMonthOptions(events), [events])
+  const defaultMonthKey = useMemo(() => selectDefaultCalendarMonth(monthOptions), [monthOptions])
+  const [selectedMonthKey, setSelectedMonthKey] = useState(defaultMonthKey)
+  const activeMonthKey = monthOptions.some((month) => month.key === selectedMonthKey) ? selectedMonthKey : defaultMonthKey
+  const activeMonth = monthOptions.find((month) => month.key === activeMonthKey)
+  const cells = useMemo(() => buildCalendarPreviewCells(events, stores, activeMonthKey), [activeMonthKey, events, stores])
   const eventCount = cells.reduce((sum, cell) => sum + cell.items.length, 0)
   const [selectedDay, setSelectedDay] = useState<CalendarPreviewCell | null>(null)
 
@@ -1400,11 +1758,26 @@ function MonthlyCalendarPreview({ events, stores }: { events: EventInput[]; stor
         <CalendarDots size={20} weight="bold" />
         <div>
           <span>月間イベント</span>
-          <strong>2026.06</strong>
+          <strong>{activeMonth?.displayLabel ?? '未設定'}</strong>
         </div>
-        <em>TOP内で確認</em>
+        <em>{eventCount}件</em>
       </div>
-      <div className="mini-month-grid" role="grid" aria-label="2026年6月の店舗イベント">
+      {monthOptions.length > 1 ? (
+        <div className="calendar-month-switcher" aria-label="表示月">
+          {monthOptions.slice(0, 4).map((month) => (
+            <button
+              aria-pressed={month.key === activeMonthKey}
+              key={month.key}
+              type="button"
+              onClick={() => setSelectedMonthKey(month.key)}
+            >
+              {month.shortLabel}
+              <em>{month.eventCount}</em>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="mini-month-grid" role="grid" aria-label={`${activeMonth?.label ?? '月間'}の店舗イベント`}>
         {['月', '火', '水', '木', '金', '土', '日'].map((day) => (
           <span className="mini-weekday" key={day}>
             {day}
@@ -1438,7 +1811,7 @@ function MonthlyCalendarPreview({ events, stores }: { events: EventInput[]; stor
           </article>
         ))}
       </div>
-      <p>{eventCount ? `${eventCount}件の公式イベントを日付別に確認できます。` : 'イベント登録後に月間予定が出ます。'}</p>
+      <p>{eventCount ? `${activeMonth?.label ?? '選択月'}の公式イベントを日付別に確認できます。` : 'イベント登録後に月間予定が出ます。'}</p>
       {selectedDay ? (
         <div className="top-calendar-drawer-backdrop" role="presentation" onClick={() => setSelectedDay(null)}>
           <aside
@@ -1522,18 +1895,61 @@ type CalendarPreviewItem = {
   sourceUrl?: string
 }
 
-function buildCalendarPreviewCells(events: EventInput[], stores: StoreProfile[]): CalendarPreviewCell[] {
-  const year = 2026
-  const monthIndex = 5
-  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
-  const firstDay = new Date(year, monthIndex, 1).getDay()
+type CalendarMonthOption = {
+  key: string
+  label: string
+  shortLabel: string
+  displayLabel: string
+  eventCount: number
+}
+
+const calendarMonthFormatter = new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: 'long' })
+
+function eventMonthKey(event: EventInput) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(event.date) ? event.date.slice(0, 7) : monthKeyInJapan()
+}
+
+function buildCalendarMonthOptions(events: EventInput[]): CalendarMonthOption[] {
+  const counts = events.reduce<Map<string, number>>((map, event) => {
+    const key = eventMonthKey(event)
+    map.set(key, (map.get(key) ?? 0) + 1)
+    return map
+  }, new Map())
+
+  if (!counts.size) {
+    const key = monthKeyInJapan()
+    counts.set(key, 0)
+  }
+
+  return [...counts.entries()].toSorted(([a], [b]) => a.localeCompare(b)).map(([key, eventCount]) => {
+    const [year, month] = key.split('-').map(Number)
+    const date = dateFromJapanParts(year, month, 1)
+    return {
+      key,
+      label: calendarMonthFormatter.format(date),
+      shortLabel: `${month}月`,
+      displayLabel: `${year}.${String(month).padStart(2, '0')}`,
+      eventCount,
+    }
+  })
+}
+
+function selectDefaultCalendarMonth(months: CalendarMonthOption[]) {
+  const current = monthKeyInJapan()
+  return months.find((month) => month.key === current)?.key ?? months.find((month) => month.key > current)?.key ?? months[0]?.key ?? current
+}
+
+function buildCalendarPreviewCells(events: EventInput[], stores: StoreProfile[], monthKey: string): CalendarPreviewCell[] {
+  const [year, month] = monthKey.split('-').map(Number)
+  const daysInMonth = daysInMonthInJapan(year, month)
+  const firstDay = weekdayIndexForJapanDate(year, month, 1)
   const leadingBlanks = (firstDay + 6) % 7
-  const today = new Date()
-  const todayDay = today.getFullYear() === year && today.getMonth() === monthIndex ? today.getDate() : 0
+  const [todayYear, todayMonth, todayDayValue] = dateKeyInJapan().split('-').map(Number)
+  const todayDay = todayYear === year && todayMonth === month ? todayDayValue : 0
   const eventDays = new Map<number, CalendarPreviewItem[]>()
 
   for (const event of events) {
-    const day = resolveEventDay(event, year, monthIndex)
+    const day = resolveEventDay(event, year, month)
     if (!day) continue
     const storeName = resolveStoreDisplayName(stores, event.storeId)
     eventDays.set(day, [
@@ -1566,7 +1982,7 @@ function buildCalendarPreviewCells(events: EventInput[], stores: StoreProfile[])
     const unique = dedupeCalendarItems(eventDays.get(day) ?? [])
     cells.push({
       key: `day-${day}`,
-      dateLabel: `6/${day}(${['日', '月', '火', '水', '木', '金', '土'][new Date(year, monthIndex, day).getDay()]})`,
+      dateLabel: `${month}/${day}(${weekdayLabelForJapanDate(year, month, day).replace('曜', '')})`,
       day,
       isBlank: false,
       isToday: day === todayDay,
@@ -1577,28 +1993,25 @@ function buildCalendarPreviewCells(events: EventInput[], stores: StoreProfile[])
   return cells
 }
 
-function resolveEventDay(event: EventInput, year: number, monthIndex: number) {
+function resolveEventDay(event: EventInput, year: number, month: number) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(event.date)) {
-    const parsed = new Date(`${event.date}T00:00:00`)
-    if (parsed.getFullYear() === year && parsed.getMonth() === monthIndex) return parsed.getDate()
+    const [eventYear, eventMonth, eventDay] = event.date.split('-').map(Number)
+    if (eventYear === year && eventMonth === month) return eventDay
     return 0
   }
 
-  const now = new Date()
-  const anchor = now.getFullYear() === year && now.getMonth() === monthIndex ? now : new Date(year, monthIndex, 2)
-  if (event.date === '今日') return anchor.getDate()
+  const [todayYear, todayMonth, todayDay] = dateKeyInJapan().split('-').map(Number)
+  if (event.date === '今日') return todayYear === year && todayMonth === month ? todayDay : 0
   if (event.date === '明日') {
-    const tomorrow = new Date(anchor)
-    tomorrow.setDate(anchor.getDate() + 1)
-    return tomorrow.getMonth() === monthIndex ? tomorrow.getDate() : 0
+    const [tomorrowYear, tomorrowMonth, tomorrowDay] = dateKeyInJapan(relativeDateInJapan(1)).split('-').map(Number)
+    return tomorrowYear === year && tomorrowMonth === month ? tomorrowDay : 0
   }
 
-  const weekdayIndex = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜'].indexOf(event.weekday)
+  const weekdayIndex = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜'].indexOf(eventWeekday(event))
   if (weekdayIndex < 0) return 0
-  const candidate = new Date(anchor)
-  const offset = (weekdayIndex - candidate.getDay() + 7) % 7
-  candidate.setDate(candidate.getDate() + offset)
-  return candidate.getMonth() === monthIndex ? candidate.getDate() : 0
+  const firstDayIndex = weekdayIndexForJapanDate(year, month, 1)
+  const day = 1 + ((weekdayIndex - firstDayIndex + 7) % 7)
+  return day <= daysInMonthInJapan(year, month) ? day : 0
 }
 
 function dedupeCalendarItems(items: CalendarPreviewItem[]) {
@@ -1678,9 +2091,9 @@ function WatchedWordsPanel({
   return (
     <section className="app-card watched-card">
       <div className="section-heading">
-        <span>注目語</span>
-        <h2>注目ワード</h2>
-        <p>任意のワードを検索し、必要なら保存できます。保存済みワードはあとから削除できます。</p>
+        <span>検索</span>
+        <h2>注目ワード検索</h2>
+        <p>任意のワードを登録・削除・検索できます。一致した投稿は下の履歴に残ります。</p>
       </div>
       <div className="watch-word-chips" aria-label="固定監視ワード">
         <span>女性</span>
@@ -1733,7 +2146,7 @@ function WatchedWordsPanel({
           ))}
         </div>
       ) : null}
-      <div className="watch-hit-list">
+      <div className="watch-hit-list" aria-label="一致履歴">
         {hits.length ? (
           hits.map((hit) => (
             <article className={`watch-hit ${hit.severity}`} key={hit.id}>
@@ -1750,59 +2163,6 @@ function WatchedWordsPanel({
   )
 }
 
-function ForecastPreview({ forecasts }: { forecasts: VisitForecast[] }) {
-  return (
-    <section className="app-card forecast-preview">
-      <div className="section-heading">
-        <span>行き先候補</span>
-        <h2>検討候補 上位3件</h2>
-        <p>掲示板とイベント情報から、今日比較しやすい候補だけを絞ります。</p>
-      </div>
-      <div className="forecast-list-mini">
-        {forecasts.length ? (
-          forecasts.map((forecast) => (
-            <article key={forecast.id}>
-              <span>{forecast.rank}</span>
-              <div>
-                <strong>{formatBarName(forecast.store.name)}</strong>
-                <small>
-                  {forecast.dateLabel} {forecast.timeLabel} / {forecast.reasons[0]}
-                </small>
-              </div>
-              <em>{forecast.score}</em>
-            </article>
-          ))
-        ) : (
-          <p className="muted-note">イベントと掲示板投稿を追加するとランキングが出ます。</p>
-        )}
-      </div>
-      <a className="text-action" href="/forecast">
-        候補を詳しく見る
-      </a>
-    </section>
-  )
-}
-
-function formatShortDate(value?: string) {
-  if (!value) return '未実行'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat('ja-JP', {
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
-}
-
-function hostLabel(value: string) {
-  try {
-    return new URL(value).hostname
-  } catch {
-    return value
-  }
-}
-
 function formatPostSource(source: string) {
   const labels: Record<string, string> = {
     manual: '手入力',
@@ -1813,156 +2173,86 @@ function formatPostSource(source: string) {
   return labels[source] ?? source
 }
 
-function formatCrawlStatus(status?: string) {
-  const labels: Record<string, string> = {
-    ok: '取得済み',
-    failed: '失敗',
-    blocked: 'ブロック',
-    pending: '確認待ち',
-  }
-  return labels[status ?? 'pending'] ?? status ?? '確認待ち'
+function formatUserBbsStatus(status?: string) {
+  if (status === 'ok') return '取得済み'
+  if (status === 'pending' || !status) return '取得待ち'
+  return '一部未取得'
 }
 
-function formatJobStatus(status?: string) {
-  const labels: Record<string, string> = {
-    sent: '送信済み',
-    failed: '失敗',
-    dry_run: '試行のみ',
-    queued: '待機中',
-    pending: '確認待ち',
-  }
-  return labels[status ?? 'pending'] ?? status ?? '確認待ち'
-}
-
-function SetupStatusPanel({ status }: { status: ServiceSetupStatus }) {
-  const hasRequiredActions = status.actionCount > 0
-
-  return (
-    <section className="app-card setup-status-panel" aria-label="外部サービス接続状態">
-      <div className="setup-status-head">
-        <div className="section-heading">
-          <span>接続状態</span>
-          <h2>外部サービスの準備状況</h2>
-          <p>キーの値は表示せず、接続に必要な設定が揃っているかだけを確認します。</p>
-        </div>
-        <strong className={hasRequiredActions ? 'is-action' : 'is-ready'}>
-          {hasRequiredActions ? `要設定 ${status.actionCount}件` : '主要設定OK'}
-        </strong>
-      </div>
-
-      <div className="setup-status-grid">
-        {status.items.map((entry) => (
-          <article className={`setup-status-item is-${entry.tone}`} key={entry.id}>
-            <div>
-              <span>{entry.label}</span>
-              <strong>{entry.summary}</strong>
-            </div>
-            <em>{setupToneLabels[entry.tone]}</em>
-            <p>{entry.detail}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function OpsPanel({
-  mode,
-  sourceLimitLabel,
-  crawlRuns,
-  importBatches,
-  jobs,
+function ExactSearchCard({
+  activeFilter,
+  busy,
+  counts,
+  exactTerms,
+  isSignedIn,
+  matches,
+  total,
+  onFilterChange,
+  onSave,
+  onUpdateTerm,
 }: {
-  mode: RuntimeMode
-  sourceLimitLabel: string
-  crawlRuns: CrawlRun[]
-  importBatches: ImportBatch[]
-  jobs: NotificationJob[]
+  activeFilter: ExactMatchFilter
+  busy: string
+  counts: Record<ExactMatchFilter, number>
+  exactTerms: ExactTermState
+  isSignedIn: boolean
+  matches: ExactTermMatch[]
+  total: number
+  onFilterChange: (filter: ExactMatchFilter) => void
+  onSave: () => void
+  onUpdateTerm: (group: ExactTermGroup, value: string) => void
 }) {
-  const latestRun = crawlRuns[0]
-  const latestImport = importBatches[0]
-  const failedJobs = jobs.filter((job) => job.status === 'failed').length
-
   return (
-    <section className="ops-panel app-card" aria-label="運用状態">
-      <div className="ops-tile">
-        <ShieldCheck size={17} weight="bold" />
-        <span>保存</span>
-        <strong>{mode === 'database' ? '保存済み' : mode === 'anonymous' ? 'ログイン待ち' : 'デモ'}</strong>
+    <section className="app-card form-card compact-search-card">
+      <FormTitle icon={<MagnifyingGlass size={19} weight="bold" />} title="完全一致検索" />
+      <p className="form-note">人気単独男性、人気単独女性、苦手ワードを分けて登録し、全店BBSから完全一致だけを拾います。</p>
+      <div className="term-grid">
+        <label>
+          <span>人気単独男性</span>
+          <input
+            autoComplete="off"
+            name="popularSingleMale"
+            placeholder="例: 人気単男A"
+            spellCheck={false}
+            value={exactTerms.popularSingleMale}
+            onChange={(event) => onUpdateTerm('popularSingleMale', event.target.value)}
+          />
+        </label>
+        <label>
+          <span>人気単独女性</span>
+          <input
+            autoComplete="off"
+            name="popularSingleFemale"
+            placeholder="例: 人気単女B"
+            spellCheck={false}
+            value={exactTerms.popularSingleFemale}
+            onChange={(event) => onUpdateTerm('popularSingleFemale', event.target.value)}
+          />
+        </label>
+        <label>
+          <span>不人気・苦手</span>
+          <input
+            autoComplete="off"
+            name="negativePerson"
+            placeholder="例: 苦手さんC"
+            spellCheck={false}
+            value={exactTerms.negativePerson}
+            onChange={(event) => onUpdateTerm('negativePerson', event.target.value)}
+          />
+        </label>
       </div>
-      <div className="ops-tile">
-        <Broadcast size={17} weight="bold" />
-        <span>掲示板</span>
-        <strong>{sourceLimitLabel}</strong>
-      </div>
-      <div className="ops-tile">
-        <GlobeHemisphereEast size={17} weight="bold" />
-        <span>巡回</span>
-        <strong>{latestRun ? formatCrawlStatus(latestRun.status) : '未実行'}</strong>
-      </div>
-      <div className="ops-tile">
-        <FileCsv size={17} weight="bold" />
-        <span>取込</span>
-        <strong>{latestImport ? latestImport.importedCount : 0}</strong>
-      </div>
-      {failedJobs ? <p className="ops-note">通知失敗 {failedJobs}件</p> : null}
+      <button type="button" onClick={onSave} disabled={!isSignedIn || busy === 'exact'}>
+        <MagnifyingGlass size={17} weight="bold" />
+        {isSignedIn ? '条件を保存して検索' : 'ログイン後に保存'}
+      </button>
+      <ExactMatchList
+        activeFilter={activeFilter}
+        counts={counts}
+        matches={matches}
+        total={total}
+        onFilterChange={onFilterChange}
+      />
     </section>
-  )
-}
-
-function CrawlRunList({ runs }: { runs: CrawlRun[] }) {
-  if (!runs.length) return null
-
-  return (
-    <div className="mini-history" aria-label="掲示板巡回履歴">
-      {runs.map((run) => (
-        <article key={run.id}>
-          <span>{formatCrawlStatus(run.status)}</span>
-          <strong>{run.message ?? hostLabel(run.url)}</strong>
-          <em>{formatShortDate(run.fetchedAt)}</em>
-        </article>
-      ))}
-    </div>
-  )
-}
-
-function NotificationPreferenceSummary({ preference }: { preference: NotificationPreference }) {
-  const destination =
-    preference.channel === 'email'
-      ? preference.email || '未設定'
-      : preference.channel === 'webhook'
-        ? preference.webhookUrl || '未設定'
-        : 'アプリ内'
-
-  return (
-    <div className="preference-summary">
-      <span>{notificationChannelLabels[preference.channel]}</span>
-      <strong>{destination}</strong>
-      <em>{planLabels[preference.audience]}向け</em>
-    </div>
-  )
-}
-
-function SituationCard({
-  situation,
-  storeName,
-}: {
-  situation: StoreSituation
-  storeName: string
-}) {
-  const statusLabel = situationStatuses.find((status) => status.value === situation.status)?.label ?? '要観測'
-
-  return (
-    <article className={`situation-card ${situation.status}`}>
-      <div>
-        <span>
-          <ListChecks size={16} weight="bold" />
-          {storeName} / {statusLabel}
-        </span>
-        <strong>{situation.title}</strong>
-        <p>{situation.note || 'メモなし'}</p>
-      </div>
-    </article>
   )
 }
 

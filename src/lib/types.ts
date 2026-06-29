@@ -60,6 +60,8 @@ export type StoreSituation = {
   observedAt: string
 }
 
+export type StoreDecisionState = 'candidate' | 'favorite' | 'watch' | 'hidden'
+
 export type BbsSource = {
   id: string
   storeId: string
@@ -292,6 +294,7 @@ export type DashboardState = {
   bbsSources: BbsSource[]
   crawlRuns: CrawlRun[]
   bbsSnapshots: BbsSnapshot[]
+  storeDecisions: Record<string, StoreDecisionState>
   exactTerms: ExactTermState
   wordBookmarks: WordBookmark[]
   notificationJobs: NotificationJob[]

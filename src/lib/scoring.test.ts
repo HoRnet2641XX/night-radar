@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { BbsSnapshot, BbsSnapshotMetrics, EventInput } from './types'
 import { events, posts, stores } from './demo-data'
+import { formatEventDateLabel, weekdayLabelForJapanDate } from './date'
 import {
   buildBbsSnapshotMetrics,
   buildSearchableBbsRecords,
@@ -14,6 +15,13 @@ import {
   scoreEvents,
   searchExactBbsTerms,
 } from './scoring'
+
+describe('Japan calendar dates', () => {
+  it('uses the opened calendar date to derive the weekday', () => {
+    assert.equal(weekdayLabelForJapanDate(2026, 6, 29), '月曜')
+    assert.equal(formatEventDateLabel({ date: '2026-06-29', weekday: '日曜' }), '6/29(月)')
+  })
+})
 
 describe('scoreEvents', () => {
   it('ranks events and attaches store metrics', () => {
@@ -64,6 +72,53 @@ describe('scoreEvents', () => {
 
     assert.ok(new Set(scores).size > 1)
     assert.equal(scored[0].id, 'event-detailed')
+  })
+
+  it('derives weekdays from ISO event dates before scoring', () => {
+    const store = {
+      ...stores[0],
+      id: 'weekday-linked-store',
+      strongDays: ['土曜'],
+      strongEvents: [],
+      weakEvents: [],
+    }
+    const event: EventInput = {
+      id: 'event-wrong-weekday',
+      storeId: store.id,
+      date: '2026-06-13',
+      weekday: '月曜',
+      startsAt: '19:00',
+      session: 'night',
+      category: '通常',
+      title: '曜日連動テスト',
+    }
+
+    const scored = scoreEvents([event], [store], [])
+
+    assert.equal(scored[0].weekday, '土曜')
+    assert.equal(scored[0].reasons[0], '土曜との相性が高い')
+  })
+
+  it('shows the derived weekday in visit forecast date labels', () => {
+    const store = {
+      ...stores[0],
+      id: 'forecast-weekday-store',
+      strongDays: ['土曜'],
+    }
+    const event: EventInput = {
+      id: 'forecast-wrong-weekday',
+      storeId: store.id,
+      date: '2026-06-13',
+      weekday: '月曜',
+      startsAt: '19:00',
+      session: 'night',
+      category: '通常',
+      title: '予測曜日テスト',
+    }
+
+    const forecasts = buildVisitForecasts([event], [store], [])
+
+    assert.equal(forecasts[0].dateLabel, '6/13(土)')
   })
 })
 

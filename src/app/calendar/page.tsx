@@ -1,6 +1,9 @@
+import { redirect } from 'next/navigation'
 import { formatBarName } from '@/lib/display'
+import { eventWeekday } from '@/lib/date'
 import officialEventsData from '@/lib/official-events.generated.json'
 import { getDashboardState } from '@/lib/server/repository'
+import { getCurrentUser } from '@/lib/supabase/server'
 import type { EventInput, StoreProfile } from '@/lib/types'
 import { CalendarDayExplorer, type CalendarEventView, type CalendarMonthView } from '@/components/calendar-day-explorer'
 
@@ -74,7 +77,7 @@ function toCalendarEvent(event: EventInput, storeMap: Map<string, StoreProfile>)
   return {
     id: event.id,
     date: event.date,
-    weekday: event.weekday,
+    weekday: eventWeekday(event),
     startsAt: event.startsAt,
     session: event.session,
     category: event.category,
@@ -120,6 +123,9 @@ function buildMonths(events: EventInput[], storeMap: Map<string, StoreProfile>) 
 }
 
 export default async function CalendarPage() {
+  const user = await getCurrentUser()
+  if (!user) redirect('/login?next=/calendar')
+
   const state = await getDashboardState()
   const storeMap = new Map(state.stores.map((store) => [store.id, store]))
   const events = mergeEvents(state.events)
@@ -167,7 +173,7 @@ export default async function CalendarPage() {
         </div>
 
         <div className="calendar-source-note">
-          タイトルと詳細は公式ページ本文から短く整形しています。Off White は取得タイムアウト、Ouvea は 403 のため今回は未掲載です。
+          タイトルと詳細は公式ページ本文から短く整形しています。一部店舗は公式ページの取得状況により未掲載です。
         </div>
 
         <CalendarDayExplorer months={months} />

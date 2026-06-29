@@ -3,6 +3,7 @@ import type { User } from '@supabase/supabase-js'
 import { events as demoEvents, posts as demoPosts, stores as demoStores, storeSituations, wordCategories } from '../demo-data'
 import { highestAudienceForPlan, normalizePlan, planLimitMessage, planLimits, planRank } from '../plans'
 import { buildSearchableBbsRecords, scoreEvents, searchExactBbsTerms } from '../scoring'
+import { eventWeekday } from '../date'
 import type {
   BbsSnapshot,
   BbsSource,
@@ -18,6 +19,7 @@ import type {
   PostRecord,
   RuntimeMode,
   ScoredEvent,
+  StoreDecisionState,
   StoreProfile,
   StoreSituation,
   SubscriptionState,
@@ -28,6 +30,7 @@ import { buildBbsSnapshot, createBrowserSnapshotSession } from './bbs-snapshot'
 import type { BrowserSnapshotSession } from './bbs-snapshot'
 import { scrapePublicPage, scrapeResultToPost } from './scrape'
 import { getServiceSetupStatus } from './setup-status'
+import { dispatchNotification } from './notifications'
 
 type SupabaseServerClient = NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>
 type SupabaseAdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>
@@ -76,6 +79,7 @@ function demoDashboardState(mode: RuntimeMode = 'demo', connectionNote?: string)
     bbsSources: [],
     crawlRuns: [],
     bbsSnapshots: [],
+    storeDecisions: {},
     exactTerms: defaultExactTerms,
     wordBookmarks: [],
     notificationJobs: [],
@@ -184,7 +188,7 @@ function normalizeStore(input: Partial<StoreProfile>): StoreProfile {
 }
 
 function toEvent(row: DbRow): EventInput {
-  return {
+  const event: EventInput = {
     id: stringField(row, 'id'),
     storeId: stringField(row, 'store_id'),
     date: stringField(row, 'date_label', '今日'),
@@ -196,6 +200,7 @@ function toEvent(row: DbRow): EventInput {
     details: optionalStringField(row, 'details'),
     sourceUrl: optionalStringField(row, 'source_url'),
   }
+  return { ...event, weekday: eventWeekday(event) }
 }
 
 function toEventRow(event: EventInput) {
@@ -203,7 +208,7 @@ function toEventRow(event: EventInput) {
     id: event.id,
     store_id: event.storeId,
     date_label: event.date,
-    weekday: event.weekday,
+    weekday: eventWeekday(event),
     starts_at: event.startsAt,
     session: event.session,
     category: event.category,
@@ -218,7 +223,7 @@ function normalizeEvent(input: Partial<EventInput>): EventInput {
   if (!title) throw new RepositoryError('イベント名が必要です。', 422)
   if (!input.storeId) throw new RepositoryError('店舗を選択してください。', 422)
 
-  return {
+  const event: EventInput = {
     id: ensureId(input.id),
     storeId: input.storeId,
     date: String(input.date || '今日'),
@@ -230,6 +235,7 @@ function normalizeEvent(input: Partial<EventInput>): EventInput {
     details: input.details ? String(input.details) : undefined,
     sourceUrl: input.sourceUrl || undefined,
   }
+  return { ...event, weekday: eventWeekday(event) }
 }
 
 function toPost(row: DbRow): PostRecord {
@@ -517,6 +523,35 @@ function toWordBookmarkRow(bookmark: WordBookmark, userId: string) {
   }
 }
 
+function isMissingRelationError(error?: { code?: string; message?: string } | null) {
+  if (!error) return false
+  return (
+    error.code === '42P01' ||
+    error.code === 'PGRST205' ||
+    /user_store_decisions|relation .* does not exist|Could not find/i.test(error.message ?? '')
+  )
+}
+
+function storeDecisionRowsToState(rows?: DbRow[] | null): Record<string, StoreDecisionState> {
+  const decisions: Record<string, StoreDecisionState> = {}
+  rows?.forEach((row) => {
+    const decision = stringField(row, 'decision')
+    if (decision === 'candidate' || decision === 'favorite' || decision === 'hidden') {
+      decisions[stringField(row, 'store_id')] = decision
+    }
+  })
+  return decisions
+}
+
+function normalizeStoreDecision(input: { storeId?: string; decision?: string }) {
+  const storeId = String(input.storeId ?? '').trim()
+  if (!storeId) throw new RepositoryError('店舗を選択してください。', 422)
+
+  const decision =
+    input.decision === 'candidate' || input.decision === 'favorite' || input.decision === 'hidden' ? input.decision : 'watch'
+  return { storeId, decision }
+}
+
 function toSubscription(row?: DbRow | null): SubscriptionState {
   return {
     plan: row ? normalizePlan(stringField(row, 'plan', 'free')) : 'free',
@@ -570,7 +605,7 @@ async function getWriteAccess(): Promise<WriteAccess> {
   if (!supabase) {
     return {
       mode: 'demo',
-      message: 'Supabase env is not configured. Changes are local to this browser session.',
+      message: 'Supabaseが未設定のため、この端末内だけに一時保存します。',
     }
   }
 
@@ -732,7 +767,7 @@ export async function getDashboardState(): Promise<DashboardState> {
         ? supabase.from('events').select('*').in('store_id', storeIds).order('created_at', { ascending: false })
         : Promise.resolve({ data: [], error: null }),
       storeIds.length
-        ? supabase.from('posts').select('*').in('store_id', storeIds).order('posted_at', { ascending: false }).limit(500)
+        ? supabase.from('posts').select('*').in('store_id', storeIds).order('posted_at', { ascending: false }).limit(5000)
         : Promise.resolve({ data: [], error: null }),
       storeIds.length
         ? supabase.from('store_situations').select('*').in('store_id', storeIds).order('observed_at', { ascending: false })
@@ -744,7 +779,7 @@ export async function getDashboardState(): Promise<DashboardState> {
         ? supabase.from('crawl_runs').select('*').in('store_id', storeIds).order('fetched_at', { ascending: false }).limit(20)
         : Promise.resolve({ data: [], error: null }),
       storeIds.length
-        ? supabase.from('bbs_snapshots').select('*').in('store_id', storeIds).order('captured_at', { ascending: false }).limit(120)
+        ? supabase.from('bbs_snapshots').select('*').in('store_id', storeIds).order('captured_at', { ascending: false }).limit(800)
         : Promise.resolve({ data: [], error: null }),
       supabase.from('exact_terms').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
       supabase.from('word_bookmarks').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
@@ -782,6 +817,10 @@ export async function getDashboardState(): Promise<DashboardState> {
   const events = (eventResult.data ?? []).map(toEvent)
   const posts = (postResult.data ?? []).map(toPost)
   const scoredEvents = scoreEvents(events, stores, posts)
+  const decisionResult = await supabase.from('user_store_decisions').select('*').eq('user_id', user.id)
+  if (decisionResult.error && !isMissingRelationError(decisionResult.error)) {
+    return demoDashboardState('demo', decisionResult.error.message)
+  }
 
   return {
     mode: 'database',
@@ -795,6 +834,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     bbsSources: (sourceResult.data ?? []).map(toBbsSource),
     crawlRuns: (crawlResult.data ?? []).map(toCrawlRun),
     bbsSnapshots: (snapshotResult.data ?? []).map(toBbsSnapshot),
+    storeDecisions: storeDecisionRowsToState(decisionResult.error ? [] : decisionResult.data),
     exactTerms: exactRowsToState(termResult.data),
     wordBookmarks: (bookmarkResult.data ?? []).map(toWordBookmark),
     notificationJobs: (noticeResult.data ?? []).map(toNotificationJob),
@@ -952,10 +992,86 @@ export async function deleteWordBookmark(id: string) {
   return { mode: 'database' as const, ok: true }
 }
 
+export async function saveUserStoreDecision(input: { storeId?: string; decision?: StoreDecisionState }) {
+  const access = await getWriteAccess()
+  const decision = normalizeStoreDecision(input)
+
+  if (access.mode === 'demo') return { mode: 'demo' as const, message: access.message, decision }
+  assertDatabaseAccess(access)
+
+  if (decision.decision === 'watch') {
+    const { error } = await access.supabase
+      .from('user_store_decisions')
+      .delete()
+      .eq('user_id', access.user.id)
+      .eq('store_id', decision.storeId)
+    if (error) {
+      if (isMissingRelationError(error)) {
+        throw new RepositoryError('候補保存テーブルが未作成です。マイグレーション適用までは端末内に一時保存します。', 424)
+      }
+      throw new RepositoryError(error.message, 400)
+    }
+    return { mode: 'database' as const, decision }
+  }
+
+  const { error } = await access.supabase.from('user_store_decisions').upsert({
+    user_id: access.user.id,
+    store_id: decision.storeId,
+    decision: decision.decision,
+  })
+
+  if (error) {
+    if (isMissingRelationError(error)) {
+      throw new RepositoryError('候補保存テーブルが未作成です。マイグレーション適用までは端末内に一時保存します。', 424)
+    }
+    throw new RepositoryError(error.message, 400)
+  }
+
+  return { mode: 'database' as const, decision }
+}
+
 async function persistNotificationJobs(jobs: NotificationJob[], userId?: string) {
   const supabase = createSupabaseAdminClient()
   if (!supabase || !userId) return
   await supabase.from('notification_jobs').upsert(jobs.map((job) => toNotificationRow(job, userId)))
+}
+
+async function dispatchCrawlFailureNotifications(
+  supabase: DataClient,
+  results: Array<{ source: BbsSource; run: CrawlRun }>,
+) {
+  const failures = results.filter(({ run }) => run.status === 'blocked' || run.status === 'failed')
+  if (!failures.length) return []
+
+  const { data: preferences, error } = await supabase.from('notification_preferences').select('*')
+  if (error || !preferences?.length) return []
+
+  const dispatchedJobs: NotificationJob[] = []
+  for (const preferenceRow of preferences) {
+    const preference = toNotificationPreference(preferenceRow)
+    const userId = stringField(preferenceRow, 'user_id')
+    if (!userId) continue
+
+    for (const { source, run } of failures.slice(0, 6)) {
+      const job: NotificationJob = {
+        id: `crawl-failure-${run.id}-${userId}`,
+        title: `BBS巡回に失敗: ${source.label}`,
+        body: `${source.url} の取得に失敗しました。状態: ${run.status}。${run.message ?? '詳細メッセージなし'}`,
+        channel: preference.channel,
+        audience: preference.audience,
+        scheduledFor: new Date().toISOString(),
+        status: 'queued',
+      }
+      const dispatched = await dispatchNotification(job, {
+        recipient: preference.email,
+        webhookUrl: preference.webhookUrl,
+      })
+      dispatchedJobs.push({ ...dispatched, id: job.id })
+      await supabase.from('notification_jobs').upsert(toNotificationRow(dispatched, userId))
+    }
+  }
+
+  return dispatchedJobs
 }
 
 export async function persistScoreSnapshot(scoredEvents: ScoredEvent[]) {
@@ -1148,7 +1264,7 @@ function prioritizeBbsRowsForCrawl(rows: DbRow[]) {
 
 export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) {
   const supabase = createSupabaseAdminClient()
-  if (!supabase) throw new RepositoryError('Supabase service role env is not configured.', 503)
+  if (!supabase) throw new RepositoryError('SupabaseのService Role設定が不足しています。', 503)
 
   const { data, error } = await supabase.from('bbs_sources').select('*').eq('active', true).order('id').limit(30)
   if (error) throw new RepositoryError(error.message, 400)
@@ -1185,6 +1301,8 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
     await browserSession?.close()
   }
 
+  const failureNotifications = await dispatchCrawlFailureNotifications(supabase, results)
+
   return {
     mode: 'database' as const,
     checked: activeRows.length,
@@ -1198,6 +1316,7 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
       sourceIds: options.sourceIds ?? [],
     },
     results,
+    failureNotificationCount: failureNotifications.length,
   }
 }
 

@@ -83,7 +83,7 @@ for (const check of checks) {
 
 if (appUrl) {
   try {
-    const response = await fetch(appUrl, { method: 'HEAD' })
+    const response = await fetch(appUrl, { signal: AbortSignal.timeout(10_000) })
     console.log(`${response.ok ? 'OK' : 'CHECK '} 起動確認 - ${appUrl} (${response.status})`)
   } catch (error) {
     console.log(`ACTION 起動確認 - ${appUrl} (${error instanceof Error ? error.message : 'failed'})`)

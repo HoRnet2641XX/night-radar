@@ -12,7 +12,10 @@ const payloadSchema = z.object({
 
 export async function POST(request: Request) {
   const parsed = payloadSchema.safeParse(await request.json().catch(() => ({})))
-  if (!parsed.success) return jsonError('Plan is invalid.', 422, parsed.error.issues)
+  if (!parsed.success) return jsonError('プラン指定が不正です。', 422, parsed.error.issues)
+
+  const user = await getCurrentUser()
+  if (!user) return jsonError('決済を開始するにはログインが必要です。', 401)
 
   const stripe = getStripe()
   const priceId = getStripePriceId(parsed.data.plan as PlanKey)
@@ -23,9 +26,6 @@ export async function POST(request: Request) {
       message: 'StripeのキーまたはプランIDが未設定です。決済はまだ開始できません。',
     })
   }
-
-  const user = await getCurrentUser()
-  if (!user) return jsonError('Authentication required before checkout.', 401)
 
   const baseUrl = getBaseUrl(request)
   const session = await stripe.checkout.sessions.create({

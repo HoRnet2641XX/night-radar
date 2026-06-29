@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { events as demoEvents, posts as demoPosts, stores as demoStores } from '@/lib/demo-data'
 import { jsonError } from '@/lib/env'
 import { highestAudienceForPlan, planRank } from '@/lib/plans'
+import { requireAppUser } from '@/lib/server/auth-guard'
 import {
   getCurrentNotificationDelivery,
   getDashboardState,
@@ -23,8 +24,11 @@ const payloadSchema = z.object({
 })
 
 export async function POST(request: Request) {
+  const auth = await requireAppUser()
+  if (auth.response) return auth.response
+
   const parsed = payloadSchema.safeParse(await request.json().catch(() => ({})))
-  if (!parsed.success) return jsonError('Notification payload is invalid.', 422, parsed.error.issues)
+  if (!parsed.success) return jsonError('通知内容が不正です。', 422, parsed.error.issues)
 
   try {
     const delivery = await getCurrentNotificationDelivery()
@@ -49,6 +53,6 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     if (error instanceof RepositoryError) return jsonError(error.message, error.status)
-    return jsonError(error instanceof Error ? error.message : 'Notification persistence failed.', 400)
+    return jsonError(error instanceof Error ? error.message : '通知履歴を保存できませんでした。', 400)
   }
 }

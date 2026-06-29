@@ -52,6 +52,7 @@ function compactCronCrawlResult(result: CronCrawlResult) {
     crawled: result.crawled,
     batch: result.batch,
     filters: result.filters,
+    failureNotificationCount: result.failureNotificationCount,
     results: result.results.map(({ source, run, post, snapshot }) => ({
       source: {
         id: source.id,
@@ -113,6 +114,6 @@ export async function GET(request: Request) {
       return Response.json({ mode: 'demo', checked: 0, crawled: 0, message: error.message })
     }
     if (error instanceof RepositoryError) return jsonError(error.message, error.status)
-    return jsonError(error instanceof Error ? error.message : 'Cron crawl failed.', 400)
+    return jsonError(error instanceof Error ? error.message : 'BBS巡回に失敗しました。', 400)
   }
 }

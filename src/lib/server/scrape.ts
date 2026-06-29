@@ -138,7 +138,7 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
       extractedText: '',
       fetchedAt: new Date().toISOString(),
       status: 'failed',
-      message: 'URL format is invalid.',
+      message: 'URL形式が不正です。',
     }
   }
 
@@ -149,7 +149,7 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
       extractedText: '',
       fetchedAt: new Date().toISOString(),
       status: 'blocked',
-      message: 'This host is blocked by the scraper safety policy.',
+      message: '安全設定により、このホストは巡回対象外です。',
     }
   }
 
@@ -185,11 +185,11 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
             extractedText: '',
             fetchedAt: new Date().toISOString(),
             status: blocked ? 'blocked' : 'failed',
-            message: blocked ? `Fetch blocked with ${response.status}.` : `Fetch failed with ${response.status}.`,
+            message: blocked ? `取得が拒否されました（${response.status}）。` : `取得に失敗しました（${response.status}）。`,
           }
         }
 
-        lastErrorMessage = `Fetch failed with ${response.status}.`
+        lastErrorMessage = `取得に失敗しました（${response.status}）。`
         continue
       }
 
@@ -201,7 +201,7 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
           extractedText: '',
           fetchedAt: new Date().toISOString(),
           status: 'blocked',
-          message: 'Only public HTML pages are supported.',
+          message: '公開HTMLページのみ巡回できます。',
         }
       }
 
@@ -230,7 +230,7 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
     extractedText: '',
     fetchedAt: new Date().toISOString(),
     status: blockedByRuntime ? 'blocked' : 'failed',
-    message: blockedByRuntime ? 'Fetch blocked or timed out by runtime.' : lastErrorMessage,
+    message: blockedByRuntime ? '取得が拒否されたか、タイムアウトしました。' : lastErrorMessage,
   }
 }
 

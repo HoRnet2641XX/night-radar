@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { jsonError } from '@/lib/env'
+import { requireAppUser } from '@/lib/server/auth-guard'
 import { RepositoryError, saveNotificationPreference } from '@/lib/server/repository'
 
 export const runtime = 'nodejs'
@@ -12,13 +13,16 @@ const payloadSchema = z.object({
 })
 
 export async function POST(request: Request) {
+  const auth = await requireAppUser()
+  if (auth.response) return auth.response
+
   const parsed = payloadSchema.safeParse(await request.json().catch(() => ({})))
-  if (!parsed.success) return jsonError('Notification preference payload is invalid.', 422, parsed.error.issues)
+  if (!parsed.success) return jsonError('通知設定の内容が不正です。', 422, parsed.error.issues)
 
   try {
     return Response.json(await saveNotificationPreference(parsed.data))
   } catch (error) {
     if (error instanceof RepositoryError) return jsonError(error.message, error.status)
-    return jsonError(error instanceof Error ? error.message : 'Notification preference save failed.', 400)
+    return jsonError(error instanceof Error ? error.message : '通知設定を保存できませんでした。', 400)
   }
 }

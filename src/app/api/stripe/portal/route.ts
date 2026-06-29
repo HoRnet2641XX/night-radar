@@ -5,6 +5,9 @@ import { getStripe } from '@/lib/stripe/server'
 export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
+  const current = await getCurrentSubscriptionForCheckout()
+  if (!current) return jsonError('請求ポータルを開くにはログインが必要です。', 401)
+
   const stripe = getStripe()
   if (!stripe) {
     return Response.json({
@@ -14,9 +17,7 @@ export async function POST(request: Request) {
     })
   }
 
-  const current = await getCurrentSubscriptionForCheckout()
-  if (!current) return jsonError('Authentication required before opening billing portal.', 401)
-  if (!current.subscription.stripeCustomerId) return jsonError('Stripe customer is not linked yet.', 404)
+  if (!current.subscription.stripeCustomerId) return jsonError('請求情報がまだ紐づいていません。', 404)
 
   const session = await stripe.billingPortal.sessions.create({
     customer: current.subscription.stripeCustomerId,

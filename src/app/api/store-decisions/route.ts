@@ -1,12 +1,13 @@
 import { z } from 'zod'
 import { jsonError } from '@/lib/env'
 import { requireAppUser } from '@/lib/server/auth-guard'
-import { crawlUserBbsSources, RepositoryError } from '@/lib/server/repository'
+import { RepositoryError, saveUserStoreDecision } from '@/lib/server/repository'
 
 export const runtime = 'nodejs'
 
 const payloadSchema = z.object({
-  sourceIds: z.array(z.string().min(1)).optional(),
+  storeId: z.string().min(1),
+  decision: z.enum(['candidate', 'favorite', 'watch', 'hidden']).default('watch'),
 })
 
 export async function POST(request: Request) {
@@ -14,12 +15,12 @@ export async function POST(request: Request) {
   if (auth.response) return auth.response
 
   const parsed = payloadSchema.safeParse(await request.json().catch(() => ({})))
-  if (!parsed.success) return jsonError('BBS巡回の指定内容が不正です。', 422, parsed.error.issues)
+  if (!parsed.success) return jsonError('店舗候補の保存内容が不正です。', 422, parsed.error.issues)
 
   try {
-    return Response.json(await crawlUserBbsSources(parsed.data.sourceIds))
+    return Response.json(await saveUserStoreDecision(parsed.data))
   } catch (error) {
     if (error instanceof RepositoryError) return jsonError(error.message, error.status)
-    return jsonError(error instanceof Error ? error.message : 'BBS巡回に失敗しました。', 400)
+    return jsonError(error instanceof Error ? error.message : '店舗候補を保存できません。', 400)
   }
 }

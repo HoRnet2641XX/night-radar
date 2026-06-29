@@ -9,6 +9,7 @@ It now includes:
 - CSV/SQL-based catalog seeding for stores, events, posts, and BBS sources
 - BBS screenshots and cron crawling for operator-managed sources
 - vertical store radar, store share donut, watched-word hits, forecast ranking, and monthly event calendar
+- saved per-user store decisions for candidate / hidden venues
 - exact-match search for popular single male, popular single female, and negative watch terms
 - weekday posting ratio, store pulse, and event score calculation
 - OpenAI analysis with deterministic heuristic fallback
@@ -25,12 +26,12 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:3010`.
 
 To check local setup without exposing secret values:
 
 ```bash
-npm run check:ready -- --url=http://localhost:3000
+npm run check:ready -- --url=http://localhost:3010
 ```
 
 Without Supabase keys, the app runs in demo mode. With Supabase connected, users can read the shared catalog and save only user-specific settings such as word bookmarks, notification preferences, exact terms, and billing state.
@@ -46,13 +47,14 @@ For a step-by-step setup checklist with dashboard URLs, see `docs/setup/external
 1. Create a Supabase project.
 2. Run `supabase/schema.sql` in the SQL editor.
 3. If you already applied an older user-owned schema, run `supabase/migrations/20260611_shared_catalog.sql`.
-4. For the initial venue catalog, run `supabase/seed-store-catalog.sql`.
-5. For a local/demo catalog instead, run `supabase/seed-demo-catalog.sql`.
-6. Enable Auth providers: Email OTP, Google, and X / Twitter OAuth 2.0.
-7. Add redirect URLs:
-   - `http://localhost:3000/api/auth/callback`
+4. If the project already exists, also run `supabase/migrations/20260629_user_store_decisions.sql` to persist candidate / hidden store decisions.
+5. For the initial venue catalog, run `supabase/seed-store-catalog.sql`.
+6. For a local/demo catalog instead, run `supabase/seed-demo-catalog.sql`.
+7. Enable Auth providers: Email OTP, Google, and X / Twitter OAuth 2.0.
+8. Add redirect URLs:
+   - `http://localhost:3010/api/auth/callback`
    - `https://YOUR_DOMAIN/api/auth/callback`
-8. Set:
+9. Set:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
@@ -91,6 +93,8 @@ Catalog writes are operator-only. Logged-in users can read stores, events, posts
 Set `RESEND_API_KEY` for email delivery or `NOTIFICATION_WEBHOOK_URL` for webhook delivery. Without either, email/webhook jobs are marked `dry_run`; in-app jobs are marked `sent`.
 
 Users can save notification preferences in the app. A saved user webhook URL is used before the global `NOTIFICATION_WEBHOOK_URL`.
+
+Cron crawls also create notification jobs for configured users when a BBS source returns `blocked` or `failed`.
 
 ### Plan limits
 

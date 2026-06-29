@@ -1,14 +1,19 @@
+import { redirect } from 'next/navigation'
 import { buildStoreRadarPoints, buildVisitForecasts } from '@/lib/scoring'
 import { formatBarName } from '@/lib/display'
 import { analyzeTextWithAi } from '@/lib/server/ai'
 import { getDashboardState } from '@/lib/server/repository'
+import { getCurrentUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AiGuidePage() {
+  const user = await getCurrentUser()
+  if (!user) redirect('/login?next=/ai-guide')
+
   const state = await getDashboardState()
   const radar = buildStoreRadarPoints(state.stores, state.posts, state.bbsSnapshots)
-  const forecasts = buildVisitForecasts(state.events, state.stores, state.posts)
+  const forecasts = buildVisitForecasts(state.events, state.stores, state.posts, { windowDays: 14 })
   const topStore = radar[0]
   const topForecast = forecasts[0]
   const analysis = await analyzeTextWithAi(

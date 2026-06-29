@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { jsonError } from '@/lib/env'
+import { requireAppUser } from '@/lib/server/auth-guard'
 import { deleteRecord, RepositoryError, saveRecord } from '@/lib/server/repository'
 
 export const runtime = 'nodejs'
@@ -18,12 +19,15 @@ const deletePayloadSchema = z.object({
 
 function handleRepositoryError(error: unknown) {
   if (error instanceof RepositoryError) return jsonError(error.message, error.status)
-  return jsonError(error instanceof Error ? error.message : 'Record operation failed.', 400)
+  return jsonError(error instanceof Error ? error.message : 'データ操作に失敗しました。', 400)
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAppUser()
+  if (auth.response) return auth.response
+
   const parsed = postPayloadSchema.safeParse(await request.json().catch(() => ({})))
-  if (!parsed.success) return jsonError('Record payload is invalid.', 422, parsed.error.issues)
+  if (!parsed.success) return jsonError('保存内容が不正です。', 422, parsed.error.issues)
 
   try {
     return Response.json(await saveRecord(parsed.data.kind, parsed.data.item))
@@ -33,8 +37,11 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const auth = await requireAppUser()
+  if (auth.response) return auth.response
+
   const parsed = deletePayloadSchema.safeParse(await request.json().catch(() => ({})))
-  if (!parsed.success) return jsonError('Delete payload is invalid.', 422, parsed.error.issues)
+  if (!parsed.success) return jsonError('削除内容が不正です。', 422, parsed.error.issues)
 
   try {
     return Response.json(await deleteRecord(parsed.data.kind, parsed.data.id))

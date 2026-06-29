@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
   const signature = request.headers.get('stripe-signature')
 
-  if (!stripe || !webhookSecret || !signature) return jsonError('Stripe webhook is not configured.', 400)
+  if (!stripe || !webhookSecret || !signature) return jsonError('Stripe webhookの設定が不足しています。', 400)
 
   const rawBody = await request.text()
   let event: Stripe.Event
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   try {
     event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret)
   } catch (error) {
-    return jsonError(error instanceof Error ? error.message : 'Invalid Stripe signature.', 400)
+    return jsonError(error instanceof Error ? error.message : 'Stripe署名を確認できませんでした。', 400)
   }
 
   const supabase = createSupabaseAdminClient()
