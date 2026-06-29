@@ -94,6 +94,14 @@ const navItems: Array<{ key: NavKey; view: ViewKey; label: string; icon: ReactNo
   { key: 'settings', view: 'account', label: '設定', icon: <ShieldCheck size={20} weight="bold" /> },
 ]
 
+const navScreenCopy: Record<NavKey, { title: string; body: string }> = {
+  today: { title: '今日', body: '結論、盛り上がり、月間イベント、注目ワードだけを先に見ます。' },
+  search: { title: '検索', body: '登録ワードと監視カテゴリで、全店BBSの一致箇所を確認します。' },
+  calendar: { title: 'カレンダー', body: '月間イベントを日付単位で確認します。日別詳細は開いた時だけ表示します。' },
+  stores: { title: '店舗', body: '候補店舗を盛り上がり順に比較し、気になる店舗だけ残します。' },
+  settings: { title: '設定', body: 'ログイン状態と公開情報の扱いだけを確認します。' },
+}
+
 const exactTermLabels = {
   popularSingleMale: '人気単独男性',
   popularSingleFemale: '人気単独女性',
@@ -193,6 +201,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   const subscription = initialState.subscription
   const isSignedIn = Boolean(initialState.userEmail)
   const storeDecisionStorageKey = `night-radar-store-decisions:${initialState.userEmail ?? 'anonymous'}`
+  const firstGuideStorageKey = `night-radar-first-guide:${initialState.userEmail ?? 'anonymous'}`
   const [view, setView] = useState<ViewKey>('analytics')
   const [activeNav, setActiveNav] = useState<NavKey>('today')
   const [mode, setMode] = useState<RuntimeMode>(initialState.mode)
@@ -230,12 +239,20 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
       return initialDecisions
     }
   })
+  const [showFirstGuide, setShowFirstGuide] = useState(false)
   const [busy, setBusy] = useState('')
   const reduceMotion = useReducedMotion()
 
   useEffect(() => {
     window.localStorage.setItem(storeDecisionStorageKey, JSON.stringify(storeDecisions))
   }, [storeDecisionStorageKey, storeDecisions])
+
+  useEffect(() => {
+    if (!isSignedIn) return
+    if (window.localStorage.getItem(firstGuideStorageKey)) return
+    const guideTimer = window.setTimeout(() => setShowFirstGuide(true), 0)
+    return () => window.clearTimeout(guideTimer)
+  }, [firstGuideStorageKey, isSignedIn])
 
   const summary = useMemo(() => summarizeSignals(scoredEvents), [scoredEvents])
   const storeAnalytics = useMemo(() => buildStoreBbsAnalytics(stores, posts), [stores, posts])
@@ -365,6 +382,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   const candidateStoreCount = Object.values(storeDecisions).filter((state) => state === 'candidate').length
   const favoriteStoreCount = Object.values(storeDecisions).filter((state) => state === 'favorite').length
   const hiddenStoreCount = Object.values(storeDecisions).filter((state) => state === 'hidden').length
+  const activeNavItem = navItems.find((item) => item.key === activeNav) ?? navItems[0]
 
   function navigateTo(item: (typeof navItems)[number]) {
     setActiveNav(item.key)
@@ -383,6 +401,17 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     window.setTimeout(() => {
       document.getElementById('top-calendar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 0)
+  }
+
+  function closeFirstGuide() {
+    window.localStorage.setItem(firstGuideStorageKey, 'seen')
+    setShowFirstGuide(false)
+  }
+
+  function runFirstGuideAction(target: NavKey) {
+    closeFirstGuide()
+    const item = navItems.find((navItem) => navItem.key === target) ?? navItems[0]
+    navigateTo(item)
   }
 
   function updateExactTerm(group: ExactTermGroup, value: string) {
@@ -605,6 +634,17 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
             )
           })}
         </nav>
+
+        <ScreenContext item={activeNavItem} />
+
+        {showFirstGuide ? (
+          <FirstRunGuide
+            onClose={closeFirstGuide}
+            onOpenSearch={() => runFirstGuideAction('search')}
+            onOpenStores={() => runFirstGuideAction('stores')}
+            onOpenToday={() => runFirstGuideAction('today')}
+          />
+        ) : null}
 
         {view === 'radar' && (
           <section className="view-stack">
@@ -984,6 +1024,56 @@ function StatusPill({ icon, label, tone = 'idle' }: { icon: ReactNode; label: st
   )
 }
 
+function ScreenContext({ item }: { item: (typeof navItems)[number] }) {
+  const copy = navScreenCopy[item.key]
+
+  return (
+    <section className="screen-context" aria-label="現在の画面">
+      <span>{item.label}</span>
+      <div>
+        <strong>{copy.title}</strong>
+        <p>{copy.body}</p>
+      </div>
+    </section>
+  )
+}
+
+function FirstRunGuide({
+  onClose,
+  onOpenSearch,
+  onOpenStores,
+  onOpenToday,
+}: {
+  onClose: () => void
+  onOpenSearch: () => void
+  onOpenStores: () => void
+  onOpenToday: () => void
+}) {
+  return (
+    <section className="first-run-guide" aria-label="初回案内">
+      <div>
+        <span>最初に見る場所</span>
+        <strong>まずは3つだけ確認してください。</strong>
+        <p>迷ったら今日の結論、気になる名前があるなら検索、通いたい店があるなら店舗整理から始めます。</p>
+      </div>
+      <div className="first-run-actions">
+        <button type="button" onClick={onOpenToday}>
+          今日の候補を見る
+        </button>
+        <button type="button" onClick={onOpenSearch}>
+          注目ワードを登録
+        </button>
+        <button type="button" onClick={onOpenStores}>
+          店舗をお気に入りにする
+        </button>
+      </div>
+      <button className="first-run-close" type="button" onClick={onClose}>
+        閉じる
+      </button>
+    </section>
+  )
+}
+
 function ViewIntro({ eyebrow, title, body }: { eyebrow: string; title: string; body: string }) {
   return (
     <section className="view-intro">
@@ -1042,6 +1132,7 @@ function TodayDecisionCard({
   const secondaryReason = hotStore
     ? `女性${hotStore.signals.femaleOnly} / 初${hotStore.signals.firstVisit} / 複${hotStore.signals.groupVisit}`
     : `巡回 ${latestCaptureLabel}`
+  const reasonChips = buildReasonChips(hotStore)
 
   return (
     <section className="today-decision-card" aria-label="今日の結論">
@@ -1072,9 +1163,14 @@ function TodayDecisionCard({
         </div>
         <div>
           <dt>取得</dt>
-          <dd>{sourceHealthLabel(sourceHealth)}</dd>
+          <dd>{formatSourceSummary(sourceHealth, latestCaptureLabel)}</dd>
         </div>
       </dl>
+      <div className="reason-chip-row" aria-label="スコア内訳">
+        {reasonChips.map((chip) => (
+          <span key={chip}>{chip}</span>
+        ))}
+      </div>
       <div className="decision-actions">
         <button type="button" onClick={onRunScoring} disabled={busy === 'score'}>
           <ChartLineUp size={17} weight="bold" />
@@ -1103,6 +1199,36 @@ function formatRadarCapturedAt(value?: string) {
   })
 }
 
+function formatSourceSummary(health: SourceHealth, latestCaptureLabel: string) {
+  const healthText = sourceHealthLabel(health)
+  if (healthText === '取得待ち' || latestCaptureLabel === '取得待ち' || latestCaptureLabel === '巡回待ち') return healthText
+  return `最終更新 ${latestCaptureLabel} / ${healthText}`
+}
+
+function buildReasonChips(point?: StoreRadarPoint) {
+  if (!point) return ['巡回待ち']
+
+  const chips = [
+    point.postCount ? `投稿 +${point.postCount}` : '',
+    point.signals.femaleOnly ? `女性ワード +${point.signals.femaleOnly}` : '',
+    point.signals.firstVisit ? `初回ワード +${point.signals.firstVisit}` : '',
+    point.signals.groupVisit ? `複数 +${point.signals.groupVisit}` : '',
+    point.snapshotCount ? `スクショ +${point.snapshotCount}` : '',
+  ].filter(Boolean)
+
+  return chips.length ? chips.slice(0, 4) : ['根拠蓄積中']
+}
+
+function todayCompatibilityLabel(analytics?: StoreBbsAnalytics) {
+  if (!analytics?.postCount) return '今日との相性は蓄積中'
+  const [year, month, day] = dateKeyInJapan().split('-').map(Number)
+  const todayWeekday = weekdayLabelForJapanDate(year, month, day)
+  const todayStat = analytics.weekdayStats.find((stat) => stat.weekday === todayWeekday)
+  if (!todayStat?.count) return `今日は${todayWeekday}の投稿傾向が少なめ`
+  if (todayStat.ratio >= 24) return `今日は過去投稿が多い${todayWeekday}です`
+  return `今日は${todayWeekday}の過去投稿 ${todayStat.count}件`
+}
+
 function StoreMomentumRanking({ points }: { points: StoreRadarPoint[] }) {
   const rankedPoints = points.slice(0, 5)
   const strongest = rankedPoints[0]
@@ -1122,11 +1248,7 @@ function StoreMomentumRanking({ points }: { points: StoreRadarPoint[] }) {
         <div className="momentum-ranking-list">
           {rankedPoints.map((point) => {
             const storeName = formatBarName(point.store.name)
-            const signalText = [
-              `投稿${point.postCount}`,
-              `画面${point.snapshotCount}`,
-              `注目${point.signals.totalSignals}`,
-            ].join(' / ')
+            const reasonChips = buildReasonChips(point)
 
             return (
               <article className={`momentum-ranking-row ${point.tone}`} key={point.store.id}>
@@ -1140,6 +1262,11 @@ function StoreMomentumRanking({ points }: { points: StoreRadarPoint[] }) {
                     <i style={{ inlineSize: `${Math.max(5, Math.min(100, point.score))}%` }} />
                   </div>
                   <p>{point.verdict}</p>
+                  <div className="reason-chip-row compact" aria-label={`${storeName}の根拠`}>
+                    {reasonChips.map((chip) => (
+                      <span key={chip}>{chip}</span>
+                    ))}
+                  </div>
                 </div>
                 <dl className="momentum-meta">
                   <div>
@@ -1147,8 +1274,8 @@ function StoreMomentumRanking({ points }: { points: StoreRadarPoint[] }) {
                     <dd>{point.share}%</dd>
                   </div>
                   <div>
-                    <dt>根拠</dt>
-                    <dd>{signalText}</dd>
+                    <dt>注目</dt>
+                    <dd>{point.signals.totalSignals}</dd>
                   </div>
                   <div>
                     <dt>更新</dt>
@@ -1160,7 +1287,7 @@ function StoreMomentumRanking({ points }: { points: StoreRadarPoint[] }) {
           })}
         </div>
       ) : (
-        <p className="muted-note">掲示板を巡回すると、盛り上がりの強い順に表示されます。</p>
+        <p className="muted-note">BBS巡回後に表示します。先に注目ワードを登録しておくと、一致履歴も同時に確認できます。</p>
       )}
     </section>
   )
@@ -1480,7 +1607,7 @@ function StoreDiscoveryPanel({
             />
           ))
         ) : (
-          <p className="muted-note">条件に合う店舗がありません。絞り込みを戻してください。</p>
+          <p className="muted-note">条件に合う店舗がありません。条件を戻すか、候補入り店舗を解除して表示を戻してください。</p>
         )}
       </div>
     </section>
@@ -1511,6 +1638,8 @@ function StoreExplorerCard({
     { label: '絵文字', value: point.signals.emoji },
   ]
   const sourceStatus = formatUserBbsStatus(source?.lastStatus)
+  const reasonChips = buildReasonChips(point)
+  const todayFit = todayCompatibilityLabel(analytics)
 
   return (
     <article className={`store-explorer-card is-${point.tone} ${decision ? `decision-${decision}` : ''}`}>
@@ -1559,8 +1688,14 @@ function StoreExplorerCard({
       </dl>
 
       <div className="store-card-note">
-        <span>{analytics?.dominantWeekday ?? '曜日未判定'}</span>
+        <span>{todayFit}</span>
         <em>{formatRadarCapturedAt(point.lastCapturedAt)}</em>
+      </div>
+
+      <div className="reason-chip-row compact" aria-label={`${formatBarName(point.store.name)}の短い根拠`}>
+        {reasonChips.map((chip) => (
+          <span key={chip}>{chip}</span>
+        ))}
       </div>
 
       <div className="store-card-actions">
@@ -1571,21 +1706,26 @@ function StoreExplorerCard({
         >
           {decision === 'candidate' ? '候補入り' : '候補に入れる'}
         </button>
-        <button
-          type="button"
-          className={decision === 'favorite' ? 'is-active' : ''}
-          onClick={() => onDecisionChange(point.store.id, 'favorite')}
-        >
-          <Star size={13} weight={decision === 'favorite' ? 'fill' : 'bold'} />
-          {decision === 'favorite' ? 'お気に入り' : '保存'}
-        </button>
         <button type="button" onClick={() => onOpenDetail(point.store.id)}>
           詳細
         </button>
-        <button type="button" className="quiet" onClick={() => onDecisionChange(point.store.id, 'hidden')}>
-          外す
-        </button>
       </div>
+      <details className="store-more-actions">
+        <summary>その他</summary>
+        <div>
+          <button
+            type="button"
+            className={decision === 'favorite' ? 'is-active' : ''}
+            onClick={() => onDecisionChange(point.store.id, 'favorite')}
+          >
+            <Star size={13} weight={decision === 'favorite' ? 'fill' : 'bold'} />
+            {decision === 'favorite' ? 'お気に入り解除' : 'お気に入り'}
+          </button>
+          <button type="button" onClick={() => onDecisionChange(point.store.id, 'hidden')}>
+            今回は非表示
+          </button>
+        </div>
+      </details>
     </article>
   )
 }
@@ -1614,6 +1754,7 @@ function StoreDetailDrawer({
     point.signals.groupVisit ? `複数来店 ${point.signals.groupVisit}件` : '',
     eventCount ? `月間イベント ${eventCount}件` : '',
   ].filter(Boolean)
+  const todayFit = todayCompatibilityLabel(analytics)
 
   return (
     <div className="store-detail-layer" role="presentation" onClick={onClose}>
@@ -1650,8 +1791,8 @@ function StoreDetailDrawer({
             <dd>{eventCount}件</dd>
           </div>
           <div>
-            <dt>曜日傾向</dt>
-            <dd>{analytics?.dominantWeekday ?? '未判定'}</dd>
+            <dt>今日との相性</dt>
+            <dd>{todayFit}</dd>
           </div>
         </dl>
 
@@ -1670,7 +1811,7 @@ function StoreDetailDrawer({
 
         <section className="store-detail-section">
           <span>運用メモ</span>
-          <p>{analytics?.verdict ?? 'BBS投稿とスクリーンショットを蓄積中です。'}</p>
+          <p>{analytics?.verdict ? `${todayFit}。${analytics.verdict}` : 'BBS投稿とスクリーンショットを蓄積中です。'}</p>
           <small>最終更新: {formatRadarCapturedAt(point.lastCapturedAt)} / BBS: {formatUserBbsStatus(source?.lastStatus)}</small>
         </section>
 
@@ -1783,35 +1924,40 @@ function MonthlyCalendarPreview({ events, stores }: { events: EventInput[]; stor
             {day}
           </span>
         ))}
-        {cells.map((cell) => (
-          <article
-            className={`mini-day ${cell.isBlank ? 'is-blank' : ''} ${cell.isToday ? 'is-today' : ''}`}
-            key={cell.key}
-          >
-            {!cell.isBlank && (
-              <button
-                aria-label={`${cell.dateLabel}のイベント${cell.items.length}件を表示`}
-                className="mini-day-button"
-                disabled={!cell.items.length}
-                type="button"
-                onClick={() => openDrawerOnSmallScreen(cell)}
-              >
-                <strong>{cell.day}</strong>
-                <div aria-hidden={!cell.items.length}>
-                  {cell.items.slice(0, 2).map((item) => (
-                    <span className={`event-color-${item.tone}`} key={`${cell.key}-${item.id}`}>
-                      {item.label}
-                    </span>
-                  ))}
-                  {cell.items.length > 2 && <em>+{cell.items.length - 2}</em>}
-                </div>
-              </button>
-            )}
-            {cell.items.length ? <TopCalendarDayPanel cell={cell} variant="popover" /> : null}
-          </article>
-        ))}
+        {cells.map((cell) => {
+          const visibleStoreNames = [...new Set(cell.items.map((item) => item.storeName))].slice(0, 2)
+          const extraCount = Math.max(0, cell.items.length - visibleStoreNames.length)
+
+          return (
+            <article
+              className={`mini-day ${cell.isBlank ? 'is-blank' : ''} ${cell.isToday ? 'is-today' : ''}`}
+              key={cell.key}
+            >
+              {!cell.isBlank && (
+                <button
+                  aria-label={`${cell.dateLabel}のイベント${cell.items.length}件を表示`}
+                  className="mini-day-button"
+                  disabled={!cell.items.length}
+                  type="button"
+                  onClick={() => openDrawerOnSmallScreen(cell)}
+                >
+                  <strong>{cell.day}</strong>
+                  <div aria-hidden={!cell.items.length}>
+                    {visibleStoreNames.map((storeName, index) => (
+                      <span className={`event-color-${index % 3}`} key={`${cell.key}-${storeName}`}>
+                        {storeName}
+                      </span>
+                    ))}
+                    {cell.items.length ? <em>{extraCount ? `+${extraCount}` : `${cell.items.length}件`}</em> : null}
+                  </div>
+                </button>
+              )}
+              {cell.items.length ? <TopCalendarDayPanel cell={cell} variant="popover" /> : null}
+            </article>
+          )
+        })}
       </div>
-      <p>{eventCount ? `${activeMonth?.label ?? '選択月'}の公式イベントを日付別に確認できます。` : 'イベント登録後に月間予定が出ます。'}</p>
+      <p>{eventCount ? `${activeMonth?.label ?? '選択月'}の公式イベントを日付別に確認できます。` : 'イベント登録後に月間予定が出ます。先に店舗ページで候補店を整理できます。'}</p>
       {selectedDay ? (
         <div className="top-calendar-drawer-backdrop" role="presentation" onClick={() => setSelectedDay(null)}>
           <aside
@@ -2152,11 +2298,12 @@ function WatchedWordsPanel({
             <article className={`watch-hit ${hit.severity}`} key={hit.id}>
               <span>{hit.label}</span>
               <strong>{formatBarName(hit.store.name)}</strong>
+              <small>{formatMatchSource(hit)} / {formatRadarCapturedAt(hit.post.postedAt)}</small>
               <p>{hit.snippet}</p>
             </article>
           ))
         ) : (
-          <p className="muted-note">掲示板投稿を取り込むと、注目ワードがここに出ます。</p>
+          <p className="muted-note">検索ワードを入力して保存してください。巡回済みBBSに一致すると、本文種別つきでここに出ます。</p>
         )}
       </div>
     </section>
@@ -2177,6 +2324,13 @@ function formatUserBbsStatus(status?: string) {
   if (status === 'ok') return '取得済み'
   if (status === 'pending' || !status) return '取得待ち'
   return '一部未取得'
+}
+
+function formatMatchSource(match: ExactTermMatch | WatchedWordHit) {
+  if (match.post.id.startsWith('snapshot-')) return 'スクショ抽出文'
+  if (match.post.source === 'scrape') return 'BBS本文'
+  if (match.post.source === 'csv') return '取込本文'
+  return '投稿本文'
 }
 
 function ExactSearchCard({
@@ -2204,11 +2358,11 @@ function ExactSearchCard({
 }) {
   return (
     <section className="app-card form-card compact-search-card">
-      <FormTitle icon={<MagnifyingGlass size={19} weight="bold" />} title="完全一致検索" />
-      <p className="form-note">人気単独男性、人気単独女性、苦手ワードを分けて登録し、全店BBSから完全一致だけを拾います。</p>
+      <FormTitle icon={<MagnifyingGlass size={19} weight="bold" />} title="監視カテゴリ" />
+      <p className="form-note">人物名や呼び名をカテゴリ別に監視します。結果は全店BBS本文とスクショ抽出文から、完全一致した箇所だけを表示します。</p>
       <div className="term-grid">
         <label>
-          <span>人気単独男性</span>
+          <span>人気単独男性を監視</span>
           <input
             autoComplete="off"
             name="popularSingleMale"
@@ -2219,7 +2373,7 @@ function ExactSearchCard({
           />
         </label>
         <label>
-          <span>人気単独女性</span>
+          <span>人気単独女性を監視</span>
           <input
             autoComplete="off"
             name="popularSingleFemale"
@@ -2230,7 +2384,7 @@ function ExactSearchCard({
           />
         </label>
         <label>
-          <span>不人気・苦手</span>
+          <span>不人気・苦手を監視</span>
           <input
             autoComplete="off"
             name="negativePerson"
@@ -2243,7 +2397,7 @@ function ExactSearchCard({
       </div>
       <button type="button" onClick={onSave} disabled={!isSignedIn || busy === 'exact'}>
         <MagnifyingGlass size={17} weight="bold" />
-        {isSignedIn ? '条件を保存して検索' : 'ログイン後に保存'}
+        {isSignedIn ? '監視ワードを保存して検索' : 'ログイン後に保存'}
       </button>
       <ExactMatchList
         activeFilter={activeFilter}
@@ -2271,9 +2425,9 @@ function ExactMatchList({
 }) {
   const filters: Array<{ key: ExactMatchFilter; label: string }> = [
     { key: 'all', label: 'すべて' },
-    { key: 'popularSingleMale', label: '単独男性' },
-    { key: 'popularSingleFemale', label: '単独女性' },
-    { key: 'negativePerson', label: '不人気・苦手' },
+    { key: 'popularSingleMale', label: '男性監視' },
+    { key: 'popularSingleFemale', label: '女性監視' },
+    { key: 'negativePerson', label: '苦手監視' },
   ]
 
   if (!matches.length) {
@@ -2295,7 +2449,7 @@ function ExactMatchList({
         </div>
         <div className="empty-result">
           <UsersThree size={18} weight="bold" />
-          <span>{total ? 'この分類の該当はありません。' : '完全一致の該当はありません。'}</span>
+          <span>{total ? 'このカテゴリの一致はありません。' : '監視ワードの一致はまだありません。'}</span>
         </div>
       </>
     )
@@ -2325,6 +2479,9 @@ function ExactMatchList({
               <span>{match.groupLabel}</span>
               <strong>{match.term}</strong>
             </div>
+            <small className="match-source">
+              {formatMatchSource(match)} / {formatRadarCapturedAt(match.post.postedAt)}
+            </small>
             <p>
               {formatBarName(match.store.name)} / {match.snippet}
             </p>

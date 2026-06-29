@@ -139,7 +139,7 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
 
         <section className={styles.panel} aria-label={title}>
           <div className={styles.heading}>
-            <span>{isSignup ? 'はじめる' : '戻る'}</span>
+            <span>{isSignup ? 'はじめる' : 'アプリへ入る'}</span>
             <h1>{title}</h1>
             <p>{lead}</p>
           </div>
@@ -189,7 +189,7 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
           {switchText} <Link href={switchHref}>{switchLinkText}</Link>
         </p>
         <Link className={styles.backLink} href="/">
-          LPへ戻る
+          紹介ページへ戻る
         </Link>
       </motion.div>
     </main>

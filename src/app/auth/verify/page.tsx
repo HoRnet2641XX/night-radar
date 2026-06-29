@@ -56,7 +56,7 @@ export default async function AuthVerifyPage({
         </section>
 
         <Link className={styles.backLink} href="/">
-          LPへ戻る
+          紹介ページへ戻る
         </Link>
       </div>
     </main>

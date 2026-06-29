@@ -168,7 +168,7 @@ export function NightRadarLanding({ isSignedIn = false }: { isSignedIn?: boolean
               ログイン
             </Link>
             <Link className={styles.navCta} href="/signup">
-              無料で始める
+              会員登録してアプリへ
             </Link>
           </div>
         )}
@@ -189,7 +189,7 @@ export function NightRadarLanding({ isSignedIn = false }: { isSignedIn?: boolean
               </Link>
             ) : (
               <Link className={styles.primaryButton} href="/signup">
-                無料で始める
+                会員登録してアプリへ
               </Link>
             )}
             {!isSignedIn && (
