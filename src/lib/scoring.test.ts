@@ -231,6 +231,35 @@ describe('BBS radar signals', () => {
     assert.ok(scoreBbsSnapshot(metrics) > 40)
   })
 
+  it('finds saved watched words with full-width and whitespace normalization', () => {
+    const hits = buildWatchedWordHits(
+      [
+        {
+          id: 'bookmark-normalized-post',
+          storeId: stores[0].id,
+          source: 'scrape',
+          postedAt: '2026-06-13T12:00:00.000Z',
+          body: '今日のBBSでは、人気 単女 B さんの来店予告がありました。',
+          keywords: [],
+        },
+      ],
+      stores,
+      [
+        {
+          id: 'bookmark-normalized',
+          label: '人気単女B',
+          pattern: '人気単女Ｂ',
+          matchType: 'exact',
+          createdAt: '2026-06-13T12:00:00.000Z',
+        },
+      ],
+    )
+
+    assert.equal(hits.length, 1)
+    assert.equal(hits[0].label, '人気単女B')
+    assert.match(hits[0].snippet, /人気 単女 B/)
+  })
+
   it('normalizes large BBS pages without hard-clamping every store to 100', () => {
     const noisyLargePage: BbsSnapshotMetrics = {
       femaleOnly: 83,

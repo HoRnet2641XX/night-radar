@@ -34,6 +34,7 @@ import {
   buildSearchableBbsRecords,
   buildVisitForecasts,
   buildWatchedWordHits,
+  normalizeWatchedSearchText,
   parseExactTerms,
   searchExactBbsTerms,
   summarizeSignals,
@@ -517,7 +518,15 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
         pattern,
         matchType: 'exact',
       })
-      setWordBookmarks((current) => [result.bookmark, ...current.filter((bookmark) => bookmark.id !== result.bookmark.id)])
+      const normalizedPattern = normalizeLocalSearchText(result.bookmark.pattern)
+      setWordBookmarks((current) => [
+        result.bookmark,
+        ...current.filter(
+          (bookmark) =>
+            bookmark.id !== result.bookmark.id &&
+            (bookmark.matchType !== result.bookmark.matchType || normalizeLocalSearchText(bookmark.pattern) !== normalizedPattern),
+        ),
+      ])
       setBookmarkDraft(pattern)
       setWatchSearchTerm(pattern)
       applyMode(result.mode, result.message)
@@ -2170,12 +2179,35 @@ function dedupeCalendarItems(items: CalendarPreviewItem[]) {
 }
 
 function normalizeLocalSearchText(value: string) {
-  return value.normalize('NFKC').replace(/\s+/g, '').toLowerCase()
+  return normalizeWatchedSearchText(value)
+}
+
+function normalizedLocalMatchIndex(body: string, term: string) {
+  const normalizedTerm = normalizeLocalSearchText(term)
+  if (!normalizedTerm) return -1
+
+  let normalizedBody = ''
+  const rawIndices: number[] = []
+  let rawIndex = 0
+
+  for (const character of body) {
+    const normalizedCharacter = normalizeLocalSearchText(character)
+    for (let index = 0; index < normalizedCharacter.length; index += 1) {
+      rawIndices.push(rawIndex)
+    }
+    normalizedBody += normalizedCharacter
+    rawIndex += character.length
+  }
+
+  const normalizedIndex = normalizedBody.indexOf(normalizedTerm)
+  return normalizedIndex >= 0 ? (rawIndices[normalizedIndex] ?? -1) : -1
 }
 
 function buildLocalSnippet(body: string, term: string) {
   const exactIndex = body.indexOf(term)
-  const index = exactIndex >= 0 ? exactIndex : Math.max(0, Math.floor(body.length * 0.35))
+  const normalizedIndex = normalizedLocalMatchIndex(body, term)
+  const index = exactIndex >= 0 ? exactIndex : normalizedIndex
+  if (index < 0) return body.slice(0, 96)
   const start = Math.max(0, index - 32)
   const end = Math.min(body.length, index + term.length + 48)
   return `${start > 0 ? '…' : ''}${body.slice(start, end)}${end < body.length ? '…' : ''}`
@@ -2302,7 +2334,13 @@ function WatchedWordsPanel({
             </article>
           ))
         ) : (
-          <p className="muted-note">検索ワードを入力して保存してください。巡回済みBBSに一致すると、本文種別つきでここに出ます。</p>
+          <p className="muted-note">
+            {searchTerm
+              ? `「${searchTerm}」は巡回済みBBS内でまだ一致していません。表記ゆれを短めの語にすると拾いやすくなります。`
+              : bookmarks.length
+                ? '保存済みワードの一致はまだありません。ワードを押すとその語で再検索できます。'
+                : '検索ワードを入力して保存してください。巡回済みBBSに一致すると、本文種別つきでここに出ます。'}
+          </p>
         )}
       </div>
     </section>

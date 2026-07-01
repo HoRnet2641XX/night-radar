@@ -73,8 +73,34 @@ function hoursSince(date: string, now: number) {
   return Math.max(0, (now - time) / (1000 * 60 * 60))
 }
 
+export function normalizeWatchedSearchText(value: string) {
+  return value.normalize('NFKC').replace(/\s+/g, '').toLowerCase()
+}
+
+function normalizedMatchIndex(body: string, term: string) {
+  const normalizedTerm = normalizeWatchedSearchText(term)
+  if (!normalizedTerm) return -1
+
+  let normalizedBody = ''
+  const rawIndices: number[] = []
+  let rawIndex = 0
+
+  for (const character of body) {
+    const normalizedCharacter = normalizeWatchedSearchText(character)
+    for (let index = 0; index < normalizedCharacter.length; index += 1) {
+      rawIndices.push(rawIndex)
+    }
+    normalizedBody += normalizedCharacter
+    rawIndex += character.length
+  }
+
+  const normalizedIndex = normalizedBody.indexOf(normalizedTerm)
+  return normalizedIndex >= 0 ? (rawIndices[normalizedIndex] ?? -1) : -1
+}
+
 function buildSnippet(body: string, term: string) {
-  const index = body.indexOf(term)
+  const exactIndex = body.indexOf(term)
+  const index = exactIndex >= 0 ? exactIndex : normalizedMatchIndex(body, term)
   if (index < 0) return body.slice(0, 90)
   const start = Math.max(0, index - 32)
   const end = Math.min(body.length, index + term.length + 42)
@@ -84,7 +110,7 @@ function buildSnippet(body: string, term: string) {
 }
 
 function normalizeExactSearchText(value: string) {
-  return value.normalize('NFKC').replace(/\s+/g, '').toLowerCase()
+  return normalizeWatchedSearchText(value)
 }
 
 function includesExactTerm(body: string, term: string) {
@@ -436,30 +462,44 @@ export function buildStoreRadarPoints(stores: StoreProfile[], posts: PostRecord[
 
 export function buildWatchedWordHits(posts: PostRecord[], stores: StoreProfile[], bookmarks: WordBookmark[] = []): WatchedWordHit[] {
   const storeMap = new Map(stores.map((store) => [store.id, store]))
-  const rules: Array<{ label: string; term: string; pattern: RegExp; severity: WatchedWordHit['severity'] }> = [
-    { label: '女性のみ', term: '女性', pattern: /女性/g, severity: 'medium' },
-    { label: '初めて', term: '初めて', pattern: firstVisitPattern, severity: 'high' },
-    { label: '久しぶり', term: '久しぶり', pattern: comebackPattern, severity: 'high' },
-    { label: '複数人', term: '2人組', pattern: groupVisitPattern, severity: 'medium' },
-    { label: '絵文字/顔文字', term: 'emoji', pattern: emojiPattern, severity: 'low' },
+  const rules: Array<{ label: string; term: string; severity: WatchedWordHit['severity']; match: (body: string) => string[] }> = [
+    { label: '女性のみ', term: '女性', severity: 'medium', match: (body) => [...body.matchAll(femaleOnlyPattern)].map((match) => match[0]) },
+    { label: '初めて', term: '初めて', severity: 'high', match: (body) => [...body.matchAll(firstVisitPattern)].map((match) => match[0]) },
+    { label: '久しぶり', term: '久しぶり', severity: 'high', match: (body) => [...body.matchAll(comebackPattern)].map((match) => match[0]) },
+    { label: '複数人', term: '2人組', severity: 'medium', match: (body) => [...body.matchAll(groupVisitPattern)].map((match) => match[0]) },
+    { label: '絵文字/顔文字', term: 'emoji', severity: 'low', match: (body) => [...body.matchAll(emojiPattern)].map((match) => match[0] || 'emoji') },
   ]
 
   bookmarks.forEach((bookmark) => {
     if (!bookmark.pattern.trim()) return
     const escaped = bookmark.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    try {
+    if (bookmark.matchType === 'exact') {
+      const normalizedPattern = normalizeWatchedSearchText(bookmark.pattern)
+      if (!normalizedPattern) return
       rules.push({
         label: bookmark.label || bookmark.pattern,
         term: bookmark.pattern,
-        pattern: bookmark.matchType === 'regex' ? new RegExp(bookmark.pattern, 'g') : new RegExp(escaped, 'g'),
         severity: 'medium',
+        match: (body) => (normalizeWatchedSearchText(body).includes(normalizedPattern) ? [bookmark.pattern] : []),
+      })
+      return
+    }
+
+    try {
+      const pattern = bookmark.matchType === 'regex' ? new RegExp(bookmark.pattern, 'g') : new RegExp(escaped, 'g')
+      rules.push({
+        label: bookmark.label || bookmark.pattern,
+        term: bookmark.pattern,
+        severity: 'medium',
+        match: (body) => [...body.matchAll(pattern)].map((match) => match[0] || bookmark.pattern),
       })
     } catch {
+      const pattern = new RegExp(escaped, 'g')
       rules.push({
         label: bookmark.label || bookmark.pattern,
         term: bookmark.pattern,
-        pattern: new RegExp(escaped, 'g'),
         severity: 'medium',
+        match: (body) => [...body.matchAll(pattern)].map((match) => match[0] || bookmark.pattern),
       })
     }
   })
@@ -469,9 +509,9 @@ export function buildWatchedWordHits(posts: PostRecord[], stores: StoreProfile[]
     const store = storeMap.get(post.storeId)
     if (!store) return
     rules.forEach((rule) => {
-      const matches = [...post.body.matchAll(rule.pattern)]
+      const matches = rule.match(post.body)
       matches.slice(0, 3).forEach((match, index) => {
-        const term = match[0] || rule.term
+        const term = match || rule.term
         hits.push({
           id: `${post.id}-${rule.label}-${index}`,
           label: rule.label,
