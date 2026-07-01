@@ -33,6 +33,18 @@ function safeNextPath(value: string | null) {
   return value
 }
 
+function authErrorText(value: string | null) {
+  const messages: Record<string, string> = {
+    oauth_cancelled: '外部認証がキャンセルされました。もう一度ログイン方法を選んでください。',
+    oauth_failed: '外部認証を完了できませんでした。時間を置いてもう一度お試しください。',
+    missing_code: '認証コードを受け取れませんでした。もう一度ログインしてください。',
+    auth_config_missing: '認証設定を確認してください。Supabaseの接続設定が不足しています。',
+    session_exchange_failed: '認証セッションを確定できませんでした。もう一度ログインしてください。',
+  }
+
+  return value ? messages[value] ?? 'ログインを完了できませんでした。もう一度お試しください。' : null
+}
+
 function Spinner() {
   return (
     <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true">
@@ -49,15 +61,18 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
   const searchParams = useSearchParams()
   const reduceMotion = useReducedMotion()
   const nextPath = useMemo(() => safeNextPath(searchParams.get('next')), [searchParams])
+  const initialError = useMemo(() => authErrorText(searchParams.get('error')), [searchParams])
   const isSignup = mode === 'signup'
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState('')
   const [oauthPending, setOauthPending] = useState<'google' | 'x' | ''>('')
   const [message, setMessage] = useState<AuthMessage>({
-    tone: 'idle',
-    text: isSignup
-      ? 'Google、X、メール認証のいずれかで会員登録できます。'
-      : '登録済みの方法でログインしてください。',
+    tone: initialError ? 'error' : 'idle',
+    text:
+      initialError ??
+      (isSignup
+        ? 'Google、X、メール認証のいずれかで会員登録できます。'
+        : '登録済みの方法でログインしてください。'),
   })
 
   async function startOAuth(provider: 'google' | 'x') {
@@ -148,11 +163,11 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
           <div className={styles.oauthStack}>
             <button className={styles.oauthButton} type="button" onClick={() => startOAuth('google')} disabled={Boolean(busy) || Boolean(oauthPending)}>
               <GoogleLogo size={20} weight="bold" />
-              Googleで{isSignup ? '登録' : 'ログイン'}
+              {oauthPending === 'google' ? '認証画面を開いています' : `Googleで${isSignup ? '登録' : 'ログイン'}`}
             </button>
             <button className={styles.oauthButton} type="button" onClick={() => startOAuth('x')} disabled={Boolean(busy) || Boolean(oauthPending)}>
               <XLogo size={18} weight="bold" />
-              Xで{isSignup ? '登録' : 'ログイン'}
+              {oauthPending === 'x' ? '認証画面を開いています' : `Xで${isSignup ? '登録' : 'ログイン'}`}
             </button>
           </div>
 

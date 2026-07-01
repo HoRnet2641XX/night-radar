@@ -8,11 +8,11 @@ export function AuthCompleteRedirect({ nextPath }: { nextPath: string }) {
 
   useEffect(() => {
     router.prefetch(nextPath)
-    const frame = window.requestAnimationFrame(() => {
+    const timer = window.setTimeout(() => {
       router.replace(nextPath)
-    })
+    }, 700)
 
-    return () => window.cancelAnimationFrame(frame)
+    return () => window.clearTimeout(timer)
   }, [nextPath, router])
 
   return (
