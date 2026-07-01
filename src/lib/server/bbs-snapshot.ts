@@ -14,6 +14,10 @@ export type BrowserSnapshotSession = {
   close: () => Promise<void>
 }
 
+export type BbsSnapshotBuildOptions = {
+  captureBrowserScreenshot?: boolean
+}
+
 const screenshotViewport = { width: 390, height: 844 }
 const defaultUserAgent =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
@@ -174,9 +178,12 @@ export async function buildBbsSnapshot(
   source: BbsSource,
   scrapeResult: ScrapeResult,
   browserSession?: BrowserSnapshotSession | null,
+  options: BbsSnapshotBuildOptions = {},
 ): Promise<BbsSnapshot> {
   const browserSnapshot =
-    scrapeResult.status === 'ok' ? await (browserSession ? browserSession.capture(scrapeResult.url) : captureBrowserSnapshot(scrapeResult.url)) : null
+    scrapeResult.status === 'ok' && options.captureBrowserScreenshot !== false
+      ? await (browserSession ? browserSession.capture(scrapeResult.url) : captureBrowserSnapshot(scrapeResult.url))
+      : null
   const extractedText = browserSnapshot?.extractedText || scrapeResult.extractedText || scrapeResult.message || ''
   const fallbackSnapshotDataUrl = browserSnapshot ? undefined : buildTextSnapshotDataUrl(source, scrapeResult, extractedText)
   const metrics = buildBbsSnapshotMetrics(extractedText)

@@ -35,10 +35,14 @@ function getCronCrawlOptions(request: Request): CronCrawlOptions {
   const sourceIds = parseSourceIds(url.searchParams.get('source') ?? url.searchParams.get('sourceId') ?? url.searchParams.get('sources') ?? url.searchParams.get('ids'))
   const excludeSourceIds = parseSourceIds(url.searchParams.get('exclude') ?? url.searchParams.get('excludeSource') ?? url.searchParams.get('excludeSourceId'))
   const force = ['1', 'true', 'yes'].includes((url.searchParams.get('force') ?? '').toLowerCase())
+  const captureBrowserScreenshots = ['1', 'true', 'yes'].includes(
+    (url.searchParams.get('screenshots') ?? url.searchParams.get('captureScreenshots') ?? '').toLowerCase(),
+  )
 
   return {
     batch,
     batchSize,
+    captureBrowserScreenshots,
     excludeSourceIds,
     force,
     maxCrawls,
@@ -46,9 +50,10 @@ function getCronCrawlOptions(request: Request): CronCrawlOptions {
   }
 }
 
-function compactCronCrawlResult(result: CronCrawlResult) {
+function compactCronCrawlResult(result: CronCrawlResult, elapsedMs: number) {
   return {
     mode: result.mode,
+    elapsedMs,
     checked: result.checked,
     selected: result.selected,
     due: result.due,
@@ -112,7 +117,8 @@ export async function GET(request: Request) {
   if (authorizationError) return jsonError(authorizationError, authorizationError.includes('CRON_SECRET') ? 503 : 401)
 
   try {
-    return Response.json(compactCronCrawlResult(await crawlDueBbsSourcesForCron(getCronCrawlOptions(request))))
+    const startedAt = Date.now()
+    return Response.json(compactCronCrawlResult(await crawlDueBbsSourcesForCron(getCronCrawlOptions(request)), Date.now() - startedAt))
   } catch (error) {
     if (error instanceof RepositoryError && error.status === 503) {
       return Response.json({ mode: 'demo', checked: 0, crawled: 0, message: error.message })

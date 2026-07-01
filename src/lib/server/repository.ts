@@ -1150,13 +1150,16 @@ export async function getCurrentNotificationDelivery() {
 async function crawlSourceRow(
   supabase: DataClient,
   row: DbRow,
-  browserSession?: BrowserSnapshotSession | null,
+  options: {
+    browserSession?: BrowserSnapshotSession | null
+    captureBrowserScreenshot?: boolean
+  } = {},
 ): Promise<{ source: BbsSource; run: CrawlRun; post: PostRecord | null; snapshot: BbsSnapshot | null }> {
   const source = toBbsSource(row)
   const result = await scrapePublicPage(source.url)
   const candidatePost = scrapeResultToPost(result, source.storeId)
   const post = candidatePost ? await savePostRow(supabase, candidatePost) : null
-  const snapshot = result.status === 'ok' ? await buildBbsSnapshot(source, result, browserSession) : null
+  const snapshot = result.status === 'ok' ? await buildBbsSnapshot(source, result, options.browserSession, options) : null
   const fetchedAt = result.fetchedAt
 
   await supabase
@@ -1219,6 +1222,7 @@ export async function crawlUserBbsSources(sourceIds?: string[]) {
 export type CronCrawlOptions = {
   batch?: number | 'auto'
   batchSize?: number
+  captureBrowserScreenshots?: boolean
   excludeSourceIds?: string[]
   force?: boolean
   maxCrawls?: number
@@ -1304,12 +1308,18 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
       })
   const maxCrawls = normalizeCronMaxCrawls(options)
   const crawlRows = prioritizeBbsRowsForCrawl(dueRows).slice(0, maxCrawls)
+  const captureBrowserScreenshots = options.captureBrowserScreenshots === true
 
   const results = []
-  const browserSession = crawlRows.length ? await createBrowserSnapshotSession() : null
+  const browserSession = crawlRows.length && captureBrowserScreenshots ? await createBrowserSnapshotSession() : null
   try {
     for (const row of crawlRows) {
-      results.push(await crawlSourceRow(supabase, row, browserSession))
+      results.push(
+        await crawlSourceRow(supabase, row, {
+          browserSession,
+          captureBrowserScreenshot: captureBrowserScreenshots,
+        }),
+      )
     }
   } finally {
     await browserSession?.close()
@@ -1326,6 +1336,7 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
     skippedDue: Math.max(0, dueRows.length - crawlRows.length),
     batch,
     filters: {
+      captureBrowserScreenshots,
       excludeSourceIds: options.excludeSourceIds ?? [],
       force: Boolean(options.force),
       maxCrawls,

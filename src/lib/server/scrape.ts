@@ -22,9 +22,9 @@ function readPositiveIntEnv(name: string, fallback: number) {
 }
 
 function getFetchTimeoutMs(url: URL) {
-  const standardTimeoutMs = readPositiveIntEnv('SCRAPE_FETCH_TIMEOUT_MS', 8_000)
+  const standardTimeoutMs = readPositiveIntEnv('SCRAPE_FETCH_TIMEOUT_MS', 5_500)
   if (url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com')) {
-    const slowHostTimeoutMs = readPositiveIntEnv('SCRAPE_SLOW_HOST_TIMEOUT_MS', 12_000)
+    const slowHostTimeoutMs = readPositiveIntEnv('SCRAPE_SLOW_HOST_TIMEOUT_MS', 8_000)
     return Math.max(standardTimeoutMs, readPositiveIntEnv('SCRAPE_NEO_FETCH_TIMEOUT_MS', slowHostTimeoutMs))
   }
 
@@ -53,7 +53,7 @@ async function scrapeReadableTextViaReader(url: URL): Promise<ScrapeResult | nul
   try {
     const response = await fetch(readerUrlFor(url), {
       redirect: 'follow',
-      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_READER_TIMEOUT_MS', 10_000)),
+      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_READER_TIMEOUT_MS', 6_000)),
       headers: {
         Accept: 'text/plain, text/markdown;q=0.9, */*;q=0.8',
         'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
