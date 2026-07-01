@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { BbsSnapshot, BbsSnapshotMetrics, EventInput } from './types'
+import type { BbsSnapshot, BbsSnapshotMetrics, EventInput, PostRecord } from './types'
 import { events, posts, stores } from './demo-data'
 import { formatEventDateLabel, weekdayLabelForJapanDate } from './date'
 import {
@@ -10,6 +10,7 @@ import {
   buildStoreRadarPoints,
   buildVisitForecasts,
   buildWatchedWordHits,
+  extractCustomerBbsText,
   parseExactTerms,
   scoreBbsSnapshot,
   scoreEvents,
@@ -174,7 +175,7 @@ describe('searchExactBbsTerms', () => {
   })
 
   it('searches full BBS snapshot text in addition to truncated scrape posts', () => {
-    const longBody = `${'通常テキスト'.repeat(180)} 人気単女Z が来店予告しました。`
+    const longBody = `${'通常テキスト'.repeat(180)} 投稿者：Yuki 人気単女Z が来店予告しました。`
     const searchableRecords = buildSearchableBbsRecords(
       [
         {
@@ -221,6 +222,69 @@ describe('searchExactBbsTerms', () => {
 })
 
 describe('BBS radar signals', () => {
+  it('extracts customer-written BBS blocks from noisy public pages', () => {
+    const text = [
+      '禁止事項 BBSでの誹謗中傷や営業妨害は禁止です。当店イベントは女性無料です。',
+      '投稿者：サトル 初めて行きます。どなたか一緒に乾杯できたら嬉しいです。',
+      '投稿者：店長 本日は19時からイベント開催です。料金とシステムをご確認ください。',
+      'No.2304 Yuki 久しぶりに伺います。よろしくお願いします。',
+    ].join(' ')
+
+    const extracted = extractCustomerBbsText(text)
+
+    assert.match(extracted, /サトル/)
+    assert.match(extracted, /Yuki/)
+    assert.doesNotMatch(extracted, /禁止事項/)
+    assert.doesNotMatch(extracted, /店長/)
+  })
+
+  it('excludes store announcement posts even when they contain watched words', () => {
+    const text = [
+      '投稿者：HoneyTrap 【昼の部】 13時〜19時（ニップレス＆レディースday）ハニトラがとうとう限界に挑戦！',
+      '来店予告された単独女性様には嬉しい特典があります。初めての方も登録手数料無料、入場料半額です。',
+      '投稿者：たかし（男性） 初めて行きます。20時ごろ伺う予定です。よろしくお願いします。',
+    ].join(' ')
+
+    const extracted = extractCustomerBbsText(text)
+
+    assert.match(extracted, /たかし/)
+    assert.match(extracted, /初めて行きます/)
+    assert.doesNotMatch(extracted, /HoneyTrap/)
+    assert.doesNotMatch(extracted, /ニップレス/)
+    assert.doesNotMatch(extracted, /登録手数料無料/)
+  })
+
+  it('searchable snapshot records only keep customer BBS text', () => {
+    const searchableRecords = buildSearchableBbsRecords(
+      [],
+      [
+        {
+          id: 'noisy-snapshot',
+          storeId: stores[0].id,
+          url: 'https://example.com/bbs',
+          extractedText:
+            '当店からのお知らせ 女性無料イベント開催中です。 投稿者：しのみ 初めてですが、お昼過ぎに伺えたら。 投稿者：スタッフ 料金システムをご確認ください。',
+          metrics: {
+            femaleOnly: 0,
+            firstVisit: 0,
+            comeback: 0,
+            groupVisit: 0,
+            emoji: 0,
+            totalSignals: 0,
+            textLength: 0,
+          },
+          radarScore: 60,
+          capturedAt: '2026-06-13T12:05:00.000Z',
+        },
+      ],
+    )
+
+    assert.equal(searchableRecords.length, 1)
+    assert.match(searchableRecords[0].body, /しのみ/)
+    assert.doesNotMatch(searchableRecords[0].body, /女性無料イベント/)
+    assert.doesNotMatch(searchableRecords[0].body, /スタッフ/)
+  })
+
   it('detects watched female-focused signals', () => {
     const metrics = buildBbsSnapshotMetrics('女性 はじめて 2人組 😊 久しぶり')
 
@@ -258,6 +322,56 @@ describe('BBS radar signals', () => {
     assert.equal(hits.length, 1)
     assert.equal(hits[0].label, '人気単女B')
     assert.match(hits[0].snippet, /人気 単女 B/)
+  })
+
+  it('can disable default watched word templates', () => {
+    const hits = buildWatchedWordHits(
+      [
+        {
+          id: 'template-disabled-post',
+          storeId: stores[0].id,
+          source: 'scrape',
+          postedAt: '2026-06-13T12:00:00.000Z',
+          body: '女性 初めて 2人組 😊 久しぶり',
+          keywords: [],
+        },
+      ],
+      stores,
+      [],
+      { enabledTemplateKeys: ['female'] },
+    )
+
+    assert.equal(hits.length, 1)
+    assert.equal(hits[0].label, '女性のみ')
+  })
+
+  it('filters watched word hits by store', () => {
+    const scopedPosts: PostRecord[] = [
+      {
+        id: 'store-filter-a',
+        storeId: stores[0].id,
+        source: 'scrape',
+        postedAt: '2026-06-13T12:00:00.000Z',
+        body: '初めて来店します。',
+        keywords: [],
+      },
+      {
+        id: 'store-filter-b',
+        storeId: stores[1].id,
+        source: 'scrape',
+        postedAt: '2026-06-13T12:05:00.000Z',
+        body: '初めて来店します。',
+        keywords: [],
+      },
+    ]
+
+    const hits = buildWatchedWordHits(scopedPosts, stores, [], {
+      enabledTemplateKeys: ['first'],
+      storeId: stores[1].id,
+    })
+
+    assert.equal(hits.length, 1)
+    assert.equal(hits[0].store.id, stores[1].id)
   })
 
   it('normalizes large BBS pages without hard-clamping every store to 100', () => {

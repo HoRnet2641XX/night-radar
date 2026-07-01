@@ -5,9 +5,11 @@ import { motion, useReducedMotion } from 'motion/react'
 import {
   Broadcast,
   CalendarDots,
+  CaretDown,
   ChartLineUp,
   Crosshair,
   Lightning,
+  List,
   MagnifyingGlass,
   ShieldCheck,
   Star,
@@ -15,6 +17,7 @@ import {
   Trash,
   UsersThree,
   WarningCircle,
+  X,
 } from '@phosphor-icons/react'
 import {
   dateKeyInJapan,
@@ -34,10 +37,13 @@ import {
   buildSearchableBbsRecords,
   buildVisitForecasts,
   buildWatchedWordHits,
+  defaultWatchedTemplateKeys,
   normalizeWatchedSearchText,
   parseExactTerms,
   searchExactBbsTerms,
   summarizeSignals,
+  watchedTemplateRules,
+  type WatchedTemplateKey,
 } from '@/lib/scoring'
 import { formatBarName, formatStoreArea, formatStoreSessionLabel } from '@/lib/display'
 import type {
@@ -100,7 +106,7 @@ const navScreenCopy: Record<NavKey, { title: string; body: string }> = {
   search: { title: '検索', body: '登録ワードと監視カテゴリで、全店BBSの一致箇所を確認します。' },
   calendar: { title: 'カレンダー', body: '月間イベントを日付単位で確認します。日別詳細は開いた時だけ表示します。' },
   stores: { title: '店舗', body: '候補店舗を盛り上がり順に比較し、気になる店舗だけ残します。' },
-  settings: { title: '設定', body: 'ログイン状態と公開情報の扱いだけを確認します。' },
+  settings: { title: '設定', body: 'ログイン状態、店舗マスタ、公開情報の扱いを確認します。' },
 }
 
 const exactTermLabels = {
@@ -202,6 +208,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   const isSignedIn = Boolean(initialState.userEmail)
   const storeDecisionStorageKey = `night-radar-store-decisions:${initialState.userEmail ?? 'anonymous'}`
   const firstGuideStorageKey = `night-radar-first-guide:${initialState.userEmail ?? 'anonymous'}`
+  const watchedTemplateStorageKey = `night-radar-watched-templates:${initialState.userEmail ?? 'anonymous'}`
   const [view, setView] = useState<ViewKey>('analytics')
   const [activeNav, setActiveNav] = useState<NavKey>('today')
   const [mode, setMode] = useState<RuntimeMode>(initialState.mode)
@@ -221,6 +228,21 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   const [wordBookmarks, setWordBookmarks] = useState<WordBookmark[]>(initialState.wordBookmarks)
   const [bookmarkDraft, setBookmarkDraft] = useState('')
   const [watchSearchTerm, setWatchSearchTerm] = useState('')
+  const [watchStoreId, setWatchStoreId] = useState('all')
+  const [enabledWatchedTemplates, setEnabledWatchedTemplates] = useState<WatchedTemplateKey[]>(() => {
+    if (typeof window === 'undefined') return [...defaultWatchedTemplateKeys]
+    try {
+      const stored = window.localStorage.getItem(watchedTemplateStorageKey)
+      if (!stored) return [...defaultWatchedTemplateKeys]
+      const knownKeys = new Set<WatchedTemplateKey>(defaultWatchedTemplateKeys)
+      const parsed = JSON.parse(stored) as string[]
+      if (!Array.isArray(parsed)) return [...defaultWatchedTemplateKeys]
+      return parsed.filter((key): key is WatchedTemplateKey => knownKeys.has(key as WatchedTemplateKey))
+    } catch {
+      window.localStorage.removeItem(watchedTemplateStorageKey)
+      return [...defaultWatchedTemplateKeys]
+    }
+  })
   const [storeQuery, setStoreQuery] = useState('')
   const [storeSort, setStoreSort] = useState<StoreSortKey>('hot')
   const [storeSessionFilter, setStoreSessionFilter] = useState<StoreSessionFilter>('all')
@@ -246,6 +268,10 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   useEffect(() => {
     window.localStorage.setItem(storeDecisionStorageKey, JSON.stringify(storeDecisions))
   }, [storeDecisionStorageKey, storeDecisions])
+
+  useEffect(() => {
+    window.localStorage.setItem(watchedTemplateStorageKey, JSON.stringify(enabledWatchedTemplates))
+  }, [enabledWatchedTemplates, watchedTemplateStorageKey])
 
   useEffect(() => {
     if (!isSignedIn) return
@@ -313,12 +339,16 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     [searchableBbsRecords, stores],
   )
   const watchedWordHits = useMemo(
-    () => buildWatchedWordHits(searchableBbsRecords, stores, wordBookmarks),
-    [searchableBbsRecords, stores, wordBookmarks],
+    () =>
+      buildWatchedWordHits(searchableBbsRecords, stores, wordBookmarks, {
+        enabledTemplateKeys: enabledWatchedTemplates,
+        storeId: watchStoreId,
+      }),
+    [enabledWatchedTemplates, searchableBbsRecords, stores, watchStoreId, wordBookmarks],
   )
   const searchedWatchedWordHits = useMemo(
-    () => buildCustomWatchedWordHits(searchableBbsRecords, stores, watchSearchTerm),
-    [searchableBbsRecords, stores, watchSearchTerm],
+    () => buildCustomWatchedWordHits(searchableBbsRecords, stores, watchSearchTerm, watchStoreId),
+    [searchableBbsRecords, stores, watchSearchTerm, watchStoreId],
   )
   const visitForecasts = useMemo(() => buildVisitForecasts(events, stores, posts, { windowDays: 14 }), [events, stores, posts])
   const exactMatches = useMemo(
@@ -431,6 +461,12 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     setBookmarkDraft('')
   }
 
+  function toggleWatchedTemplate(key: WatchedTemplateKey) {
+    setEnabledWatchedTemplates((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
+    )
+  }
+
   function updateStoreDecision(storeId: string, state: StoreDecisionState) {
     const nextDecision: StoreDecisionState = storeDecisions[storeId] === state ? 'watch' : state
     setStoreDecisions((current) => {
@@ -539,8 +575,13 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   }
 
   async function deleteWordBookmark(id: string) {
+    const removedBookmark = wordBookmarks.find((bookmark) => bookmark.id === id)
+    const removedActiveSearch =
+      removedBookmark && normalizeLocalSearchText(removedBookmark.pattern) === normalizeLocalSearchText(watchSearchTerm)
+
     if (id.startsWith('local-')) {
       setWordBookmarks((current) => current.filter((bookmark) => bookmark.id !== id))
+      if (removedActiveSearch) clearWatchedWordSearch()
       flash('一時保存ワードを削除しました。')
       return
     }
@@ -549,6 +590,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     try {
       const result = await deleteJson<{ mode?: RuntimeMode; message?: string }>('/api/word-bookmarks', { id })
       setWordBookmarks((current) => current.filter((bookmark) => bookmark.id !== id))
+      if (removedActiveSearch) clearWatchedWordSearch()
       applyMode(result.mode, result.message)
       if (!result.message) flash('ワードブックマークを削除しました。')
     } catch (error) {
@@ -778,12 +820,19 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
               bookmarks={wordBookmarks}
               bookmarkDraft={bookmarkDraft}
               searchTerm={watchSearchTerm}
+              selectedStoreId={watchStoreId}
+              stores={stores}
+              enabledTemplateKeys={enabledWatchedTemplates}
               busy={busy}
               onDraftChange={setBookmarkDraft}
               onAddBookmark={addWordBookmark}
               onDeleteBookmark={deleteWordBookmark}
               onSearch={runWatchedWordSearch}
               onClearSearch={clearWatchedWordSearch}
+              onStoreChange={setWatchStoreId}
+              onToggleTemplate={toggleWatchedTemplate}
+              onEnableAllTemplates={() => setEnabledWatchedTemplates([...defaultWatchedTemplateKeys])}
+              onDisableAllTemplates={() => setEnabledWatchedTemplates([])}
               onUseBookmark={(bookmark) => {
                 setBookmarkDraft(bookmark.pattern)
                 setWatchSearchTerm(bookmark.pattern)
@@ -822,31 +871,6 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
             <PostCountRankingCard rankings={genderPostRankings.slice(0, 6)} />
 
             <GenderWordRatioRankingCard rankings={genderPostRankings} />
-
-            <section className="app-card catalog-card">
-              <div className="section-heading">
-                <span>登録店舗</span>
-                <h2>店舗一覧</h2>
-              </div>
-              <div className="catalog-list">
-                {stores.length ? (
-                  stores.slice(0, 12).map((store) => (
-                    <article key={store.id}>
-                      <div>
-                        <strong>{formatBarName(store.name)}</strong>
-                        <span>
-                          {formatStoreArea(store.area)} / {formatStoreSessionLabel(store)}
-                        </span>
-                      </div>
-                      <em>登録済み</em>
-                    </article>
-                  ))
-                ) : (
-                  <p className="muted-note">運営側で店舗マスタを投入すると表示されます。</p>
-                )}
-              </div>
-            </section>
-
             <section className="app-card catalog-card">
               <div className="section-heading">
                 <span>月間予定</span>
@@ -892,12 +916,19 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
               bookmarks={wordBookmarks}
               bookmarkDraft={bookmarkDraft}
               searchTerm={watchSearchTerm}
+              selectedStoreId={watchStoreId}
+              stores={stores}
+              enabledTemplateKeys={enabledWatchedTemplates}
               busy={busy}
               onDraftChange={setBookmarkDraft}
               onAddBookmark={addWordBookmark}
               onDeleteBookmark={deleteWordBookmark}
               onSearch={runWatchedWordSearch}
               onClearSearch={clearWatchedWordSearch}
+              onStoreChange={setWatchStoreId}
+              onToggleTemplate={toggleWatchedTemplate}
+              onEnableAllTemplates={() => setEnabledWatchedTemplates([...defaultWatchedTemplateKeys])}
+              onDisableAllTemplates={() => setEnabledWatchedTemplates([])}
               onUseBookmark={(bookmark) => {
                 setBookmarkDraft(bookmark.pattern)
                 setWatchSearchTerm(bookmark.pattern)
@@ -921,7 +952,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
 
         {view === 'account' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="設定" title="アカウント" body="ログインと公開情報ポリシーを管理します。" />
+            <ViewIntro eyebrow="設定" title="アカウント" body="ログイン状態と登録済み店舗を確認します。" />
 
             <section className="app-card form-card">
               <FormTitle icon={<ShieldCheck size={19} weight="bold" />} title="認証" />
@@ -944,6 +975,8 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
                 </button>
               )}
             </section>
+
+            <RegisteredStoreMenu stores={stores} />
 
             <section className="legal-note">
               <WarningCircle size={18} weight="bold" />
@@ -993,6 +1026,52 @@ function BusyOverlay({ label, reduceMotion }: { label: string; reduceMotion: boo
       <p>{label}</p>
       <small>完了するまでこの画面でお待ちください</small>
     </motion.div>
+  )
+}
+
+function RegisteredStoreMenu({ stores }: { stores: StoreProfile[] }) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <section className="app-card settings-menu-card">
+      <button
+        aria-controls="registered-store-list"
+        aria-expanded={isOpen}
+        className="settings-menu-trigger"
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        <span className="settings-menu-icon" aria-hidden="true">
+          <List size={18} weight="bold" />
+        </span>
+        <span>
+          <small>店舗マスタ</small>
+          <strong>登録済み店舗</strong>
+        </span>
+        <em>{stores.length}件</em>
+        <CaretDown aria-hidden="true" className="settings-menu-caret" data-open={isOpen} size={17} weight="bold" />
+      </button>
+
+      {isOpen ? (
+        <div className="catalog-list settings-store-list" id="registered-store-list">
+          {stores.length ? (
+            stores.map((store) => (
+              <article key={store.id}>
+                <div>
+                  <strong>{formatBarName(store.name)}</strong>
+                  <span>
+                    {formatStoreArea(store.area)} / {formatStoreSessionLabel(store)}
+                  </span>
+                </div>
+                <em>登録済み</em>
+              </article>
+            ))
+          ) : (
+            <p className="muted-note">店舗マスタを投入すると表示されます。</p>
+          )}
+        </div>
+      ) : null}
+    </section>
   )
 }
 
@@ -2238,6 +2317,34 @@ function normalizedLocalMatchIndex(body: string, term: string) {
   return normalizedIndex >= 0 ? (rawIndices[normalizedIndex] ?? -1) : -1
 }
 
+function normalizedLocalMatchRange(body: string, term: string) {
+  const normalizedTerm = normalizeLocalSearchText(term)
+  if (!normalizedTerm) return null
+
+  let normalizedBody = ''
+  const rawStarts: number[] = []
+  const rawEnds: number[] = []
+  let rawIndex = 0
+
+  for (const character of body) {
+    const normalizedCharacter = normalizeLocalSearchText(character)
+    for (let index = 0; index < normalizedCharacter.length; index += 1) {
+      rawStarts.push(rawIndex)
+      rawEnds.push(rawIndex + character.length)
+    }
+    normalizedBody += normalizedCharacter
+    rawIndex += character.length
+  }
+
+  const normalizedIndex = normalizedBody.indexOf(normalizedTerm)
+  if (normalizedIndex < 0) return null
+
+  return {
+    start: rawStarts[normalizedIndex] ?? 0,
+    end: rawEnds[normalizedIndex + normalizedTerm.length - 1] ?? rawStarts[normalizedIndex] + term.length,
+  }
+}
+
 function buildLocalSnippet(body: string, term: string) {
   const exactIndex = body.indexOf(term)
   const normalizedIndex = normalizedLocalMatchIndex(body, term)
@@ -2248,15 +2355,22 @@ function buildLocalSnippet(body: string, term: string) {
   return `${start > 0 ? '…' : ''}${body.slice(start, end)}${end < body.length ? '…' : ''}`
 }
 
-function buildCustomWatchedWordHits(posts: PostRecord[], stores: StoreProfile[], term: string): WatchedWordHit[] {
+function buildCustomWatchedWordHits(
+  posts: PostRecord[],
+  stores: StoreProfile[],
+  term: string,
+  selectedStoreId = 'all',
+): WatchedWordHit[] {
   const query = term.trim()
   const normalizedQuery = normalizeLocalSearchText(query)
   if (!normalizedQuery) return []
 
   const storeMap = new Map(stores.map((store) => [store.id, store]))
+  const scopedStoreId = selectedStoreId && selectedStoreId !== 'all' ? selectedStoreId : null
   const hits: WatchedWordHit[] = []
 
   posts.forEach((post) => {
+    if (scopedStoreId && post.storeId !== scopedStoreId) return
     const store = storeMap.get(post.storeId)
     if (!store) return
     if (!post.body.includes(query) && !normalizeLocalSearchText(post.body).includes(normalizedQuery)) return
@@ -2275,45 +2389,322 @@ function buildCustomWatchedWordHits(posts: PostRecord[], stores: StoreProfile[],
   return hits.toSorted((a, b) => new Date(b.post.postedAt).getTime() - new Date(a.post.postedAt).getTime())
 }
 
+function buildHighlightRanges(text: string, term: string) {
+  const query = term.trim()
+  if (!query) return []
+
+  const ranges: Array<{ start: number; end: number }> = []
+  let index = text.indexOf(query)
+  while (index >= 0) {
+    ranges.push({ start: index, end: index + query.length })
+    index = text.indexOf(query, index + Math.max(1, query.length))
+  }
+
+  if (ranges.length) return ranges
+
+  const normalizedRange = normalizedLocalMatchRange(text, query)
+  return normalizedRange ? [normalizedRange] : []
+}
+
+function renderHighlightedText(text: string, term: string) {
+  const ranges = buildHighlightRanges(text, term)
+  if (!ranges.length) return text
+
+  const nodes: ReactNode[] = []
+  let cursor = 0
+  ranges.forEach((range, index) => {
+    if (range.start > cursor) nodes.push(text.slice(cursor, range.start))
+    nodes.push(
+      <mark className="watch-highlight" key={`${range.start}-${range.end}-${index}`}>
+        {text.slice(range.start, range.end)}
+      </mark>,
+    )
+    cursor = range.end
+  })
+  if (cursor < text.length) nodes.push(text.slice(cursor))
+  return nodes
+}
+
+function splitLongReadableLine(line: string, limit = 92) {
+  if (line.length <= limit) return [line]
+
+  const chunks: string[] = []
+  let rest = line
+  while (rest.length > limit) {
+    const searchArea = rest.slice(0, limit)
+    const breakAt = Math.max(
+      searchArea.lastIndexOf('。'),
+      searchArea.lastIndexOf('！'),
+      searchArea.lastIndexOf('？'),
+      searchArea.lastIndexOf('、'),
+      searchArea.lastIndexOf(' '),
+    )
+    const cut = breakAt >= 32 ? breakAt + 1 : limit
+    chunks.push(rest.slice(0, cut).trim())
+    rest = rest.slice(cut).trim()
+  }
+  if (rest) chunks.push(rest)
+  return chunks
+}
+
+function buildReadableBbsLines(body: string) {
+  const prepared = body
+    .replace(/\r\n?/g, '\n')
+    .replace(/(投稿者[:：])/g, '\n$1')
+    .replace(/(投稿日時?[:：]|投稿日[:：]|書き込み[:：]|記事番号[:：]?|No[.\s]*\d+|Re[:：]|返信[:：])/g, '\n$1')
+    .replace(/(20\d{2}[年/-]\d{1,2}[月/-]\d{1,2}日?\s*\d{0,2}:?\d{0,2})/g, '\n$1')
+    .replace(/([。！？!?])(?=\S)/g, '$1\n')
+
+  return prepared
+    .split('\n')
+    .map((line) => line.replace(/[ \t\u3000]+/g, ' ').trim())
+    .filter(Boolean)
+    .flatMap((line) => splitLongReadableLine(line))
+}
+
+type ReadableBbsEntry = {
+  id: string
+  timeLabel: string
+  genderLabel: string
+  lines: string[]
+}
+
+function splitReadableBlock(block: string) {
+  return block
+    .replace(/\r\n?/g, '\n')
+    .replace(/(投稿者[:：])/g, '\n$1')
+    .replace(/(投稿日時?[:：]|投稿日[:：]|書き込み[:：]?|記事番号[:：]?|No[.\s]*\d+|Re[:：]|返信[:：])/g, '\n$1')
+    .replace(/(20\d{2}[年/-]\d{1,2}[月/-]\d{1,2}日?\s*\d{0,2}:?\d{0,2})/g, '\n$1')
+    .replace(/([。！？!?])(?=\S)/g, '$1\n')
+    .split('\n')
+    .map((line) => line.replace(/[ \t\u3000]+/g, ' ').trim())
+    .filter(Boolean)
+}
+
+function splitAuthorLine(line: string) {
+  const match = line.match(
+    /^(投稿者[:：]\s*.+?)(\s+(?=(初めて|はじめて|久しぶり|今日|本日|明日|行き|行く|伺|お邪魔|予定|よろしく|誰か|どなた|女性|男性|単男|単女|[0-9０-９]{1,2}\s*(時|:))).+)$/,
+  )
+  return match ? { meta: match[1].trim(), body: match[2].trim() } : { meta: line, body: '' }
+}
+
+function extractReadableTimeLabel(value: string) {
+  const prefixedTime = value.match(/(?:投稿日時?|投稿日)[:：]?\s*([^\n]{4,42})/i)
+  if (prefixedTime?.[1]) return prefixedTime[1].trim()
+
+  const dateTime = value.match(
+    /(20\d{2}[年/-]\d{1,2}[月/-]\d{1,2}日?(?:\([^)]+\))?\s*(?:[0-2]?\d[:時][0-5]?\d?(?::[0-5]?\d)?)?)/,
+  )
+  if (dateTime?.[1]) return dateTime[1].trim()
+
+  const shortTime = value.match(/(?:^|\s)([0-2]?\d[:時][0-5]?\d)(?:\s|$)/)
+  return shortTime?.[1]?.trim() ?? ''
+}
+
+function resolveReadableGenderLabel(value: string) {
+  if (/(女性|単女|女です|女子|♀|（女|\(女)/i.test(value)) return '女性'
+  if (/(男性|単男|男です|男子|♂|（男|\(男)/i.test(value)) return '男性'
+  if (/(カップル|二人組|2人組|２人組|ペア)/i.test(value)) return '複数'
+  return '記載なし'
+}
+
+function buildReadableBbsEntries(body: string, fallbackTimeLabel: string): ReadableBbsEntry[] {
+  const blocks = body
+    .replace(/\r\n?/g, '\n')
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+
+  const sourceBlocks = blocks.length ? blocks : [body]
+
+  return sourceBlocks.map((block, index) => {
+    const genderParts: string[] = []
+    let timeLabel = ''
+    const bodyLines: string[] = []
+
+    splitReadableBlock(block).forEach((line) => {
+      if (/^(記事番号[:：]?|No[.\s]*\d+|Re[:：]|返信[:：])/i.test(line)) return
+      if (/^(投稿日時?[:：]|投稿日[:：])/i.test(line)) {
+        timeLabel ||= extractReadableTimeLabel(line)
+        return
+      }
+      if (/^20\d{2}[年/-]\d{1,2}[月/-]\d{1,2}/.test(line)) {
+        timeLabel ||= extractReadableTimeLabel(line)
+        return
+      }
+      if (/^書き込み[:：]?/.test(line)) {
+        const writtenBody = line.replace(/^書き込み[:：]?\s*/, '').trim()
+        if (writtenBody) bodyLines.push(...splitLongReadableLine(writtenBody))
+        return
+      }
+      if (/^投稿者[:：]/.test(line)) {
+        const authorLine = splitAuthorLine(line)
+        genderParts.push(authorLine.meta)
+        if (authorLine.body) bodyLines.push(...splitLongReadableLine(authorLine.body))
+        return
+      }
+      timeLabel ||= extractReadableTimeLabel(line)
+      bodyLines.push(...splitLongReadableLine(line))
+    })
+
+    const lines = bodyLines.length ? bodyLines : splitLongReadableLine(block.replace(/[ \t\u3000]+/g, ' ').trim())
+    const genderLabel = resolveReadableGenderLabel([...genderParts, ...lines].join(' '))
+
+    return {
+      id: `${index}-${timeLabel || fallbackTimeLabel}-${block.slice(0, 16)}`,
+      timeLabel: timeLabel || fallbackTimeLabel,
+      genderLabel,
+      lines,
+    }
+  })
+}
+
+function HighlightedReadableBody({ body, fallbackTimeLabel, term }: { body: string; fallbackTimeLabel: string; term: string }) {
+  const entries = buildReadableBbsEntries(body, fallbackTimeLabel)
+  return (
+    <div className="watch-detail-entry-list">
+      {entries.map((entry) => (
+        <article className="watch-detail-entry" key={entry.id}>
+          <header>
+            <span>時刻 {entry.timeLabel}</span>
+            <span>性別 {entry.genderLabel}</span>
+          </header>
+          <div>
+            {entry.lines.map((line, index) => (
+              <p key={`${index}-${line.slice(0, 20)}`}>{renderHighlightedText(line, term)}</p>
+            ))}
+          </div>
+        </article>
+      ))}
+    </div>
+  )
+}
+
 function WatchedWordsPanel({
   hits,
   bookmarks,
   bookmarkDraft,
   searchTerm,
+  selectedStoreId,
+  stores,
+  enabledTemplateKeys,
   busy,
   onDraftChange,
   onAddBookmark,
   onDeleteBookmark,
   onSearch,
   onClearSearch,
+  onStoreChange,
+  onToggleTemplate,
+  onEnableAllTemplates,
+  onDisableAllTemplates,
   onUseBookmark,
 }: {
   hits: WatchedWordHit[]
   bookmarks: WordBookmark[]
   bookmarkDraft: string
   searchTerm: string
+  selectedStoreId: string
+  stores: StoreProfile[]
+  enabledTemplateKeys: WatchedTemplateKey[]
   busy: string
   onDraftChange: (value: string) => void
   onAddBookmark: () => void
   onDeleteBookmark: (id: string) => void
   onSearch: () => void
   onClearSearch: () => void
+  onStoreChange: (storeId: string) => void
+  onToggleTemplate: (key: WatchedTemplateKey) => void
+  onEnableAllTemplates: () => void
+  onDisableAllTemplates: () => void
   onUseBookmark: (bookmark: WordBookmark) => void
 }) {
+  const [selectedHit, setSelectedHit] = useState<WatchedWordHit | null>(null)
+  const selectedStoreName =
+    selectedStoreId === 'all'
+      ? '全店舗'
+      : formatBarName(stores.find((store) => store.id === selectedStoreId)?.name ?? selectedStoreId)
+  const hasScopeState = Boolean(searchTerm) || selectedStoreId !== 'all'
+  const activeTemplateLabels = watchedTemplateRules
+    .filter((rule) => enabledTemplateKeys.includes(rule.key))
+    .map((rule) => rule.shortLabel)
+  const inactiveTemplateCount = watchedTemplateRules.length - activeTemplateLabels.length
+  const activeBookmark = searchTerm
+    ? bookmarks.find((bookmark) => normalizeLocalSearchText(bookmark.pattern) === normalizeLocalSearchText(searchTerm))
+    : null
+  const resultTitle = searchTerm ? `任意ワード「${searchTerm}」` : 'テンプレート・保存ワード'
+  const resultLead = searchTerm
+    ? '入力または保存済みワードで本文を完全一致に近い形で検索しています。'
+    : '有効なテンプレートと保存済みワードをまとめて監視しています。'
+
+  useEffect(() => {
+    if (!selectedHit) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedHit(null)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [selectedHit])
+
   return (
     <section className="app-card watched-card">
       <div className="section-heading">
         <span>検索</span>
         <h2>注目ワード検索</h2>
-        <p>任意のワードを登録・削除・検索できます。一致した投稿は下の履歴に残ります。</p>
+        <p>テンプレート監視、保存済みワード、店舗範囲を分けて確認できます。保存ワードを押すと、その語だけの検索に切り替わります。</p>
       </div>
-      <div className="watch-word-chips" aria-label="固定監視ワード">
-        <span>女性</span>
-        <span>初めて</span>
-        <span>久しぶり</span>
-        <span>2人組</span>
-        <span>絵文字</span>
+
+      <div className="watch-filter-panel">
+        <div className="watch-filter-block">
+          <div className="watch-filter-head">
+            <div>
+              <span>テンプレート監視</span>
+              <strong>{activeTemplateLabels.length}件を適用中</strong>
+            </div>
+            <div className="watch-filter-actions">
+              <button type="button" onClick={onEnableAllTemplates}>
+                全て適用
+              </button>
+              <button type="button" onClick={onDisableAllTemplates}>
+                全て外す
+              </button>
+            </div>
+          </div>
+          <div className="watch-word-chips" aria-label="テンプレート注目ワード">
+            {watchedTemplateRules.map((rule) => {
+              const active = enabledTemplateKeys.includes(rule.key)
+              return (
+                <button
+                  aria-pressed={active}
+                  className={active ? 'is-active' : 'is-inactive'}
+                  key={rule.key}
+                  title={active ? `${rule.label}を監視対象から外します` : `${rule.label}を監視対象に戻します`}
+                  type="button"
+                  onClick={() => onToggleTemplate(rule.key)}
+                >
+                  <span>{rule.shortLabel}</span>
+                  <small>{active ? '外す' : '戻す'}</small>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="watch-filter-block compact">
+          <label className="watch-store-filter">
+            <span>検索範囲</span>
+            <select value={selectedStoreId} onChange={(event) => onStoreChange(event.target.value)}>
+              <option value="all">全店舗</option>
+              {stores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {formatBarName(store.name)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
+
       <form
         className="bookmark-form"
         onSubmit={(event) => {
@@ -2325,47 +2716,97 @@ function WatchedWordsPanel({
           aria-label="検索または保存する注目ワード"
           autoComplete="off"
           name="bookmarkWord"
-          placeholder="検索・追加ワード…"
+          placeholder="任意ワードを入力…"
           value={bookmarkDraft}
           onChange={(event) => onDraftChange(event.target.value)}
         />
         <button className="secondary-action" type="button" disabled={!bookmarkDraft.trim()} onClick={onSearch}>
           検索
         </button>
-        <button type="button" disabled={busy === 'word-bookmark'} onClick={onAddBookmark}>
+        <button type="button" disabled={!bookmarkDraft.trim() || busy === 'word-bookmark'} onClick={onAddBookmark}>
           保存
         </button>
       </form>
-      {searchTerm ? (
+      <div className="watch-helper-row">
+        <span>検索: 入力語だけを表示</span>
+        <span>保存: 次回以降も監視</span>
+      </div>
+      {hasScopeState ? (
         <div className="watch-search-state">
-          <span>検索中: {searchTerm}</span>
-          <button type="button" onClick={onClearSearch}>
+          <span>
+            {searchTerm ? `検索中: ${searchTerm}` : 'テンプレート監視'} / {selectedStoreName}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              if (searchTerm) onClearSearch()
+              else onStoreChange('all')
+            }}
+          >
             解除
           </button>
         </div>
       ) : null}
       {bookmarks.length ? (
-        <div className="bookmark-list">
-          {bookmarks.slice(0, 8).map((bookmark) => (
-            <article key={bookmark.id}>
-              <button type="button" onClick={() => onUseBookmark(bookmark)}>
-                {bookmark.label}
-              </button>
-              <button aria-label={`${bookmark.label}を削除`} type="button" onClick={() => onDeleteBookmark(bookmark.id)}>
-                <Trash size={13} weight="bold" />
-              </button>
-            </article>
-          ))}
+        <div className="watch-saved-block">
+          <div className="watch-filter-head">
+            <div>
+              <span>保存済みワード</span>
+              <strong>{bookmarks.length}件</strong>
+            </div>
+            {activeBookmark ? <em>「{activeBookmark.label}」で検索中</em> : <em>押すと検索条件になります</em>}
+          </div>
+          <div className="bookmark-list">
+            {bookmarks.slice(0, 12).map((bookmark) => {
+              const active = normalizeLocalSearchText(bookmark.pattern) === normalizeLocalSearchText(searchTerm)
+              return (
+                <article className={active ? 'is-active' : undefined} key={bookmark.id}>
+                  <button type="button" onClick={() => onUseBookmark(bookmark)}>
+                    {bookmark.label}
+                  </button>
+                  <button aria-label={`${bookmark.label}を削除`} type="button" onClick={() => onDeleteBookmark(bookmark.id)}>
+                    <Trash size={13} weight="bold" />
+                  </button>
+                </article>
+              )
+            })}
+          </div>
         </div>
       ) : null}
+
+      <div className="watch-result-summary">
+        <div>
+          <span>表示中</span>
+          <strong>{resultTitle}</strong>
+          <p>{resultLead}</p>
+        </div>
+        <div className="watch-applied-tags" aria-label="現在の表示条件">
+          <span>{selectedStoreName}</span>
+          {searchTerm ? (
+            <span>検索語: {searchTerm}</span>
+          ) : (
+            <>
+              <span>テンプレート: {activeTemplateLabels.length ? activeTemplateLabels.join(' / ') : 'なし'}</span>
+              <span>保存ワード: {bookmarks.length ? `${bookmarks.length}件` : 'なし'}</span>
+              {inactiveTemplateCount ? <span>外した項目: {inactiveTemplateCount}件</span> : null}
+            </>
+          )}
+        </div>
+      </div>
       <div className="watch-hit-list" aria-label="一致履歴">
         {hits.length ? (
           hits.map((hit) => (
             <article className={`watch-hit ${hit.severity}`} key={hit.id}>
-              <span>{hit.label}</span>
+              <span className="watch-hit-label">{hit.label}</span>
               <strong>{formatBarName(hit.store.name)}</strong>
               <small>{formatMatchSource(hit)} / {formatRadarCapturedAt(hit.post.postedAt)}</small>
-              <p>{hit.snippet}</p>
+              <p className="watch-hit-snippet">{renderHighlightedText(hit.snippet, hit.term)}</p>
+              <div className="watch-hit-footer">
+                <span>{buildReadableBbsLines(hit.post.body).length}行に整理</span>
+                <button type="button" onClick={() => setSelectedHit(hit)}>
+                  詳細を見る
+                </button>
+              </div>
             </article>
           ))
         ) : (
@@ -2378,6 +2819,37 @@ function WatchedWordsPanel({
           </p>
         )}
       </div>
+      {selectedHit ? (
+        <div className="watch-detail-layer" role="presentation" onClick={() => setSelectedHit(null)}>
+          <section
+            aria-labelledby="watch-detail-title"
+            aria-modal="true"
+            className="watch-detail-modal"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="watch-detail-header">
+              <div>
+                <span>{selectedHit.label}</span>
+                <h3 id="watch-detail-title">{formatBarName(selectedHit.store.name)}</h3>
+                <p>
+                  {formatMatchSource(selectedHit)} / {formatRadarCapturedAt(selectedHit.post.postedAt)}
+                </p>
+              </div>
+              <button aria-label="詳細を閉じる" type="button" onClick={() => setSelectedHit(null)}>
+                <X size={18} weight="bold" />
+              </button>
+            </header>
+            <div className="watch-detail-body">
+              <HighlightedReadableBody
+                body={selectedHit.post.body}
+                fallbackTimeLabel={formatRadarCapturedAt(selectedHit.post.postedAt)}
+                term={selectedHit.term}
+              />
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   )
 }

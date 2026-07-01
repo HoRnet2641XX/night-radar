@@ -33,13 +33,60 @@ const comebackPattern = /((\d+|[０-９]+|[一二三四五六七八九十百]+)\
 const groupVisitPattern = /((\d+|[０-９]+|[二三四五六七八九十]+)\s*人組|二人組|三人組|複数人|友達と|ペア)/g
 const emojiPattern = /(\p{Extended_Pictographic}|[\u{1F300}-\u{1FAFF}]|[（(][^（）()]{0,10}[;；:：=xX＾^・ω∀Д▽△_<>><][^（）()]{0,10}[）)])/gu
 
-export const defaultWatchedWordLabels = [
-  '女性',
-  '初めて/はじめて',
-  '久しぶり',
-  '複数人',
-  '絵文字/顔文字',
-] as const
+export type WatchedTemplateKey = 'female' | 'first' | 'comeback' | 'group' | 'emoji'
+
+export const watchedTemplateRules: ReadonlyArray<{
+  key: WatchedTemplateKey
+  label: string
+  shortLabel: string
+  term: string
+  severity: WatchedWordHit['severity']
+  match: (body: string) => string[]
+}> = [
+  {
+    key: 'female',
+    label: '女性のみ',
+    shortLabel: '女性',
+    term: '女性',
+    severity: 'medium',
+    match: (body) => [...body.matchAll(femaleOnlyPattern)].map((match) => match[0]),
+  },
+  {
+    key: 'first',
+    label: '初めて',
+    shortLabel: '初めて',
+    term: '初めて',
+    severity: 'high',
+    match: (body) => [...body.matchAll(firstVisitPattern)].map((match) => match[0]),
+  },
+  {
+    key: 'comeback',
+    label: '久しぶり',
+    shortLabel: '久しぶり',
+    term: '久しぶり',
+    severity: 'high',
+    match: (body) => [...body.matchAll(comebackPattern)].map((match) => match[0]),
+  },
+  {
+    key: 'group',
+    label: '複数人',
+    shortLabel: '2人組',
+    term: '2人組',
+    severity: 'medium',
+    match: (body) => [...body.matchAll(groupVisitPattern)].map((match) => match[0]),
+  },
+  {
+    key: 'emoji',
+    label: '絵文字/顔文字',
+    shortLabel: '絵文字',
+    term: 'emoji',
+    severity: 'low',
+    match: (body) => [...body.matchAll(emojiPattern)].map((match) => match[0] || 'emoji'),
+  },
+]
+
+export const defaultWatchedTemplateKeys = watchedTemplateRules.map((rule) => rule.key)
+export const defaultWatchedWordLabels = watchedTemplateRules.map((rule) => rule.label)
 
 function clamp(value: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Math.round(value)))
@@ -120,21 +167,93 @@ function includesExactTerm(body: string, term: string) {
   return normalizeExactSearchText(body).includes(normalizedTerm)
 }
 
+const bbsBlockBreakPattern =
+  /(投稿者[:：]|投稿日時?[:：]|投稿日[:：]|書き込み[:：]|記事番号[:：]?|No[.\s]*\d+|Re[:：]|返信[:：]|名前[:：]|Name[:：]|20\d{2}[年/-]\d{1,2}[月/-]\d{1,2}日?)/g
+const customerAuthorPattern = /(投稿者[:：]\s*(?!当店|店舗|店|スタッフ|管理|運営|公式|SystemS|システム)|名前[:：]|Name[:：]|No[.\s]*\d+|記事番号|Re[:：])/i
+const customerIntentPattern =
+  /(行きます|行く|行こう|伺い|お邪魔|います|居ます|予定|誰か|どなた|一緒|初めて|はじめて|久しぶり|よろしく|楽しみ|乾杯|飲み|会え|話し|遊び|参加|人組|友達と|単男|単女|女性です|男性です|女です|男です|初心者|初参加|初来店)/i
+const storeSpeakerPattern = /^(投稿者[:：]\s*)?(当店|店舗|店|スタッフ|管理|運営|公式|SystemS|システム|お店|店長|オーナー|マスター|キャスト|受付|事務局)/i
+const storeNoticePattern =
+  /(禁止事項|免責事項|当掲示板|当店|料金|入場料|登録手数料|営業時間|営業開始|営業終了|イベント|キャンペーン|お知らせ|告知|無料|割引|問い合わせ|ご質問|セキュリティ|トラブル|利用規約|アクセスブロック|責任|掲載|スタッフ|店内|システム|入会金|年会費|規約|ご来店予告|本日の来店予告)/i
+const storeSchedulePattern =
+  /(【\s*(昼|夜)\s*の\s*部\s*】|(昼|夜)\s*の\s*部|[0-9０-９]{1,2}\s*(時|:)\s*(〜|~|-|から)\s*[0-9０-９]{1,2}\s*(時|:)|営業時間|営業開始|営業終了)/i
+const storeCommercialPattern =
+  /(料金|入場料|入会金|登録手数料|無料|割引|半額|[0-9０-９,]+\s*円|タカカード|プレゼント|特典|飲み放題|フリードリンク|カクテル|ハウスボトル|レディース\s*(day|デー)|ニップレス|キャンペーン|イベント開催|本日のイベント|ご新規|新規様|お客様|お待ちしております|お待ちしてます)/i
+
+function compactBbsBlock(value: string) {
+  return value.replace(/[ \t\u3000]+/g, ' ').trim()
+}
+
+function splitBbsBlocks(value: string) {
+  const prepared = value
+    .replace(/\r\n?/g, '\n')
+    .replace(bbsBlockBreakPattern, '\n$1')
+    .replace(/([。！？!?])\s*(?=(投稿者[:：]|No[.\s]*\d+|記事番号[:：]?|Re[:：]|20\d{2}[年/-]\d{1,2}[月/-]\d{1,2}日?))/g, '$1\n')
+
+  return prepared
+    .split(/\n+/)
+    .map(compactBbsBlock)
+    .filter((block) => block.length >= 8)
+}
+
+function isLikelyStoreAnnouncementBlock(block: string) {
+  if (storeSpeakerPattern.test(block)) return true
+
+  const hasSchedule = storeSchedulePattern.test(block)
+  const hasCommercialCopy = storeCommercialPattern.test(block)
+  const hasNotice = storeNoticePattern.test(block)
+  if (hasSchedule && (hasCommercialCopy || hasNotice)) return true
+  if (hasCommercialCopy && /ご来店|ご入店|お越し|お待ち|開催|挑戦|特典|プレゼント|料金|入場料|登録手数料/i.test(block)) return true
+
+  return false
+}
+
+function isLikelyCustomerBbsBlock(block: string) {
+  const normalized = compactBbsBlock(block)
+  if (!normalized) return false
+  if (isLikelyStoreAnnouncementBlock(normalized)) return false
+
+  const hasCustomerAuthor = customerAuthorPattern.test(normalized)
+  const hasCustomerIntent = customerIntentPattern.test(normalized)
+  if (!hasCustomerAuthor && !hasCustomerIntent) return false
+
+  const hasStoreNotice = storeNoticePattern.test(normalized)
+  if (hasStoreNotice && !hasCustomerIntent) return false
+
+  return hasCustomerAuthor || !hasStoreNotice
+}
+
+export function extractCustomerBbsText(value: string) {
+  const blocks = splitBbsBlocks(value)
+  return blocks.filter(isLikelyCustomerBbsBlock).join('\n\n')
+}
+
 export function buildSearchableBbsRecords(posts: PostRecord[], snapshots: BbsSnapshot[] = []): PostRecord[] {
   const snapshotPosts = snapshots
-    .filter((snapshot) => snapshot.extractedText.trim())
+    .map((snapshot) => ({
+      snapshot,
+      body: extractCustomerBbsText(snapshot.extractedText),
+    }))
+    .filter(({ body }) => body.trim())
     .map<PostRecord>((snapshot) => ({
-      id: `snapshot-${snapshot.id}`,
-      storeId: snapshot.storeId,
+      id: `snapshot-${snapshot.snapshot.id}`,
+      storeId: snapshot.snapshot.storeId,
       source: 'scrape',
-      sourceUrl: snapshot.url,
-      postedAt: snapshot.capturedAt,
-      body: snapshot.extractedText,
+      sourceUrl: snapshot.snapshot.url,
+      postedAt: snapshot.snapshot.capturedAt,
+      body: snapshot.body,
       keywords: [],
     }))
 
   const seen = new Set<string>()
-  return [...snapshotPosts, ...posts].filter((record) => {
+  const customerPosts = posts
+    .map((record) => ({
+      ...record,
+      body: record.source === 'scrape' ? extractCustomerBbsText(record.body) : record.body,
+    }))
+    .filter((record) => record.source !== 'scrape' || record.body.trim())
+
+  return [...snapshotPosts, ...customerPosts].filter((record) => {
     const key = `${record.storeId}:${record.body.slice(0, 180)}`
     if (seen.has(key)) return false
     seen.add(key)
@@ -460,15 +579,24 @@ export function buildStoreRadarPoints(stores: StoreProfile[], posts: PostRecord[
     .map((point, index) => ({ ...point, rank: index + 1 }))
 }
 
-export function buildWatchedWordHits(posts: PostRecord[], stores: StoreProfile[], bookmarks: WordBookmark[] = []): WatchedWordHit[] {
+export function buildWatchedWordHits(
+  posts: PostRecord[],
+  stores: StoreProfile[],
+  bookmarks: WordBookmark[] = [],
+  options: { enabledTemplateKeys?: readonly WatchedTemplateKey[]; storeId?: string | null } = {},
+): WatchedWordHit[] {
   const storeMap = new Map(stores.map((store) => [store.id, store]))
-  const rules: Array<{ label: string; term: string; severity: WatchedWordHit['severity']; match: (body: string) => string[] }> = [
-    { label: '女性のみ', term: '女性', severity: 'medium', match: (body) => [...body.matchAll(femaleOnlyPattern)].map((match) => match[0]) },
-    { label: '初めて', term: '初めて', severity: 'high', match: (body) => [...body.matchAll(firstVisitPattern)].map((match) => match[0]) },
-    { label: '久しぶり', term: '久しぶり', severity: 'high', match: (body) => [...body.matchAll(comebackPattern)].map((match) => match[0]) },
-    { label: '複数人', term: '2人組', severity: 'medium', match: (body) => [...body.matchAll(groupVisitPattern)].map((match) => match[0]) },
-    { label: '絵文字/顔文字', term: 'emoji', severity: 'low', match: (body) => [...body.matchAll(emojiPattern)].map((match) => match[0] || 'emoji') },
-  ]
+  const enabledTemplates = new Set(options.enabledTemplateKeys ?? defaultWatchedTemplateKeys)
+  const storeId = options.storeId && options.storeId !== 'all' ? options.storeId : null
+  const rules: Array<{ label: string; term: string; severity: WatchedWordHit['severity']; match: (body: string) => string[] }> =
+    watchedTemplateRules
+      .filter((rule) => enabledTemplates.has(rule.key))
+      .map((rule) => ({
+        label: rule.label,
+        term: rule.term,
+        severity: rule.severity,
+        match: rule.match,
+      }))
 
   bookmarks.forEach((bookmark) => {
     if (!bookmark.pattern.trim()) return
@@ -506,6 +634,7 @@ export function buildWatchedWordHits(posts: PostRecord[], stores: StoreProfile[]
 
   const hits: WatchedWordHit[] = []
   posts.forEach((post) => {
+    if (storeId && post.storeId !== storeId) return
     const store = storeMap.get(post.storeId)
     if (!store) return
     rules.forEach((rule) => {
