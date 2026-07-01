@@ -120,7 +120,7 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
   const switchLinkText = isSignup ? 'ログイン' : '会員登録'
 
   return (
-    <main className={styles.authPage} id="main">
+    <main aria-busy={busy ? 'true' : undefined} className={styles.authPage} id="main">
       <motion.div
         className={styles.authCard}
         initial={reduceMotion ? false : { opacity: 0, y: 16 }}
@@ -192,6 +192,16 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
           紹介ページへ戻る
         </Link>
       </motion.div>
+      {busy ? (
+        <div aria-live="polite" className={styles.authBusyOverlay} role="status">
+          <div className={styles.authBusyLoader} aria-hidden="true">
+            <span />
+            <span />
+          </div>
+          <p>{busy === 'email' ? '認証メールを送信しています' : '認証画面へ移動しています'}</p>
+          <small>完了するまでこの画面でお待ちください</small>
+        </div>
+      ) : null}
     </main>
   )
 }

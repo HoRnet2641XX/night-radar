@@ -600,7 +600,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
 
   return (
     <main className="nr-shell" id="main">
-      <section className="mobile-app-shell">
+      <section aria-busy={busy ? 'true' : undefined} className="mobile-app-shell">
         <RadarBackdrop />
         <header className="app-topbar">
           <button
@@ -956,8 +956,43 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
           </section>
         )}
 
+        {busy ? <BusyOverlay label={loadingLabelForBusy(busy)} reduceMotion={Boolean(reduceMotion)} /> : null}
       </section>
     </main>
+  )
+}
+
+function loadingLabelForBusy(value: string) {
+  const labels: Record<string, string> = {
+    score: 'スコアを再計算しています',
+    'word-bookmark': '注目ワードを保存しています',
+    'delete-word-bookmark': '注目ワードを削除しています',
+    exact: '検索条件を保存しています',
+    signout: 'ログアウトしています',
+  }
+
+  return labels[value] ?? '処理しています'
+}
+
+function BusyOverlay({ label, reduceMotion }: { label: string; reduceMotion: boolean }) {
+  return (
+    <motion.div
+      aria-live="polite"
+      className="busy-overlay"
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={reduceMotion ? undefined : { opacity: 1 }}
+      exit={reduceMotion ? undefined : { opacity: 0 }}
+      role="status"
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+    >
+      <div className="busy-loader" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
+      <p>{label}</p>
+      <small>完了するまでこの画面でお待ちください</small>
+    </motion.div>
   )
 }
 

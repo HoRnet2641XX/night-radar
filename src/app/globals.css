@@ -12,12 +12,12 @@
   --muted: oklch(77% 0.04 238 / 0.72);
   --line: oklch(66% 0.075 238 / 0.22);
   --line-dark: oklch(79% 0.08 238 / 0.13);
-  --accent: oklch(56% 0.17 26);
+  --accent: oklch(58% 0.18 24);
   --accent-2: oklch(76% 0.095 235);
   --signal: oklch(78% 0.075 198);
   --blueprint: oklch(63% 0.065 238);
-  --danger: oklch(56% 0.17 26);
-  --focus: oklch(56% 0.17 26 / 0.42);
+  --danger: oklch(58% 0.18 24);
+  --focus: oklch(58% 0.18 24 / 0.42);
   --shadow: oklch(5% 0.02 252 / 0.5);
   --radius-xs: 5px;
   --radius-sm: 7px;
@@ -33,9 +33,9 @@
 
   color: var(--ink);
   background:
-    radial-gradient(circle at 50% -12%, oklch(56% 0.17 26 / 0.14), transparent 26rem),
+    radial-gradient(circle at 50% -12%, oklch(58% 0.18 24 / 0.14), transparent 26rem),
     radial-gradient(circle at 82% 8%, oklch(76% 0.095 235 / 0.08), transparent 24rem),
-    linear-gradient(90deg, oklch(56% 0.17 26 / 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(58% 0.18 24 / 0.03) 1px, transparent 1px),
     linear-gradient(180deg, oklch(76% 0.095 235 / 0.02) 1px, transparent 1px),
     linear-gradient(155deg, oklch(13% 0.04 252), oklch(7% 0.026 252) 62%, oklch(9% 0.028 252));
   background-size: auto, auto, 42px 42px, 42px 42px, auto;
@@ -46,7 +46,7 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  -webkit-tap-highlight-color: oklch(56% 0.17 26 / 0.2);
+  -webkit-tap-highlight-color: oklch(58% 0.18 24 / 0.2);
 }
 
 * {
@@ -63,6 +63,95 @@ body {
   min-height: 100dvh;
   margin: 0;
   overflow-x: hidden;
+}
+
+.route-loading-screen {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  background:
+    radial-gradient(circle at 50% 40%, oklch(58% 0.18 24 / 0.18), transparent 17rem),
+    radial-gradient(circle at 82% 10%, oklch(76% 0.095 235 / 0.08), transparent 24rem),
+    linear-gradient(155deg, oklch(13% 0.04 252), oklch(7% 0.026 252) 62%, oklch(9% 0.028 252));
+  color: var(--paper);
+  padding: 24px;
+  text-align: center;
+}
+
+.route-loader {
+  position: relative;
+  display: grid;
+  width: 76px;
+  height: 76px;
+  place-items: center;
+  border: 1px solid oklch(58% 0.18 24 / 0.26);
+  border-radius: 999px;
+  background: oklch(8% 0.028 252 / 0.72);
+  box-shadow:
+    0 0 34px oklch(58% 0.18 24 / 0.24),
+    inset 0 0 0 1px oklch(100% 0 0 / 0.04);
+}
+
+.route-loader::before,
+.route-loader::after,
+.route-loader span {
+  position: absolute;
+  border-radius: inherit;
+  content: '';
+}
+
+.route-loader::before {
+  inset: 10px;
+  border: 1px solid oklch(76% 0.095 235 / 0.18);
+}
+
+.route-loader::after {
+  inset: 22px;
+  background: oklch(58% 0.18 24 / 0.18);
+  box-shadow: 0 0 18px oklch(58% 0.18 24 / 0.3);
+}
+
+.route-loader span {
+  inset: 4px;
+  border: 2px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: oklch(94% 0.028 235 / 0.82);
+  animation: route-loader-spin 0.94s linear infinite;
+}
+
+.route-loader span:nth-child(2) {
+  inset: 14px;
+  border-top-color: oklch(76% 0.095 235 / 0.78);
+  border-right-color: transparent;
+  animation-duration: 1.36s;
+  animation-direction: reverse;
+}
+
+.route-loader span:nth-child(3) {
+  inset: 29px;
+  border-width: 1px;
+  border-top-color: oklch(58% 0.18 24 / 0.86);
+  animation-duration: 0.68s;
+}
+
+.route-loading-screen p {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.route-loading-screen small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+@keyframes route-loader-spin {
+  to {
+    transform: rotate(1turn);
+  }
 }
 
 button,
@@ -105,7 +194,7 @@ a:focus-visible {
 }
 
 ::selection {
-  background: oklch(56% 0.17 26 / 0.26);
+  background: oklch(58% 0.18 24 / 0.26);
 }
 
 .legal-page {
@@ -544,13 +633,13 @@ a:focus-visible {
   --cal-card: oklch(18% 0.038 250 / 0.82);
   --cal-blue: oklch(78% 0.075 198);
   --cal-warm: oklch(82% 0.13 82);
-  --cal-active: oklch(61% 0.105 38);
+  --cal-active: oklch(60% 0.145 27);
 
   display: grid;
   min-height: 100dvh;
   place-items: start center;
   background:
-    linear-gradient(90deg, oklch(61% 0.105 38 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(60% 0.145 27 / 0.035) 1px, transparent 1px),
     linear-gradient(180deg, oklch(78% 0.075 198 / 0.026) 1px, transparent 1px),
     linear-gradient(155deg, oklch(11% 0.034 252), oklch(6% 0.024 252) 64%, oklch(9% 0.026 250));
   background-size: 42px 42px, 42px 42px, auto;
@@ -567,7 +656,7 @@ a:focus-visible {
   border: 1px solid var(--cal-line);
   border-radius: 26px;
   background:
-    radial-gradient(circle at 50% -18%, oklch(61% 0.105 38 / 0.09), transparent 18rem),
+    radial-gradient(circle at 50% -18%, oklch(60% 0.145 27 / 0.09), transparent 18rem),
     linear-gradient(155deg, rgba(16, 28, 48, 0.98), rgba(4, 8, 16, 0.99) 58%, rgba(7, 13, 24, 0.99)),
     #07111f;
   box-shadow:
@@ -589,9 +678,9 @@ a:focus-visible {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(oklch(61% 0.105 38 / 0.026) 1px, transparent 1px),
+    linear-gradient(oklch(60% 0.145 27 / 0.026) 1px, transparent 1px),
     linear-gradient(90deg, rgba(154, 190, 225, 0.018) 1px, transparent 1px),
-    linear-gradient(180deg, transparent 0 56%, oklch(61% 0.105 38 / 0.032) 57%, transparent 58%);
+    linear-gradient(180deg, transparent 0 56%, oklch(60% 0.145 27 / 0.032) 57%, transparent 58%);
   background-size: 40px 40px, 40px 40px, 100% 9px;
   content: '';
   mask-image: linear-gradient(180deg, black, transparent 78%);
@@ -668,7 +757,7 @@ a:focus-visible {
 .calendar-hero aside {
   display: grid;
   min-inline-size: 132px;
-  border: 1px solid oklch(61% 0.105 38 / 0.26);
+  border: 1px solid oklch(60% 0.145 27 / 0.26);
   border-radius: 18px;
   background: rgba(225, 240, 255, 0.055);
   padding: 14px 16px;
@@ -819,7 +908,7 @@ a:focus-visible {
 }
 
 .calendar-route .has-events .calendar-day-number {
-  background: oklch(61% 0.105 38 / 0.18);
+  background: oklch(60% 0.145 27 / 0.18);
   color: oklch(86% 0.11 60);
 }
 
@@ -1089,5 +1178,9 @@ a:focus-visible {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+  }
+
+  .route-loader span {
+    animation: none !important;
   }
 }

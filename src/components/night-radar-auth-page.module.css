@@ -8,7 +8,8 @@
   --auth-muted: oklch(66% 0.05 235 / 0.72);
   --auth-accent: oklch(78% 0.105 214);
   --auth-warn: oklch(82% 0.13 82);
-  --auth-danger: oklch(70% 0.14 28);
+  --auth-danger: oklch(67% 0.17 24);
+  --auth-hot: oklch(60% 0.145 27);
   --auth-font:
     'Noto Sans JP Variable', 'LINE Seed JP', 'Hiragino Sans',
     'Hiragino Kaku Gothic ProN', 'BIZ UDPGothic', 'Yu Gothic', Meiryo,
@@ -73,10 +74,10 @@
 .brandMark {
   width: 46px;
   height: 46px;
-  border: 1px solid oklch(81% 0.1 77 / 0.32);
+  border: 1px solid oklch(60% 0.145 27 / 0.32);
   border-radius: 16px;
   background: oklch(17% 0.04 252 / 0.84);
-  color: oklch(81% 0.1 77);
+  color: var(--auth-hot);
   box-shadow: 0 18px 48px oklch(4% 0.02 253 / 0.42);
 }
 
@@ -108,7 +109,7 @@
 }
 
 .heading span {
-  color: oklch(81% 0.1 77);
+  color: var(--auth-hot);
   font-size: 12px;
   font-weight: 900;
 }
@@ -299,6 +300,88 @@
   text-decoration: none;
 }
 
+.authBusyOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  background:
+    radial-gradient(circle at 50% 42%, oklch(60% 0.145 27 / 0.18), transparent 15rem),
+    linear-gradient(180deg, oklch(6% 0.025 253 / 0.78), oklch(6% 0.025 253 / 0.94));
+  backdrop-filter: blur(8px);
+  color: var(--auth-text);
+  padding: 24px;
+  text-align: center;
+}
+
+.authBusyLoader {
+  position: relative;
+  width: 70px;
+  height: 70px;
+  border: 1px solid oklch(60% 0.145 27 / 0.26);
+  border-radius: 999px;
+  background: oklch(8% 0.028 253 / 0.74);
+  box-shadow:
+    0 0 32px oklch(60% 0.145 27 / 0.24),
+    inset 0 0 0 1px oklch(100% 0 0 / 0.04);
+}
+
+.authBusyLoader::before,
+.authBusyLoader::after,
+.authBusyLoader span {
+  position: absolute;
+  border-radius: inherit;
+  content: '';
+}
+
+.authBusyLoader::before {
+  inset: 11px;
+  border: 1px solid oklch(78% 0.095 221 / 0.22);
+}
+
+.authBusyLoader::after {
+  inset: 23px;
+  background: oklch(60% 0.145 27 / 0.18);
+  box-shadow: 0 0 18px oklch(60% 0.145 27 / 0.3);
+}
+
+.authBusyLoader span {
+  inset: 4px;
+  border: 2px solid transparent;
+  border-top-color: var(--auth-hot);
+  border-right-color: oklch(96% 0.02 235 / 0.8);
+  animation: auth-busy-spin 0.94s linear infinite;
+}
+
+.authBusyLoader span:nth-child(2) {
+  inset: 14px;
+  border-top-color: var(--auth-accent);
+  border-right-color: transparent;
+  animation-duration: 1.28s;
+  animation-direction: reverse;
+}
+
+.authBusyOverlay p {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.authBusyOverlay small {
+  color: var(--auth-soft);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+@keyframes auth-busy-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
 .verifyActions {
   display: grid;
   gap: 10px;
@@ -316,5 +399,11 @@
 
   .panel {
     border-radius: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .authBusyLoader span {
+    animation: none;
   }
 }

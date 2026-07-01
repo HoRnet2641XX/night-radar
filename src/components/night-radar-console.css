@@ -18,7 +18,7 @@
   --nr-card-flat-strong: rgba(225, 240, 255, 0.055);
   --nr-panel-flat: rgba(7, 12, 22, 0.76);
   --nr-panel-flat-strong: rgba(5, 10, 19, 0.84);
-  --nr-signal-channel: 61% 0.105 38;
+  --nr-signal-channel: 60% 0.145 27;
   --nr-active: oklch(var(--nr-signal-channel));
   --nr-active-ink: oklch(98% 0.014 62);
   --nr-accent: oklch(76% 0.095 235);
@@ -54,6 +54,99 @@
   padding: 12px;
   padding-bottom: calc(96px + env(safe-area-inset-bottom));
   isolation: isolate;
+}
+
+.busy-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  background:
+    radial-gradient(circle at 50% 42%, oklch(var(--nr-signal-channel) / 0.18), transparent 15rem),
+    linear-gradient(180deg, rgba(4, 8, 16, 0.78), rgba(4, 8, 16, 0.94));
+  backdrop-filter: blur(8px);
+  color: var(--nr-text);
+  padding: 24px;
+  pointer-events: auto;
+  text-align: center;
+}
+
+.busy-loader {
+  position: relative;
+  display: grid;
+  width: 72px;
+  height: 72px;
+  place-items: center;
+  border: 1px solid oklch(var(--nr-signal-channel) / 0.24);
+  border-radius: 999px;
+  background: rgba(5, 10, 19, 0.72);
+  box-shadow:
+    0 0 34px oklch(var(--nr-signal-channel) / 0.24),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+}
+
+.busy-loader::before,
+.busy-loader::after,
+.busy-loader span {
+  position: absolute;
+  border-radius: inherit;
+  content: '';
+}
+
+.busy-loader::before {
+  inset: 10px;
+  border: 1px solid rgba(154, 190, 225, 0.2);
+}
+
+.busy-loader::after {
+  inset: 18px;
+  background: oklch(var(--nr-signal-channel) / 0.18);
+  box-shadow: 0 0 18px oklch(var(--nr-signal-channel) / 0.32);
+}
+
+.busy-loader span {
+  inset: 4px;
+  border: 2px solid transparent;
+  border-top-color: var(--nr-active);
+  border-right-color: oklch(94% 0.028 235 / 0.84);
+  animation: busy-scan 0.94s linear infinite;
+}
+
+.busy-loader span:nth-child(2) {
+  inset: 13px;
+  border-top-color: rgba(117, 185, 255, 0.78);
+  border-right-color: transparent;
+  animation-duration: 1.36s;
+  animation-direction: reverse;
+}
+
+.busy-loader span:nth-child(3) {
+  inset: 27px;
+  border-width: 1px;
+  border-top-color: oklch(var(--nr-signal-channel) / 0.86);
+  animation-duration: 0.68s;
+}
+
+.busy-overlay p {
+  margin: 0;
+  color: var(--nr-text);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.busy-overlay small {
+  color: var(--nr-muted);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+@keyframes busy-scan {
+  to {
+    transform: rotate(1turn);
+  }
 }
 
 .mobile-app-shell *,
@@ -4833,6 +4926,10 @@ button:disabled {
   .bottom-nav,
   .bottom-nav::before,
   .nav-active-pulse {
+    animation: none;
+  }
+
+  .busy-loader span {
     animation: none;
   }
 
