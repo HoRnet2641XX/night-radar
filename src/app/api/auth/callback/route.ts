@@ -15,7 +15,10 @@ export async function GET(request: NextRequest) {
     await supabase?.auth.exchangeCodeForSession(code)
   }
 
-  const response = NextResponse.redirect(new URL(next, getBaseUrl(request)))
+  const completeUrl = new URL('/auth/complete', getBaseUrl(request))
+  completeUrl.searchParams.set('next', next)
+
+  const response = NextResponse.redirect(completeUrl)
   response.cookies.delete(authNextCookie)
   return response
 }

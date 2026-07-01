@@ -52,6 +52,7 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
   const isSignup = mode === 'signup'
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState('')
+  const [oauthPending, setOauthPending] = useState<'google' | 'x' | ''>('')
   const [message, setMessage] = useState<AuthMessage>({
     tone: 'idle',
     text: isSignup
@@ -60,7 +61,7 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
   })
 
   async function startOAuth(provider: 'google' | 'x') {
-    setBusy(provider)
+    setOauthPending(provider)
     setMessage({ tone: 'idle', text: '認証画面へ移動します。' })
     try {
       window.localStorage.setItem(
@@ -79,7 +80,7 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
     } catch (error) {
       setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'ログインを開始できませんでした。' })
     } finally {
-      setBusy('')
+      setOauthPending('')
     }
   }
 
@@ -145,12 +146,12 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
           </div>
 
           <div className={styles.oauthStack}>
-            <button className={styles.oauthButton} type="button" onClick={() => startOAuth('google')} disabled={Boolean(busy)}>
-              {busy === 'google' ? <Spinner /> : <GoogleLogo size={20} weight="bold" />}
+            <button className={styles.oauthButton} type="button" onClick={() => startOAuth('google')} disabled={Boolean(busy) || Boolean(oauthPending)}>
+              <GoogleLogo size={20} weight="bold" />
               Googleで{isSignup ? '登録' : 'ログイン'}
             </button>
-            <button className={styles.oauthButton} type="button" onClick={() => startOAuth('x')} disabled={Boolean(busy)}>
-              {busy === 'x' ? <Spinner /> : <XLogo size={18} weight="bold" />}
+            <button className={styles.oauthButton} type="button" onClick={() => startOAuth('x')} disabled={Boolean(busy) || Boolean(oauthPending)}>
+              <XLogo size={18} weight="bold" />
               Xで{isSignup ? '登録' : 'ログイン'}
             </button>
           </div>
@@ -175,7 +176,7 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
                 />
               </div>
             </div>
-            <button className={styles.submitButton} type="submit" disabled={busy === 'email'}>
+            <button className={styles.submitButton} type="submit" disabled={busy === 'email' || Boolean(oauthPending)}>
               {busy === 'email' ? <Spinner /> : emailButton}
             </button>
           </form>

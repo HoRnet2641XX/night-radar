@@ -3,7 +3,7 @@ export const authNextCookie = 'night-radar-auth-next'
 export function safeNextPath(value?: string | null) {
   if (!value?.startsWith('/')) return '/'
   if (value.startsWith('//')) return '/'
-  if (value.startsWith('/login') || value.startsWith('/signup') || value.startsWith('/auth/verify')) return '/'
+  if (value.startsWith('/login') || value.startsWith('/signup') || value.startsWith('/auth/verify') || value.startsWith('/auth/complete')) return '/'
   return value
 }
 
