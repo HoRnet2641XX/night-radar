@@ -40,6 +40,7 @@ function authErrorText(value: string | null) {
     missing_code: '認証コードを受け取れませんでした。もう一度ログインしてください。',
     auth_config_missing: '認証設定を確認してください。Supabaseの接続設定が不足しています。',
     session_exchange_failed: '認証セッションを確定できませんでした。もう一度ログインしてください。',
+    session_missing: '認証後のセッションを確認できませんでした。もう一度ログインしてください。',
   }
 
   return value ? messages[value] ?? 'ログインを完了できませんでした。もう一度お試しください。' : null
