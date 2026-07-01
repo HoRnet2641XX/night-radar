@@ -67,12 +67,6 @@ const checks = [
     required: false,
     detail: 'RESEND_API_KEY or NOTIFICATION_WEBHOOK_URL',
   },
-  {
-    label: 'Basic認証',
-    ok: has('BASIC_AUTH_USER') && has('BASIC_AUTH_PASSWORD'),
-    required: false,
-    detail: 'BASIC_AUTH_USER / BASIC_AUTH_PASSWORD',
-  },
 ]
 
 console.log(`Night Radar readiness: ${envPath}`)

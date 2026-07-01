@@ -18,7 +18,6 @@ export function getServiceSetupStatus(): ServiceSetupStatus {
   const stripePriceCount = ['STRIPE_PRICE_LIGHT', 'STRIPE_PRICE_STANDARD', 'STRIPE_PRICE_PREMIUM'].filter(hasEnv).length
   const hasStripeCore = hasEnv('STRIPE_SECRET_KEY') && hasEnv('STRIPE_WEBHOOK_SECRET')
   const hasNotificationDelivery = hasEnv('RESEND_API_KEY') || hasEnv('NOTIFICATION_WEBHOOK_URL')
-  const hasBasicAuth = hasEnv('BASIC_AUTH_USER') && hasEnv('BASIC_AUTH_PASSWORD')
   const screenshotsDisabled = process.env.DISABLE_BROWSER_SCREENSHOTS === 'true'
 
   const items = [
@@ -93,15 +92,6 @@ export function getServiceSetupStatus(): ServiceSetupStatus {
       hasNotificationDelivery
         ? 'ResendまたはWebhookで外部通知を送信できます。'
         : 'メール/Webhookは試行記録になります。実配信にはRESEND_API_KEYかNOTIFICATION_WEBHOOK_URLが必要です。',
-    ),
-    item(
-      'basic-auth',
-      'Basic認証',
-      hasBasicAuth ? 'ready' : 'check',
-      hasBasicAuth ? '有効化可能' : '未設定',
-      hasBasicAuth
-        ? 'Vercel本番環境でも同じ値を設定すれば、Supabaseログイン前に全体を保護できます。'
-        : 'クローズド公開にする場合はBASIC_AUTH_USERとBASIC_AUTH_PASSWORDを設定してください。',
     ),
   ]
 
