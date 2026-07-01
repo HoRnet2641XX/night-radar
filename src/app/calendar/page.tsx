@@ -25,7 +25,6 @@ const officialStoreNames: Record<string, string> = {
   voluptuous: 'Voluptuous',
   'retreat-bar': 'RETREAT BAR',
   agreeable: 'AgreeAble',
-  ouvea: 'Ouvea',
   'secret-bar-silent-moon': 'Secret Bar Silent Moon',
   'bar-spear': 'BAR SPEAR',
   'bar-canelo': 'BAR CANELO',

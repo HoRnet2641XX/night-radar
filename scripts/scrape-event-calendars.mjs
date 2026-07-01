@@ -29,7 +29,6 @@ const sources = [
   { storeId: 'retreat-bar', storeName: 'RETREAT BAR', month: '2026-07', urls: ['https://retreatbar.jp/event/202607/'] },
   { storeId: 'agreeable', storeName: 'AgreeAble', month: '2026-06', urls: ['https://agreeable.bar/calendar/?month=06&year_data=2026'] },
   { storeId: 'agreeable', storeName: 'AgreeAble', month: '2026-07', urls: ['https://agreeable.bar/calendar/?month=07&year_data=2026'] },
-  { storeId: 'ouvea', storeName: 'Ouvea', month: '2026-06', urls: ['https://ouvea.site/xo_event/', 'https://ouvea.site/calendar/'] },
   { storeId: 'secret-bar-silent-moon', storeName: 'Secret Bar Silent Moon', month: '2026-06', urls: ['https://www.silent-moon.net/jp/event.php'] },
   { storeId: 'bar-spear', storeName: 'BAR SPEAR', month: '2026-06', urls: ['https://www.barspear.com/event/202606/'] },
   { storeId: 'bar-canelo', storeName: 'BAR CANELO', month: '2026-06', urls: ['https://barcanelo.com/event/202606/'] },

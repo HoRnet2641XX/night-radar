@@ -127,7 +127,6 @@ const officialEventStoreNames: Record<string, string> = {
   'honey-trap': 'HONEY TRAP',
   'land-land': 'land land',
   'ogikubo-himitsu-club': '荻窪秘密倶楽部',
-  ouvea: 'Ouvea',
   papillon: 'Papillon',
   'retreat-bar': 'RETREAT BAR',
   'secret-bar-silent-moon': 'Secret Bar Silent Moon',

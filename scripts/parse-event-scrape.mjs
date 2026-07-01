@@ -21,7 +21,6 @@ const storeDefaults = [
   { id: 'voluptuous', name: 'Voluptuous' },
   { id: 'retreat-bar', name: 'RETREAT BAR' },
   { id: 'agreeable', name: 'AgreeAble' },
-  { id: 'ouvea', name: 'Ouvea' },
   { id: 'secret-bar-silent-moon', name: 'Secret Bar Silent Moon' },
   { id: 'bar-spear', name: 'BAR SPEAR' },
   { id: 'bar-canelo', name: 'BAR CANELO' },

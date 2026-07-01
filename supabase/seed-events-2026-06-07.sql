@@ -17,7 +17,6 @@ values
 ('voluptuous', 'Voluptuous', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60),
 ('retreat-bar', 'RETREAT BAR', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60),
 ('agreeable', 'AgreeAble', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60),
-('ouvea', 'Ouvea', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60),
 ('secret-bar-silent-moon', 'Secret Bar Silent Moon', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60),
 ('bar-spear', 'BAR SPEAR', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60),
 ('bar-canelo', 'BAR CANELO', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60),

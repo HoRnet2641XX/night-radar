@@ -37,7 +37,12 @@ function getFetchAttemptCount(url: URL) {
 }
 
 function shouldUseReaderFirst(url: URL) {
-  return url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com')
+  return (
+    url.hostname === 'neo-bbs.com' ||
+    url.hostname.endsWith('.neo-bbs.com') ||
+    url.hostname === 'millefeuillesby.apage.jp' ||
+    url.hostname.endsWith('.millefeuillesby.apage.jp')
+  )
 }
 
 function readerUrlFor(url: URL) {
