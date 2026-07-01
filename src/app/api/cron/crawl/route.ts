@@ -23,6 +23,8 @@ function getCronCrawlOptions(request: Request): CronCrawlOptions {
   const url = new URL(request.url)
   const batchSizeValue = Number(url.searchParams.get('batchSize') ?? url.searchParams.get('size') ?? 0)
   const batchSize = Number.isFinite(batchSizeValue) && batchSizeValue > 0 ? batchSizeValue : undefined
+  const maxCrawlsValue = Number(url.searchParams.get('maxCrawls') ?? url.searchParams.get('max') ?? 0)
+  const maxCrawls = Number.isFinite(maxCrawlsValue) && maxCrawlsValue > 0 ? maxCrawlsValue : undefined
   const batchValue = url.searchParams.get('batch')
   let batch: CronCrawlOptions['batch']
   if (batchValue === 'auto') batch = 'auto'
@@ -39,6 +41,7 @@ function getCronCrawlOptions(request: Request): CronCrawlOptions {
     batchSize,
     excludeSourceIds,
     force,
+    maxCrawls,
     sourceIds,
   }
 }
@@ -50,6 +53,7 @@ function compactCronCrawlResult(result: CronCrawlResult) {
     selected: result.selected,
     due: result.due,
     crawled: result.crawled,
+    skippedDue: result.skippedDue,
     batch: result.batch,
     filters: result.filters,
     failureNotificationCount: result.failureNotificationCount,

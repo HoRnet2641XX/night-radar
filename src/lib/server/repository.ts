@@ -1221,6 +1221,7 @@ export type CronCrawlOptions = {
   batchSize?: number
   excludeSourceIds?: string[]
   force?: boolean
+  maxCrawls?: number
   sourceIds?: string[]
 }
 
@@ -1254,12 +1255,24 @@ function normalizeCronSourceFilter(values?: string[]) {
 
 function prioritizeBbsRowsForCrawl(rows: DbRow[]) {
   return [...rows].sort((a, b) => {
+    const aTime = a.last_fetched_at ? new Date(String(a.last_fetched_at)).getTime() : 0
+    const bTime = b.last_fetched_at ? new Date(String(b.last_fetched_at)).getTime() : 0
+    if (aTime !== bTime) return aTime - bTime
+
     const aId = stringField(a, 'id')
     const bId = stringField(b, 'id')
     if (aId === 'neo-bbs') return -1
     if (bId === 'neo-bbs') return 1
-    return 0
+    return aId.localeCompare(bId)
   })
+}
+
+function normalizeCronMaxCrawls(options: CronCrawlOptions) {
+  const value = options.maxCrawls ?? Number(process.env.CRON_MAX_CRAWLS_PER_RUN)
+  if (Number.isFinite(value) && value > 0) return Math.max(1, Math.min(10, Math.floor(value)))
+  if (options.sourceIds?.length) return Math.max(1, Math.min(10, options.sourceIds.length))
+  if (options.batchSize) return Math.min(2, Math.max(1, Math.floor(options.batchSize)))
+  return 2
 }
 
 export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) {
@@ -1289,12 +1302,13 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
         const elapsedMinutes = (now - new Date(row.last_fetched_at).getTime()) / 60_000
         return elapsedMinutes >= Number(row.crawl_interval_minutes ?? 360)
       })
-  const orderedDueRows = prioritizeBbsRowsForCrawl(dueRows)
+  const maxCrawls = normalizeCronMaxCrawls(options)
+  const crawlRows = prioritizeBbsRowsForCrawl(dueRows).slice(0, maxCrawls)
 
   const results = []
-  const browserSession = orderedDueRows.length ? await createBrowserSnapshotSession() : null
+  const browserSession = crawlRows.length ? await createBrowserSnapshotSession() : null
   try {
-    for (const row of orderedDueRows) {
+    for (const row of crawlRows) {
       results.push(await crawlSourceRow(supabase, row, browserSession))
     }
   } finally {
@@ -1309,10 +1323,12 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
     selected: selectedRows.length,
     due: dueRows.length,
     crawled: results.length,
+    skippedDue: Math.max(0, dueRows.length - crawlRows.length),
     batch,
     filters: {
       excludeSourceIds: options.excludeSourceIds ?? [],
       force: Boolean(options.force),
+      maxCrawls,
       sourceIds: options.sourceIds ?? [],
     },
     results,
