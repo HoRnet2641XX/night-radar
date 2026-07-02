@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default async function LoginPage() {
   const user = await getCurrentUser()
-  if (user) redirect('/')
+  if (user) redirect('/app')
 
   return <NightRadarAuthPage mode="login" />
 }

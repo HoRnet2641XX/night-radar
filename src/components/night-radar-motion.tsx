@@ -108,12 +108,20 @@ export function NightRadarMotion() {
           '-=0.5',
         )
 
-      gsap.to('[data-phone]', {
-        duration: 3.6,
-        ease: 'sine.inOut',
+      gsap.to('[data-bg-lane]', {
+        duration: 8.5,
+        ease: 'none',
         repeat: -1,
-        rotate: 1.2,
-        y: -13,
+        stagger: 0.85,
+        strokeDashoffset: -156,
+      })
+
+      gsap.to('[data-bg-sweep]', {
+        duration: 11,
+        ease: 'sine.inOut',
+        opacity: 0.42,
+        repeat: -1,
+        xPercent: 18,
         yoyo: true,
       })
 

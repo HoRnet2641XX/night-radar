@@ -1,9 +1,11 @@
 export const authNextCookie = 'night-radar-auth-next'
 
+const defaultAuthedPath = '/app'
+
 export function safeNextPath(value?: string | null) {
-  if (!value?.startsWith('/')) return '/'
-  if (value.startsWith('//')) return '/'
-  if (value.startsWith('/login') || value.startsWith('/signup') || value.startsWith('/auth/verify') || value.startsWith('/auth/complete')) return '/'
+  if (!value?.startsWith('/')) return defaultAuthedPath
+  if (value.startsWith('//')) return defaultAuthedPath
+  if (value.startsWith('/login') || value.startsWith('/signup') || value.startsWith('/auth/verify') || value.startsWith('/auth/complete')) return defaultAuthedPath
   return value
 }
 

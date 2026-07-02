@@ -140,7 +140,7 @@ export default async function CalendarPage() {
           <span />
         </div>
 
-        <a className="calendar-back-link" href="/">
+        <a className="calendar-back-link" href="/app">
           ナイトレーダーへ戻る
         </a>
 

@@ -7,12 +7,12 @@ export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: '会員登録 | ナイトレーダー',
-  description: 'ナイトレーダーの会員登録。Xまたはメール認証でアプリを開始できます。',
+  description: 'ナイトレーダーの会員登録。X認証でアプリを開始できます。',
 }
 
 export default async function SignupPage() {
   const user = await getCurrentUser()
-  if (user) redirect('/')
+  if (user) redirect('/app')
 
   return <NightRadarAuthPage mode="signup" />
 }

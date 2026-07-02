@@ -131,8 +131,7 @@
   line-height: 1.7;
 }
 
-.oauthStack,
-.emailForm {
+.oauthStack {
   display: grid;
   gap: 10px;
 }
@@ -190,66 +189,6 @@
   opacity: 0.56;
 }
 
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--auth-muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.divider::before,
-.divider::after {
-  flex: 1;
-  height: 1px;
-  background: var(--auth-line);
-  content: '';
-}
-
-.field {
-  display: grid;
-  gap: 7px;
-}
-
-.field label {
-  color: var(--auth-soft);
-  font-size: 13px;
-  font-weight: 820;
-}
-
-.inputShell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 50px;
-  border: 1px solid var(--auth-line);
-  border-radius: 15px;
-  background: oklch(9% 0.03 253 / 0.68);
-  padding: 0 13px;
-}
-
-.inputShell svg {
-  flex: 0 0 auto;
-  color: var(--auth-soft);
-}
-
-.inputShell input {
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--auth-text);
-  font-family: inherit;
-  font-size: 15px;
-}
-
-.inputShell:focus-within {
-  border-color: oklch(78% 0.105 214 / 0.62);
-  box-shadow: 0 0 0 3px oklch(78% 0.105 214 / 0.14);
-}
-
 .message {
   margin: 0;
   border: 1px solid var(--auth-line);
@@ -300,88 +239,6 @@
   text-decoration: none;
 }
 
-.authBusyOverlay {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 12px;
-  background:
-    radial-gradient(circle at 50% 42%, oklch(60% 0.145 27 / 0.18), transparent 15rem),
-    linear-gradient(180deg, oklch(6% 0.025 253 / 0.78), oklch(6% 0.025 253 / 0.94));
-  backdrop-filter: blur(8px);
-  color: var(--auth-text);
-  padding: 24px;
-  text-align: center;
-}
-
-.authBusyLoader {
-  position: relative;
-  width: 70px;
-  height: 70px;
-  border: 1px solid oklch(60% 0.145 27 / 0.26);
-  border-radius: 999px;
-  background: oklch(8% 0.028 253 / 0.74);
-  box-shadow:
-    0 0 32px oklch(60% 0.145 27 / 0.24),
-    inset 0 0 0 1px oklch(100% 0 0 / 0.04);
-}
-
-.authBusyLoader::before,
-.authBusyLoader::after,
-.authBusyLoader span {
-  position: absolute;
-  border-radius: inherit;
-  content: '';
-}
-
-.authBusyLoader::before {
-  inset: 11px;
-  border: 1px solid oklch(78% 0.095 221 / 0.22);
-}
-
-.authBusyLoader::after {
-  inset: 23px;
-  background: oklch(60% 0.145 27 / 0.18);
-  box-shadow: 0 0 18px oklch(60% 0.145 27 / 0.3);
-}
-
-.authBusyLoader span {
-  inset: 4px;
-  border: 2px solid transparent;
-  border-top-color: var(--auth-hot);
-  border-right-color: oklch(96% 0.02 235 / 0.8);
-  animation: auth-busy-spin 0.94s linear infinite;
-}
-
-.authBusyLoader span:nth-child(2) {
-  inset: 14px;
-  border-top-color: var(--auth-accent);
-  border-right-color: transparent;
-  animation-duration: 1.28s;
-  animation-direction: reverse;
-}
-
-.authBusyOverlay p {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 950;
-}
-
-.authBusyOverlay small {
-  color: var(--auth-soft);
-  font-size: 12px;
-  font-weight: 780;
-}
-
-@keyframes auth-busy-spin {
-  to {
-    transform: rotate(1turn);
-  }
-}
-
 .verifyActions {
   display: grid;
   gap: 10px;
@@ -399,11 +256,5 @@
 
   .panel {
     border-radius: 20px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .authBusyLoader span {
-    animation: none;
   }
 }

@@ -72,11 +72,187 @@
   animation: gridDrift 18s linear infinite;
 }
 
+.signalField {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.72;
+  mask-image: linear-gradient(180deg, transparent 0%, #000 18%, #000 78%, transparent 100%);
+}
+
+.signalSweep {
+  position: absolute;
+  top: -18%;
+  left: -28%;
+  width: 64%;
+  height: 136%;
+  transform: skewX(-18deg) translateX(-12%);
+  opacity: 0.28;
+  background:
+    linear-gradient(90deg, transparent 0%, rgb(94 240 232 / 0.16) 49%, transparent 100%),
+    linear-gradient(90deg, transparent 0%, rgb(223 255 77 / 0.08) 52%, transparent 100%);
+  filter: blur(16px);
+  animation: signalSweep 12s cubic-bezier(0.65, 0, 0.35, 1) infinite alternate;
+}
+
+.signalLines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.46;
+}
+
+.signalLines path {
+  fill: none;
+  stroke: rgb(94 240 232 / 0.18);
+  stroke-dasharray: 9 30;
+  stroke-linecap: round;
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.signalLines path:nth-child(2) {
+  stroke: rgb(223 255 77 / 0.13);
+  stroke-dasharray: 6 34;
+}
+
+.signalLines path:nth-child(3) {
+  stroke: rgb(102 164 255 / 0.12);
+  stroke-dasharray: 12 42;
+}
+
+.ageGate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 5vw, 40px);
+  background:
+    radial-gradient(circle at 50% 18%, rgb(94 240 232 / 0.18), transparent 24rem),
+    linear-gradient(180deg, rgb(2 5 13 / 0.94), rgb(2 7 17 / 0.98));
+  backdrop-filter: blur(14px);
+}
+
+.ageGate::before {
+  position: absolute;
+  inset: 0;
+  opacity: 0.25;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.025) 1px, transparent 1px);
+  background-size: 52px 52px;
+  content: '';
+  mask-image: radial-gradient(circle at 50% 42%, #000 0 42%, transparent 72%);
+}
+
+.ageDialog {
+  position: relative;
+  display: grid;
+  width: min(100%, 520px);
+  gap: 18px;
+  border: 1px solid rgb(161 214 236 / 0.28);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.055), transparent 34%),
+    rgb(8 17 31 / 0.96);
+  box-shadow:
+    0 34px 90px rgb(0 0 0 / 0.62),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
+  padding: clamp(24px, 6vw, 38px);
+  text-align: left;
+}
+
+.ageKicker {
+  width: max-content;
+  margin: 0;
+  border: 1px solid rgb(223 255 77 / 0.42);
+  border-radius: 999px;
+  color: var(--lime);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  padding: 6px 10px;
+}
+
+.ageDialog h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(28px, 7vw, 46px);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.ageDialog p {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(14px, 2.6vw, 16px);
+  font-weight: 760;
+  line-height: 1.85;
+}
+
+.ageActions,
+.ageDenied {
+  display: grid;
+  gap: 12px;
+}
+
+.ageActions {
+  grid-template-columns: 1fr 1fr;
+  margin-top: 4px;
+}
+
+.agePrimaryButton,
+.ageSecondaryButton {
+  appearance: none;
+  min-height: 52px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 950;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.agePrimaryButton {
+  border: 1px solid rgb(223 255 77 / 0.72);
+  background: #dfff4d;
+  color: #06100e;
+  box-shadow: 0 18px 42px rgb(186 255 51 / 0.14);
+}
+
+.ageSecondaryButton {
+  border: 1px solid rgb(161 214 236 / 0.26);
+  background: rgb(1 7 15 / 0.36);
+  color: var(--text);
+}
+
+.agePrimaryButton:hover,
+.ageSecondaryButton:hover {
+  transform: translateY(-1px);
+}
+
+.agePrimaryButton:focus-visible,
+.ageSecondaryButton:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 3px;
+}
+
 .header {
   position: relative;
   z-index: 5;
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   width: min(100% - 48px, 1180px);
   margin: 0 auto;
@@ -278,13 +454,22 @@
 .heroCopy h1 {
   margin: 0;
   color: var(--text);
-  font-size: clamp(39px, 4.82vw, 68px);
+  font-size: clamp(38px, calc(28px + 2.45vw), 62px);
   font-weight: 950;
-  line-height: 1.18;
+  line-height: 1.13;
   text-wrap: balance;
 }
 
-.heroCopy h1 span {
+.heroPhrase,
+.headingPhrase {
+  display: inline-block;
+}
+
+.heroPhrase {
+  white-space: nowrap;
+}
+
+.heroAccent {
   color: var(--cyan);
   text-shadow: 0 0 28px rgb(94 240 232 / 0.32);
   animation: cyanPulse 2.8s ease-in-out infinite;
@@ -294,9 +479,10 @@
   max-width: 510px;
   margin: 24px 0 0;
   color: #d9e0e8;
-  font-size: 17px;
+  font-size: clamp(15px, calc(13.5px + 0.34vw), 17px);
   font-weight: 600;
-  line-height: 2;
+  line-height: 1.92;
+  text-wrap: pretty;
 }
 
 .heroActions {
@@ -372,6 +558,10 @@
   margin-top: -74px;
 }
 
+.phoneAnchor {
+  display: contents;
+}
+
 .verticalWord {
   position: absolute;
   top: -64px;
@@ -418,8 +608,8 @@
 .sectionBlock {
   position: relative;
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 26px;
+  grid-template-columns: minmax(230px, 0.28fr) minmax(0, 1fr);
+  gap: clamp(26px, 3vw, 42px);
   padding: 54px 0 0;
   scroll-margin-top: 32px;
 }
@@ -430,6 +620,12 @@
 
 .sectionIntro {
   min-width: 0;
+}
+
+.sectionMarker {
+  display: grid;
+  gap: 8px;
+  align-content: start;
 }
 
 .sectionNumber,
@@ -443,8 +639,27 @@
   font-variant-numeric: tabular-nums;
 }
 
+.sectionMarker .sectionNumber,
+.sectionMarker .sectionNumberAlt {
+  margin: 0;
+}
+
 .sectionNumberAlt {
   -webkit-text-stroke-color: var(--purple);
+}
+
+.sectionRole {
+  width: max-content;
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid rgb(223 255 77 / 0.24);
+  border-radius: 3px;
+  background: rgb(223 255 77 / 0.055);
+  color: var(--lime);
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+  text-shadow: 0 0 14px rgb(223 255 77 / 0.22);
 }
 
 .sectionIntro h2,
@@ -452,9 +667,9 @@
 .ctaPanel h2 {
   margin: 0;
   color: var(--text);
-  font-size: clamp(24px, 2.85vw, 32px);
+  font-size: clamp(24px, calc(20px + 1.1vw), 34px);
   font-weight: 950;
-  line-height: 1.45;
+  line-height: 1.36;
   text-wrap: balance;
 }
 
@@ -464,9 +679,10 @@
   max-width: 275px;
   margin: 24px 0 0;
   color: #b6c0cd;
-  font-size: 14px;
+  font-size: clamp(13px, calc(12px + 0.3vw), 14px);
   font-weight: 600;
-  line-height: 2;
+  line-height: 1.86;
+  text-wrap: pretty;
 }
 
 .painGrid {
@@ -998,9 +1214,9 @@
   padding: 29px 28px;
 }
 
-.analyticsCard .sectionNumber,
-.ctaPanel .sectionNumberAlt {
-  margin-bottom: 8px;
+.analyticsCard .sectionMarker,
+.ctaPanel .sectionMarker {
+  margin-bottom: 10px;
 }
 
 .analyticsCard p {
@@ -1158,6 +1374,16 @@
   }
 }
 
+@keyframes signalSweep {
+  0% {
+    transform: skewX(-18deg) translateX(-18%);
+  }
+
+  100% {
+    transform: skewX(-18deg) translateX(54%);
+  }
+}
+
 @keyframes buttonSheen {
   0%,
   42% {
@@ -1297,12 +1523,27 @@
   }
 
   .heroVisual {
-    min-height: 480px;
+    display: grid;
+    place-items: start center;
+    min-height: auto;
+    margin-top: 26px;
+  }
+
+  .phoneAnchor {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: min(100%, 420px);
+    min-height: clamp(520px, 76vw, 620px);
+    margin-inline: auto;
   }
 
   .phoneImage {
-    right: 16%;
-    width: min(58vw, 350px);
+    position: relative;
+    top: auto;
+    right: auto;
+    width: clamp(280px, 46vw, 340px);
   }
 
   .verticalWord {
@@ -1319,6 +1560,10 @@
     grid-template-columns: 112px minmax(0, 1fr);
     column-gap: 18px;
     align-items: start;
+  }
+
+  .sectionMarker {
+    grid-row: 1 / span 2;
   }
 
   .sectionIntro p:not(.sectionNumber, .sectionNumberAlt) {
@@ -1409,9 +1654,9 @@
   }
 
   .heroCopy h1 {
-    max-width: 360px;
-    font-size: clamp(31px, 8.8vw, 40px);
-    line-height: 1.22;
+    max-width: min(100%, 420px);
+    font-size: clamp(30px, calc(22px + 3.15vw), 39px);
+    line-height: 1.18;
     text-wrap: balance;
   }
 
@@ -1440,17 +1685,17 @@
   }
 
   .heroLead {
-    max-width: 350px;
-    margin-top: 19px;
-    font-size: 14px;
-    line-height: 1.85;
+    max-width: min(100%, 372px);
+    margin-top: 17px;
+    font-size: clamp(13.5px, calc(12px + 0.9vw), 15px);
+    line-height: 1.78;
   }
 
   .heroActions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 0.86fr);
+    display: flex;
+    flex-wrap: wrap;
     gap: 10px;
-    margin-top: 24px;
+    margin-top: 22px;
   }
 
   .primaryButton,
@@ -1511,32 +1756,44 @@
   }
 
   .heroVisual {
-    min-height: clamp(360px, 106vw, 430px);
-    margin-top: 2px;
-    overflow: hidden;
-    border-bottom: 1px solid rgb(94 240 232 / 0.08);
+    display: grid;
+    place-items: start center;
+    min-height: auto;
+    margin-top: 18px;
+    overflow: visible;
+    border-bottom: 0;
+  }
+
+  .phoneAnchor {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: min(100%, 330px);
+    min-height: clamp(385px, 101vw, 432px);
+    margin-inline: auto;
   }
 
   .phoneImage {
-    top: 8px;
-    right: 50%;
-    width: min(68vw, 266px);
-    transform: translateX(50%);
+    position: relative;
+    top: auto;
+    right: auto;
+    width: clamp(206px, 54vw, 220px);
     filter: drop-shadow(0 28px 34px rgb(0 0 0 / 0.7));
   }
 
   .verticalWord {
-    top: 20px;
-    right: 2px;
-    font-size: 58px;
-    opacity: 0.75;
+    top: 26px;
+    right: max(0px, calc((100vw - 390px) / 2));
+    font-size: clamp(49px, 14vw, 62px);
+    opacity: 0.48;
   }
 
   .heroBrush {
-    right: 12%;
-    bottom: 54px;
-    width: 240px;
-    height: 98px;
+    right: 17%;
+    bottom: 88px;
+    width: clamp(205px, 62vw, 258px);
+    height: 92px;
   }
 
   .sectionBlock {
@@ -1558,11 +1815,16 @@
     line-height: 1;
   }
 
+  .sectionRole {
+    padding: 5px 7px;
+    font-size: 9px;
+  }
+
   .sectionIntro h2,
   .analyticsCard h2,
   .ctaPanel h2 {
-    font-size: clamp(22px, 6.3vw, 27px);
-    line-height: 1.42;
+    font-size: clamp(21px, calc(18px + 2.1vw), 28px);
+    line-height: 1.34;
   }
 
   .sectionIntro p:not(.sectionNumber, .sectionNumberAlt) {
@@ -1778,14 +2040,24 @@
     flex-wrap: wrap;
     gap: 16px 22px;
   }
+
+  .ageDialog {
+    border-radius: 6px;
+    padding: 24px 18px;
+  }
+
+  .ageActions {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .landing::before,
   .landing::after,
   .pageNoise,
+  .signalSweep,
   .heroTexture,
-  .heroCopy h1 span,
+  .heroAccent,
   .verticalWord,
   .heroBrush,
   .processIcon svg,

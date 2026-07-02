@@ -16,7 +16,7 @@ export default async function ForecastPage() {
   return (
     <main className="insight-page">
       <section className="insight-sheet">
-        <a className="back-link" href="/">
+        <a className="back-link" href="/app">
           ナイトレーダーへ戻る
         </a>
         <header className="insight-header">

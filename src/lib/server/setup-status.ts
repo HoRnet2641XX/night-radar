@@ -36,7 +36,7 @@ export function getServiceSetupStatus(): ServiceSetupStatus {
       hasSupabasePublic ? 'check' : 'action',
       hasSupabasePublic ? 'Provider確認待ち' : 'Supabase未接続',
       hasSupabasePublic
-        ? 'メール、XのProvider設定はSupabase管理画面側で確認が必要です。'
+        ? 'XのProvider設定はSupabase管理画面側で確認が必要です。'
         : 'ログイン機能にはSupabaseの公開URLとPublishable Keyが必要です。',
     ),
     item(
