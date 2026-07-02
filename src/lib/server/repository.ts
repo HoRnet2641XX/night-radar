@@ -116,6 +116,23 @@ function bodyHash(body: string) {
   return createHash('sha256').update(body.replace(/\s+/g, ' ').trim()).digest('hex')
 }
 
+function metadataString(user: User, key: string) {
+  const value = user.user_metadata?.[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function userDisplayName(user: User) {
+  return (
+    user.email ??
+    metadataString(user, 'full_name') ??
+    metadataString(user, 'name') ??
+    metadataString(user, 'user_name') ??
+    metadataString(user, 'preferred_username') ??
+    metadataString(user, 'screen_name') ??
+    'Xでログイン中'
+  )
+}
+
 function stringField(row: DbRow, key: string, fallback = '') {
   const value = row[key]
   return typeof value === 'string' ? value : value == null ? fallback : String(value)
@@ -932,7 +949,9 @@ export async function getDashboardState(): Promise<DashboardState> {
 
   return {
     mode: 'database',
+    userId: user.id,
     userEmail: user.email ?? undefined,
+    userDisplayName: userDisplayName(user),
     setupStatus: getServiceSetupStatus(),
     stores,
     events,

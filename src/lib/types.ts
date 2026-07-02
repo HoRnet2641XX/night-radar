@@ -298,7 +298,9 @@ export type AiAnalysis = {
 
 export type DashboardState = {
   mode: RuntimeMode
+  userId?: string
   userEmail?: string
+  userDisplayName?: string
   connectionNote?: string
   setupStatus: ServiceSetupStatus
   stores: StoreProfile[]

@@ -210,10 +210,12 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   const initialScoredEvents = initialState.scoredEvents
   const wordCategories = initialState.wordCategories
   const subscription = initialState.subscription
-  const isSignedIn = Boolean(initialState.userEmail)
-  const storeDecisionStorageKey = `night-radar-store-decisions:${initialState.userEmail ?? 'anonymous'}`
-  const firstGuideStorageKey = `night-radar-first-guide:${initialState.userEmail ?? 'anonymous'}`
-  const watchedTemplateStorageKey = `night-radar-watched-templates:${initialState.userEmail ?? 'anonymous'}`
+  const signedInUserKey = initialState.userId ?? initialState.userEmail
+  const signedInLabel = initialState.userEmail ?? initialState.userDisplayName
+  const isSignedIn = Boolean(signedInUserKey)
+  const storeDecisionStorageKey = `night-radar-store-decisions:${signedInUserKey ?? 'anonymous'}`
+  const firstGuideStorageKey = `night-radar-first-guide:${signedInUserKey ?? 'anonymous'}`
+  const watchedTemplateStorageKey = `night-radar-watched-templates:${signedInUserKey ?? 'anonymous'}`
   const [view, setView] = useState<ViewKey>('analytics')
   const [activeNav, setActiveNav] = useState<NavKey>('today')
   const [mode, setMode] = useState<RuntimeMode>(initialState.mode)
@@ -973,7 +975,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
             <section className="app-card form-card">
               <FormTitle icon={<ShieldCheck size={19} weight="bold" />} title="認証" />
               <div className="account-state">
-                <span>{initialState.userEmail ? initialState.userEmail : '未ログイン'}</span>
+                <span>{signedInLabel ? signedInLabel : '未ログイン'}</span>
                 <strong>{isSignedIn ? 'ログイン中' : 'ログイン待ち'}</strong>
               </div>
               {isSignedIn ? (
@@ -981,7 +983,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
                   <p>ログイン済みのため、追加のログインボタンは停止しています。別アカウントで入り直す場合はログアウトしてください。</p>
                 </div>
               ) : (
-                <a className="secondary-action" href="/login">
+                <a className="secondary-action" href="/login?next=/app">
                   ログインページへ
                 </a>
               )}
