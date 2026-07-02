@@ -1,330 +1,459 @@
-'use client'
-
-import { useEffect, useRef } from 'react'
-import Image from 'next/image'
-import Link from 'next/link'
-import Lenis from 'lenis'
-import gsap from 'gsap'
-import { useGSAP } from '@gsap/react'
 import {
-  BellRinging,
-  CalendarBlank,
-  ChartDonut,
+  ArrowRight,
+  BookmarkSimple,
+  CalendarDots,
+  ChartBar,
+  Clock,
   Crosshair,
-  Database,
+  Eye,
+  FileText,
+  Fire,
+  Gauge,
+  Lightning,
   MagnifyingGlass,
+  Megaphone,
   Pulse,
-  ShieldCheck,
-  Storefront,
-} from '@phosphor-icons/react'
-import { motion, useReducedMotion } from 'motion/react'
+  Question,
+  Stack,
+  TrendUp,
+} from '@phosphor-icons/react/ssr'
+import Image from 'next/image'
 import styles from './night-radar-landing.module.css'
+import { NightRadarMotion } from './night-radar-motion'
 
-const MotionSection = motion.section
-const MotionDiv = motion.div
-const motionEase = [0.16, 1, 0.3, 1] as const
+const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? ''
 
-const features = [
+function appHref(path = '/') {
+  const normalizedPath = path || '/'
+  if (!appBaseUrl) return normalizedPath
+  return `${appBaseUrl.replace(/\/$/, '')}${normalizedPath}`
+}
+
+const navItems = [
+  { label: '機能', href: '#features' },
+  { label: '仕組み', href: '#workflow' },
+  { label: '導入事例', href: '#cases' },
+  { label: '料金', href: '#pricing' },
+]
+
+const stats = [
+  { label: '候補発見率', value: '2.1倍以上', note: '当日比較ベース', Icon: Gauge },
+  { label: 'カバー率', value: '85%超', note: '主要情報の平均', Icon: Stack },
+  { label: '情報更新', value: 'リアルタイム', note: '自動収集 & 解析', Icon: Lightning },
+]
+
+const painCards = [
   {
-    icon: <ChartDonut size={24} weight="bold" />,
-    title: 'Hot比率',
-    text: '店舗ごとの書き込み量、投稿鮮度、曜日相性をまとめ、比較しやすい順に表示します。',
+    title: '見落としが多い',
+    body: 'BBSやイベントを全部見るのは大変…',
+    Icon: Eye,
   },
   {
-    icon: <CalendarBlank size={24} weight="bold" />,
-    title: '月間イベント',
-    text: '公式イベント情報を月表示に集約。日別の詳細はスマホでもすぐ確認できます。',
+    title: '情報が古い・遅い',
+    body: '更新や投稿に気づくのに時間がかかる…',
+    Icon: Clock,
   },
   {
-    icon: <MagnifyingGlass size={24} weight="bold" />,
-    title: '完全一致検索',
-    text: '人気単独男性、人気単独女性、不人気ワードを分類して全店BBSから探せます。',
+    title: 'どこを見ればいいかわからない',
+    body: '検索しても答えが見つけづらい…',
+    Icon: Question,
   },
   {
-    icon: <BellRinging size={24} weight="bold" />,
-    title: '注目ワード監視',
-    text: '初めて、久しぶり、複数人、絵文字など、見落としたくない投稿を拾います。',
-  },
-  {
-    icon: <Database size={24} weight="bold" />,
-    title: '観測ログ',
-    text: '巡回したBBS情報を保存し、店舗ごとの傾向としてあとから見返せます。',
+    title: '判断に時間がかかる',
+    body: '材料がバラバラで比較しにくい…',
+    Icon: TrendUp,
   },
 ]
 
-const workflow = [
+const whiteTiles = [
   {
-    title: '公開情報を集める',
-    text: '店舗のBBSとイベントページを登録し、定期的に状態を取得します。',
+    title: 'BBSトップ画面に常時配置',
+    body: '最初に見るべき情報をすぐにキャッチ',
+    Icon: Eye,
+  },
+  {
+    title: '店舗ごとの盛り上がりを比較',
+    body: '地域・店舗の温度差を可視化',
+    Icon: ChartBar,
+  },
+  {
+    title: '検索条件は保存して使い回し可能',
+    body: 'お気に入り条件で即座にアクセス',
+    Icon: BookmarkSimple,
+  },
+  {
+    title: 'スマホで即イベント詳細を確認',
+    body: '外出先でもすぐに確認',
+    Icon: MagnifyingGlass,
+  },
+]
+
+const processItems = [
+  {
+    title: 'Hot比較',
+    body: '盛り上がりを比較し、優先順位を明確に。',
+    Icon: Fire,
+    tone: 'heat',
+  },
+  {
+    title: '月間イベント',
+    body: '公式イベントや傾向をカレンダーで把握。',
+    Icon: CalendarDots,
+    tone: 'month',
+  },
+  {
+    title: '注目ワード監視',
+    body: '重要ワードの出現を通知でお知らせ。',
+    Icon: MagnifyingGlass,
+    tone: 'watch',
+  },
+  {
+    title: '観測ログ',
+    body: '過去のBBS情報を保存し、振り返りが可能。',
+    Icon: FileText,
+    tone: 'log',
+  },
+  {
+    title: '完全一致検索',
+    body: '人名・店名・時間などを完全一致で素早く検索。',
+    Icon: Crosshair,
+    tone: 'search',
+  },
+]
+
+const flowLabels = ['公開情報を最速収集', '判断材料に変換する', '今日の候補を提示']
+
+const flowDetails = [
+  {
+    title: '公開情報を最速取得',
+    body: '公開BBSとイベントページを自動収集し、最新の情報を整えます。',
+    Icon: Megaphone,
+    tone: 'lime',
   },
   {
     title: '判断材料に変換する',
-    text: '投稿の鮮度、曜日、ワード、イベント内容を同じ基準で読み替えます。',
+    body: '独自の指標で、イベント内を比較できる形に整理します。',
+    Icon: CalendarDots,
+    tone: 'purple',
   },
   {
-    title: '今日の候補を見る',
-    text: '盛り上がり比率、上位店舗、月間イベントをトップ画面に集約します。',
+    title: '今日の候補を提示',
+    body: '独自のスコアに基づき、今日の注目店を表示します。',
+    Icon: BookmarkSimple,
+    tone: 'blue',
   },
 ]
 
-const proofItems = [
-  'BBSをトップ画面の中心に配置',
-  '店舗ごとの盛り上がりを比率で比較',
-  '検索条件は保存して使い回し可能',
-  'スマホで日別イベント詳細を確認',
+const picks = [
+  { name: 'bar AA', value: '67%', tone: 'orange' },
+  { name: 'bar CA', value: '48%', tone: 'purple' },
+  { name: 'bar BB', value: '36%', tone: 'blue' },
 ]
 
-function sectionMotion(reduce = false) {
-  if (reduce) return {}
-  return {
-    whileInView: { opacity: 1 },
-    transition: { duration: 0.4, ease: motionEase },
-    viewport: { once: true, amount: 0.18 },
-  }
-}
+const checklist = ['公開情報ベースで運用', '店舗ごとの効果を蓄積', '広告分析 / アプリ連携と連動']
 
-function cardMotion(index = 0, reduce = false) {
-  if (reduce) return {}
-  return {
-    whileHover: { y: index % 2 === 0 ? -3 : -2 },
-    transition: { duration: 0.24, ease: motionEase },
-  }
-}
-
-export function NightRadarLanding({ isSignedIn = false }: { isSignedIn?: boolean }) {
-  const rootRef = useRef<HTMLElement>(null)
-  const reduceMotion = useReducedMotion()
-  const shouldReduceMotion = Boolean(reduceMotion)
-
-  useEffect(() => {
-    if (shouldReduceMotion) return
-
-    const lenis = new Lenis({
-      duration: 1.05,
-      smoothWheel: true,
-      touchMultiplier: 0.8,
-      wheelMultiplier: 0.86,
-    })
-    let rafId = 0
-
-    const raf = (time: number) => {
-      lenis.raf(time)
-      rafId = window.requestAnimationFrame(raf)
-    }
-
-    rafId = window.requestAnimationFrame(raf)
-
-    return () => {
-      window.cancelAnimationFrame(rafId)
-      lenis.destroy()
-    }
-  }, [shouldReduceMotion])
-
-  useGSAP(
-    () => {
-      if (shouldReduceMotion) return
-
-      gsap.from(`.${styles.heroWord}`, {
-        y: 18,
-        opacity: 0,
-        filter: 'blur(8px)',
-        duration: 0.82,
-        ease: 'power3.out',
-        stagger: 0.09,
-      })
-      gsap.from(`.${styles.heroCopy} p, .${styles.heroActions}`, {
-        y: 12,
-        opacity: 0,
-        duration: 0.7,
-        ease: 'power3.out',
-        stagger: 0.08,
-        delay: 0.18,
-      })
-    },
-    { scope: rootRef, dependencies: [shouldReduceMotion], revertOnUpdate: true }
-  )
-
+export function NightRadarLanding() {
   return (
-    <main className={styles.landing} id="main" ref={rootRef}>
-      <div className={styles.backdrop} aria-hidden="true" />
-
-      <header className={styles.nav}>
-        <Link className={styles.brand} href="/">
-          <Crosshair size={22} weight="bold" />
+    <main className={styles.landing} id="main" data-motion-root>
+      <NightRadarMotion />
+      <div className={styles.pageNoise} aria-hidden="true" />
+      <header className={styles.header} data-reveal="header">
+        <a className={styles.logo} href="#main" aria-label="ナイトレーダーの先頭へ">
+          <Pulse size={28} weight="bold" aria-hidden="true" />
           <span>ナイトレーダー</span>
-        </Link>
-        <nav aria-label="LP内ナビゲーション">
-          <a href="#features">機能</a>
-          <a href="#workflow">仕組み</a>
-          <a href="#contact">導入</a>
+        </a>
+        <nav className={styles.nav} aria-label="主要ナビゲーション">
+          {navItems.map((item) => (
+            <a key={item.href} href={item.href}>
+              {item.label}
+            </a>
+          ))}
         </nav>
-        {isSignedIn ? (
-          <Link className={styles.navCta} href="/">
-            アプリを開く
-          </Link>
-        ) : (
-          <div className={styles.navActions}>
-            <Link className={styles.navTextLink} href="/login">
-              ログイン
-            </Link>
-            <Link className={styles.navCta} href="/signup">
-              会員登録してアプリへ
-            </Link>
-          </div>
-        )}
+        <div className={styles.headerActions}>
+          <a className={styles.loginLink} href={appHref('/login')}>
+            ログイン
+          </a>
+          <a className={styles.headerCta} href={appHref('/signup')}>
+            β版を試す
+          </a>
+        </div>
       </header>
 
-      <section className={styles.hero}>
-        <MotionDiv className={styles.heroCopy} {...sectionMotion(shouldReduceMotion)}>
-          <span className={styles.kicker}>公開情報を一画面へ</span>
-          <h1>
-            <span className={styles.heroWord}>BBSとイベントを、</span>
-            <span className={styles.heroWord}>今日の候補に変える。</span>
-          </h1>
-          <p>公開BBS、店舗イベント、曜日傾向を一画面に圧縮。迷う前に見るべき店舗と日付だけを残します。</p>
-          <div className={styles.heroActions}>
-            {isSignedIn ? (
-              <Link className={styles.primaryButton} href="/">
-                アプリを開く
-              </Link>
-            ) : (
-              <Link className={styles.primaryButton} href="/signup">
-                会員登録してアプリへ
-              </Link>
-            )}
-            {!isSignedIn && (
-              <Link className={styles.secondaryButton} href="/login">
-                ログイン
-              </Link>
-            )}
-            <a className={styles.secondaryButton} href="#features">
-              機能を見る
-            </a>
+      <section className={styles.hero} aria-labelledby="hero-title" data-hero>
+        <div className={styles.heroTexture} aria-hidden="true" data-hero-texture />
+        <p className={styles.heroKicker} data-reveal="kicker">
+          公開情報を価値に変えるナイトレーダー
+        </p>
+        <div className={styles.heroGrid}>
+          <div className={styles.heroCopy}>
+            <h1 id="hero-title" data-reveal="headline">
+              BBSとイベントを、
+              <br />
+              今日の<span>候補</span>に変える。
+            </h1>
+            <p className={styles.heroLead} data-reveal="lead">
+              公開BBS、店舗イベント、関連情報を一括収集。
+              <br />
+              見逃れがちな公開ほど、素早く見つかる設計。
+            </p>
+            <div className={styles.heroActions} data-reveal="hero-actions">
+              <a className={styles.primaryButton} href={appHref('/signup')}>
+                β版を試す
+                <ArrowRight size={19} weight="bold" aria-hidden="true" />
+              </a>
+              <a className={styles.secondaryButton} href="#features">
+                デモを体験する
+              </a>
+            </div>
+            <dl className={styles.stats} data-reveal="stats">
+              {stats.map(({ label, value, note, Icon }) => (
+                <div key={label} className={styles.stat} data-spotlight-card>
+                  <dt>
+                    <Icon size={30} weight="regular" aria-hidden="true" />
+                    {label}
+                  </dt>
+                  <dd>{value}</dd>
+                  <small>{note}</small>
+                </div>
+              ))}
+            </dl>
           </div>
-        </MotionDiv>
-
-        <MotionDiv className={styles.heroVisual} {...sectionMotion(shouldReduceMotion)}>
-          <div className={styles.radarPlate} aria-hidden="true">
-            <span />
+          <div className={styles.heroVisual}>
+            <div className={styles.verticalWord} aria-hidden="true" data-vertical-word>
+              NIGHTRADAR
+            </div>
+            <div className={styles.heroBrush} aria-hidden="true" data-hero-brush />
+            <div className={styles.phoneAnchor}>
+              <Image
+                className={styles.phoneImage}
+                data-phone
+                src="/lp/generated/hero-iphone-device.png"
+                width={754}
+                height={1377}
+                priority
+                alt="ナイトレーダーのスマホ画面。注目店、期待度ランキング、最終更新時刻が表示されている。"
+              />
+            </div>
           </div>
-          <div className={styles.phoneFrame}>
-            <Image
-              alt="ナイトレーダーのスマホ画面。今日の判定、盛り上がり比率、月間イベントが表示されている。"
-              src="/lp/app-preview-mobile.png"
-              width={390}
-              height={844}
-              priority
-              sizes="(max-width: 768px) 74vw, 360px"
-            />
-          </div>
-        </MotionDiv>
+        </div>
       </section>
 
-      <MotionSection className={styles.signalBand} {...sectionMotion(shouldReduceMotion)}>
-        <div>
-          <strong>見る場所が散らばる</strong>
-          <span>BBS、イベント、曜日感を別々に追う手間を減らします。</span>
+      <section
+        className={styles.sectionBlock}
+        id="features"
+        aria-labelledby="pain-title"
+        data-motion-section
+      >
+        <div className={styles.sectionIntro} data-section-intro>
+          <p className={styles.sectionNumber}>01</p>
+          <h2 id="pain-title">
+            こんな悩み、
+            <br />
+            ありませんか？
+          </h2>
+          <p>情報の見落としが、大きな機会損失につながります。</p>
         </div>
-        <div>
-          <strong>温度感が読みにくい</strong>
-          <span>店舗ごとの投稿量と鮮度を比率で比較します。</span>
-        </div>
-        <div>
-          <strong>ワード監視が属人化する</strong>
-          <span>人気単独男性、人気単独女性、不人気ワードを分けて確認できます。</span>
-        </div>
-      </MotionSection>
-
-      <MotionSection className={styles.productProof} {...sectionMotion(shouldReduceMotion)}>
-        <div className={styles.sectionLead}>
-          <span>トップ画面</span>
-          <h2>BBSを先に見る設計です。</h2>
-          <p>最初に出すのは説明ではなく、今日の結論。補足情報は必要な分だけ下に置きます。</p>
-        </div>
-        <div className={styles.proofGrid}>
-          {proofItems.map((item, index) => (
-            <MotionDiv className={styles.proofItem} key={item} {...cardMotion(index, shouldReduceMotion)}>
-              <span>{index + 1}</span>
-              <p>{item}</p>
-            </MotionDiv>
+        <div className={styles.painGrid}>
+          {painCards.map(({ title, body, Icon }) => (
+            <article className={styles.painCard} key={title} data-motion-item data-spotlight-card>
+              <Icon size={66} weight="light" aria-hidden="true" />
+              <h3>{title}</h3>
+              <p>{body}</p>
+            </article>
           ))}
         </div>
-      </MotionSection>
+      </section>
 
-      <MotionSection className={styles.features} id="features" {...sectionMotion(shouldReduceMotion)}>
-        <div className={styles.sectionLead}>
-          <span>主要機能</span>
-          <h2>候補を決める材料だけを残す。</h2>
-          <p>多すぎる情報をそのまま見せず、行く余地がある店舗を比較できる形へ整理します。</p>
+      <section
+        className={styles.sectionBlock}
+        id="workflow"
+        aria-labelledby="workflow-title"
+        data-motion-section
+      >
+        <div className={styles.sectionIntro} data-section-intro>
+          <p className={styles.sectionNumber}>02</p>
+          <h2 id="workflow-title">
+            BBSを先に見る
+            <br />
+            設計です。
+          </h2>
+          <p>最初に当てるのが “見ること”。今日の勝ち筋を逃さない設計で「仕込みから初動」を支えます。</p>
         </div>
-        <div className={styles.featureGrid}>
-          {features.map((feature, index) => (
-            <MotionDiv className={styles.featureCard} key={feature.title} {...cardMotion(index, shouldReduceMotion)}>
-              <div>{feature.icon}</div>
-              <h3>{feature.title}</h3>
-              <p>{feature.text}</p>
-            </MotionDiv>
-          ))}
-        </div>
-      </MotionSection>
-
-      <MotionSection className={styles.workflow} id="workflow" {...sectionMotion(shouldReduceMotion)}>
-        <div className={styles.workflowVisual} aria-hidden="true">
-          <Pulse size={54} weight="duotone" />
-          <span />
-        </div>
-        <div className={styles.workflowCopy}>
-          <div className={styles.sectionLead}>
-            <span>仕組み</span>
-            <h2>集めて、整えて、今日に落とす。</h2>
-          </div>
-          <div className={styles.workflowList}>
-            {workflow.map((item, index) => (
-              <MotionDiv className={styles.workflowItem} key={item.title} {...cardMotion(index, shouldReduceMotion)}>
-                <strong>{item.title}</strong>
-                <p>{item.text}</p>
-              </MotionDiv>
+        <div className={styles.workflowGrid}>
+          <div className={styles.tileGrid}>
+            {whiteTiles.map(({ title, body, Icon }) => (
+              <article className={styles.whiteTile} key={title} data-motion-item data-spotlight-card>
+                <Icon size={35} weight="regular" aria-hidden="true" />
+                <h3>{title}</h3>
+                <p>{body}</p>
+              </article>
             ))}
           </div>
+          <figure className={styles.alleyFigure} data-motion-item data-motion-card>
+            <Image
+              src="/lp/generated/night-alley.png"
+              width={1672}
+              height={941}
+              loading="lazy"
+              alt="雨上がりの夜の路地。ネオン看板とBARの看板が並んでいる。"
+            />
+          </figure>
         </div>
-      </MotionSection>
+      </section>
 
-      <MotionSection className={styles.operatorPanel} {...sectionMotion(shouldReduceMotion)}>
-        <div>
-          <Storefront size={30} weight="bold" />
-          <h2>店舗掲載や広告にも使える計測面。</h2>
-          <p>
-            店舗イベント、BBS反応、来店候補の流れを同じ画面で見せられるため、ユーザー向けの判断材料と店舗側の掲載価値を分けずに扱えます。
-          </p>
+      <section className={styles.sectionBlock} aria-labelledby="materials-title" data-motion-section>
+        <div className={styles.sectionIntro} data-section-intro>
+          <p className={styles.sectionNumberAlt}>03</p>
+          <h2 id="materials-title">
+            候補を決める
+            <br />
+            材料だけを残す。
+          </h2>
+          <p>多すぎる情報をそぎ落とし、判断に直結する材料だけをシンプルに。</p>
         </div>
-        <div className={styles.operatorList}>
-          <span>公開情報ベースで運用</span>
-          <span>店舗ごとの傾向を蓄積</span>
-          <span>広告枠はアプリ内導線と連動</span>
+        <div className={styles.processPanel}>
+          {processItems.map(({ title, body, Icon, tone }) => (
+            <article className={styles.processItem} key={title} data-motion-item data-spotlight-card>
+              <div className={`${styles.processIcon} ${styles[tone]}`}>
+                <Icon size={39} weight="regular" aria-hidden="true" />
+              </div>
+              <h3>{title}</h3>
+              <p>{body}</p>
+            </article>
+          ))}
         </div>
-      </MotionSection>
+      </section>
 
-      <MotionSection className={styles.ctaPanel} id="contact" {...sectionMotion(shouldReduceMotion)}>
-        <ShieldCheck size={34} weight="bold" />
-        <h2>登録後すぐに判断材料を確認できます。</h2>
-        <p>BBS、月間イベント、注目ワード検索、店舗別ランキングを同じアプリ画面で確認できます。</p>
-        {isSignedIn ? (
-          <Link className={styles.primaryButton} href="/">
-            アプリを開く
-          </Link>
-        ) : (
-          <Link className={styles.primaryButton} href="/signup">
-            会員登録してアプリへ
-          </Link>
-        )}
-      </MotionSection>
+      <section
+        className={styles.sectionBlock}
+        id="cases"
+        aria-labelledby="radar-title"
+        data-motion-section
+      >
+        <div className={styles.sectionIntro} data-section-intro>
+          <p className={styles.sectionNumber}>04</p>
+          <h2 id="radar-title">
+            集めて、整えて、
+            <br />
+            今日に落とす。
+          </h2>
+          <p>公開情報を自動で集め、判断材料に変換。今日の候補を、迷わず提示します。</p>
+        </div>
+        <div className={styles.radarGrid}>
+          <div
+            className={styles.radarMap}
+            aria-label="公開情報から今日の候補までの変換フロー"
+            data-motion-item
+            data-radar
+          >
+            {flowLabels.map((label, index) => (
+              <div className={styles.flowLabel} key={label} data-index={index}>
+                {label}
+              </div>
+            ))}
+            <div className={styles.radarCore} aria-hidden="true">
+              <Pulse size={54} weight="bold" />
+            </div>
+          </div>
+          <div className={styles.flowDetails}>
+            {flowDetails.map(({ title, body, Icon, tone }) => (
+              <article className={styles.flowItem} key={title} data-motion-item data-spotlight-card>
+                <span className={`${styles.flowIcon} ${styles[tone]}`}>
+                  <Icon size={27} weight="regular" aria-hidden="true" />
+                </span>
+                <div>
+                  <h3>{title}</h3>
+                  <p>{body}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+          <aside
+            className={styles.pickCard}
+            aria-label="今日の候補"
+            data-motion-item
+            data-spotlight-card
+          >
+            <p className={styles.pickLabel}>TODAY&apos;S PICKS</p>
+            <div className={styles.scoreRing}>
+              <strong>67%</strong>
+            </div>
+            <ul>
+              {picks.map((pick) => (
+                <li key={pick.name}>
+                  <span className={styles[pick.tone]} aria-hidden="true" />
+                  <span>{pick.name}</span>
+                  <strong>{pick.value}</strong>
+                </li>
+              ))}
+            </ul>
+            <p className={styles.pickTime}>最終更新&nbsp;20:26</p>
+          </aside>
+        </div>
+      </section>
+
+      <section
+        className={styles.bottomGrid}
+        id="pricing"
+        aria-labelledby="pricing-title"
+        data-motion-section
+      >
+        <article className={styles.analyticsCard} data-motion-item data-spotlight-card>
+          <div>
+            <p className={styles.sectionNumber}>05</p>
+            <h2 id="pricing-title">
+              店舗掲載や広告にも
+              <br />
+              使える計測面。
+            </h2>
+            <p>
+              日別イベント、BBS反応、広告掲載の効果測定に役立つデータを提供。
+              ユーザー向けの分析機能と広告運用の改善をサポートします。
+            </p>
+          </div>
+          <div className={styles.chartPanel} aria-label="効果測定グラフ" data-chart>
+            <span className={styles.barOne} data-chart-bar />
+            <span className={styles.barTwo} data-chart-bar />
+            <span className={styles.barThree} data-chart-bar />
+            <span className={styles.barFour} data-chart-bar />
+            <span className={styles.barFive} data-chart-bar />
+          </div>
+          <ul className={styles.checkList}>
+            {checklist.map((item) => (
+              <li key={item}>
+                <span aria-hidden="true">✓</span>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </article>
+
+        <article className={styles.ctaPanel} data-motion-item data-spotlight-card>
+          <div className={styles.ctaTexture} aria-hidden="true" />
+          <p className={styles.sectionNumberAlt}>05</p>
+          <h2>
+            登録後すぐに
+            <br />
+            判断材料を確認できます。
+          </h2>
+          <p>BBS、月間イベント、注目ワード状況、店舗のランキングをログイン後すぐに確認できます。</p>
+          <a className={styles.primaryButton} href={appHref('/signup')}>
+            β版を試す
+            <ArrowRight size={19} weight="bold" aria-hidden="true" />
+          </a>
+        </article>
+      </section>
 
       <footer className={styles.footer}>
-        <span>ナイトレーダー</span>
-        <nav aria-label="法務リンク">
-          <Link href="/privacy">プライバシー</Link>
-          <Link href="/terms">利用規約</Link>
-          {isSignedIn ? <Link href="/">アプリへ戻る</Link> : <Link href="/login">ログイン</Link>}
+        <a className={styles.logo} href="#main" aria-label="ナイトレーダーの先頭へ">
+          <Pulse size={28} weight="bold" aria-hidden="true" />
+          <span>ナイトレーダー</span>
+        </a>
+        <nav aria-label="フッターナビゲーション">
+          <a href={appHref('/privacy')}>プライバシー</a>
+          <a href={appHref('/terms')}>利用規約</a>
+          <a href={appHref('/contact')}>お問い合わせ</a>
+          <a href={appHref('/login')}>ログイン</a>
         </nav>
       </footer>
     </main>

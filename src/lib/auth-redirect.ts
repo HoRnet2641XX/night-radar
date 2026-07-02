@@ -23,7 +23,7 @@ export function authErrorMessage(message?: string) {
 
   const lower = text.toLowerCase()
   if (lower.includes('missing oauth secret') || lower.includes('unsupported provider')) {
-    return '認証プロバイダーのSecretが未設定です。SupabaseのGoogle/X設定を確認してください。'
+    return '認証プロバイダーのSecretが未設定です。SupabaseのX設定を確認してください。'
   }
   if (lower.includes('redirect') || lower.includes('not allowed')) {
     return '認証後の戻り先URLが許可されていません。SupabaseのRedirect URLsを確認してください。'

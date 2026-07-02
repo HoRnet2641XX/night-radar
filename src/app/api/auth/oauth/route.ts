@@ -7,7 +7,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 export const runtime = 'nodejs'
 
 const payloadSchema = z.object({
-  provider: z.enum(['google', 'x']),
+  provider: z.enum(['x']),
   next: z.string().optional(),
 })
 

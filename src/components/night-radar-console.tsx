@@ -38,6 +38,9 @@ import {
   buildVisitForecasts,
   buildWatchedWordHits,
   defaultWatchedTemplateKeys,
+  extractWatchedAuthorEntries,
+  extractWatchedAuthorText,
+  filterPostsWithinHours,
   normalizeWatchedSearchText,
   parseExactTerms,
   searchExactBbsTerms,
@@ -79,7 +82,9 @@ type SourceHealth = { ok: number; blocked: number; failed: number; pending: numb
 type GenderPostRanking = {
   store: StoreProfile
   rank: number
-  postCount: number
+  observedCount: number
+  rawEstimate: number
+  recordCount: number
   femaleSignals: number
   maleSignals: number
   femaleRatio: number
@@ -225,6 +230,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     message: initialState.connectionNote ?? (initialState.mode === 'database' ? '同期済み' : '待機中'),
   })
   const [bbsSnapshots] = useState<BbsSnapshot[]>(initialState.bbsSnapshots)
+  const [bbsNormalizedPosts] = useState(initialState.bbsNormalizedPosts ?? [])
   const [wordBookmarks, setWordBookmarks] = useState<WordBookmark[]>(initialState.wordBookmarks)
   const [bookmarkDraft, setBookmarkDraft] = useState('')
   const [watchSearchTerm, setWatchSearchTerm] = useState('')
@@ -333,27 +339,36 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
       return b.score - a.score || b.share - a.share
     })
   }, [storeDecisions, storeQuery, storeRadar, storeSessionFilter, storeSignalFilter, storeSort])
-  const searchableBbsRecords = useMemo(() => buildSearchableBbsRecords(posts, bbsSnapshots), [bbsSnapshots, posts])
+  const normalizedStoreIds = useMemo(() => new Set(bbsNormalizedPosts.map((post) => post.storeId)), [bbsNormalizedPosts])
+  const searchableBbsSnapshots = useMemo(
+    () => (normalizedStoreIds.size ? bbsSnapshots.filter((snapshot) => !normalizedStoreIds.has(snapshot.storeId)) : bbsSnapshots),
+    [bbsSnapshots, normalizedStoreIds],
+  )
+  const searchableBbsRecords = useMemo(() => buildSearchableBbsRecords(posts, searchableBbsSnapshots), [posts, searchableBbsSnapshots])
+  const recentWatchedBbsRecords = useMemo(
+    () => filterPostsWithinHours(searchableBbsRecords, initialState.setupStatus.generatedAt, 24),
+    [initialState.setupStatus.generatedAt, searchableBbsRecords],
+  )
   const genderPostRankings = useMemo(
     () => buildGenderPostRankings(searchableBbsRecords, stores),
     [searchableBbsRecords, stores],
   )
   const watchedWordHits = useMemo(
     () =>
-      buildWatchedWordHits(searchableBbsRecords, stores, wordBookmarks, {
+      buildWatchedWordHits(recentWatchedBbsRecords, stores, wordBookmarks, {
         enabledTemplateKeys: enabledWatchedTemplates,
         storeId: watchStoreId,
       }),
-    [enabledWatchedTemplates, searchableBbsRecords, stores, watchStoreId, wordBookmarks],
+    [enabledWatchedTemplates, recentWatchedBbsRecords, stores, watchStoreId, wordBookmarks],
   )
   const searchedWatchedWordHits = useMemo(
-    () => buildCustomWatchedWordHits(searchableBbsRecords, stores, watchSearchTerm, watchStoreId),
-    [searchableBbsRecords, stores, watchSearchTerm, watchStoreId],
+    () => buildCustomWatchedWordHits(recentWatchedBbsRecords, stores, watchSearchTerm, watchStoreId),
+    [recentWatchedBbsRecords, stores, watchSearchTerm, watchStoreId],
   )
   const visitForecasts = useMemo(() => buildVisitForecasts(events, stores, posts, { windowDays: 14 }), [events, stores, posts])
   const exactMatches = useMemo(
     () =>
-      searchExactBbsTerms(searchableBbsRecords, stores, [
+      searchExactBbsTerms(recentWatchedBbsRecords, stores, [
         {
           group: 'popularSingleMale',
           label: exactTermLabels.popularSingleMale,
@@ -370,7 +385,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
           terms: parseExactTerms(exactTerms.negativePerson),
         },
       ]),
-    [exactTerms, searchableBbsRecords, stores],
+    [exactTerms, recentWatchedBbsRecords, stores],
   )
   const activeExactMatches = serverMatches ?? exactMatches
   const exactMatchCounts = useMemo(
@@ -391,7 +406,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   const currentPlan = subscription.plan
   const currentLimits = planLimits[currentPlan]
   const activeWatchedHits = watchSearchTerm.trim() ? searchedWatchedWordHits : watchedWordHits
-  const visibleWatchedHits = activeWatchedHits.slice(0, 8)
+  const visibleWatchedHits = dedupeWatchedHitsByStore(activeWatchedHits).slice(0, 8)
   const topForecasts = visitForecasts.slice(0, 3)
   const latestPost = posts[0]
   const hotStore = storeRadar[0]
@@ -846,6 +861,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
             <ViewIntro eyebrow="店舗" title="盛り上がり順に店舗を見る" body="BBS、月間イベント、注目シグナルをまとめて、候補店舗だけを見比べます。" />
 
             <StoreDiscoveryPanel
+              allPoints={storeRadar}
               analyticsByStoreId={storeAnalyticsById}
               candidateCount={candidateStoreCount}
               eventCountByStoreId={eventCountByStoreId}
@@ -909,7 +925,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
 
         {view === 'automate' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="検索" title="掲示板から気になるワードを探す" body="保存した注目ワードと完全一致条件を使って、全店のBBS本文とスクショ抽出テキストを確認します。" />
+            <ViewIntro eyebrow="検索" title="掲示板から気になる名前を探す" body="保存した注目ワードと完全一致条件を使って、直近24時間の投稿者名・性別表記を確認します。" />
 
             <WatchedWordsPanel
               hits={visibleWatchedHits}
@@ -1008,6 +1024,14 @@ function loadingLabelForBusy(value: string) {
 }
 
 function BusyOverlay({ label, reduceMotion }: { label: string; reduceMotion: boolean }) {
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = originalOverflow
+    }
+  }, [])
+
   return (
     <motion.div
       aria-live="polite"
@@ -1354,60 +1378,96 @@ function todayCompatibilityLabel(analytics?: StoreBbsAnalytics) {
 function StoreMomentumRanking({ points }: { points: StoreRadarPoint[] }) {
   const rankedPoints = points.slice(0, 5)
   const strongest = rankedPoints[0]
+  const followingPoints = rankedPoints.slice(1)
 
   return (
     <section className="momentum-ranking-card" aria-label="お店の盛り上がりランキング">
       <div className="momentum-ranking-head">
         <div>
           <span>盛り上がりランキング</span>
-          <h2>今、反応が濃いお店</h2>
-          <p>直近のBBS巡回、スクリーンショット本文、注目ワードの出方から並べています。</p>
+          <h2>今夜、反応が濃いお店</h2>
+          <p>直近の巡回、投稿者名の注目語、イベント量から、まず見たい候補を浮かび上がらせます。</p>
         </div>
         <strong>{strongest ? `${strongest.share}%` : '--'}</strong>
       </div>
 
       {rankedPoints.length ? (
-        <div className="momentum-ranking-list">
-          {rankedPoints.map((point) => {
-            const storeName = formatBarName(point.store.name)
-            const reasonChips = buildReasonChips(point)
-
-            return (
-              <article className={`momentum-ranking-row ${point.tone}`} key={point.store.id}>
-                <span className="momentum-rank">{point.rank}</span>
-                <div className="momentum-store">
-                  <div className="momentum-store-title">
-                    <strong>{storeName}</strong>
-                    <em>{point.score}点</em>
-                  </div>
-                  <div className="momentum-meter" aria-hidden="true">
-                    <i style={{ inlineSize: `${Math.max(5, Math.min(100, point.score))}%` }} />
-                  </div>
-                  <p>{point.verdict}</p>
-                  <div className="reason-chip-row compact" aria-label={`${storeName}の根拠`}>
-                    {reasonChips.map((chip) => (
-                      <span key={chip}>{chip}</span>
-                    ))}
-                  </div>
+        <>
+          {strongest ? (
+            <article className={`momentum-leader-card ${strongest.tone}`}>
+              <div className="momentum-leader-rank">
+                <span>本命</span>
+                <strong>#1</strong>
+              </div>
+              <div className="momentum-leader-main">
+                <div>
+                  <h3>{formatBarName(strongest.store.name)}</h3>
+                  <p>{strongest.verdict} / {formatRadarCapturedAt(strongest.lastCapturedAt)}</p>
                 </div>
-                <dl className="momentum-meta">
-                  <div>
-                    <dt>比率</dt>
-                    <dd>{point.share}%</dd>
+                <div className="reason-chip-row compact" aria-label={`${formatBarName(strongest.store.name)}の根拠`}>
+                  {buildReasonChips(strongest).map((chip) => (
+                    <span key={chip}>{chip}</span>
+                  ))}
+                </div>
+                <div className="momentum-leader-meter" aria-hidden="true">
+                  <i style={{ inlineSize: `${Math.max(5, Math.min(100, strongest.score))}%` }} />
+                </div>
+              </div>
+              <dl className="momentum-leader-score">
+                <div>
+                  <dt>熱量</dt>
+                  <dd>{strongest.score}<small>点</small></dd>
+                </div>
+                <div>
+                  <dt>比率</dt>
+                  <dd>{strongest.share}<small>%</small></dd>
+                </div>
+              </dl>
+            </article>
+          ) : null}
+
+          <div className="momentum-ranking-list">
+            {followingPoints.map((point) => {
+              const storeName = formatBarName(point.store.name)
+              const reasonChips = buildReasonChips(point)
+
+              return (
+                <article className={`momentum-ranking-row ${point.tone}`} key={point.store.id}>
+                  <span className="momentum-rank">{point.rank}</span>
+                  <div className="momentum-store">
+                    <div className="momentum-store-title">
+                      <strong>{storeName}</strong>
+                      <em>{point.score}点</em>
+                    </div>
+                    <div className="momentum-meter" aria-hidden="true">
+                      <i style={{ inlineSize: `${Math.max(5, Math.min(100, point.score))}%` }} />
+                    </div>
+                    <p>{point.verdict}</p>
+                    <div className="reason-chip-row compact" aria-label={`${storeName}の根拠`}>
+                      {reasonChips.map((chip) => (
+                        <span key={chip}>{chip}</span>
+                      ))}
+                    </div>
                   </div>
-                  <div>
-                    <dt>注目</dt>
-                    <dd>{point.signals.totalSignals}</dd>
-                  </div>
-                  <div>
-                    <dt>更新</dt>
-                    <dd>{formatRadarCapturedAt(point.lastCapturedAt)}</dd>
-                  </div>
-                </dl>
-              </article>
-            )
-          })}
-        </div>
+                  <dl className="momentum-meta">
+                    <div>
+                      <dt>比率</dt>
+                      <dd>{point.share}%</dd>
+                    </div>
+                    <div>
+                      <dt>注目</dt>
+                      <dd>{point.signals.totalSignals}</dd>
+                    </div>
+                    <div>
+                      <dt>更新</dt>
+                      <dd>{formatRadarCapturedAt(point.lastCapturedAt)}</dd>
+                    </div>
+                  </dl>
+                </article>
+              )
+            })}
+          </div>
+        </>
       ) : (
         <p className="muted-note">BBS巡回後に表示します。先に注目ワードを登録しておくと、一致履歴も同時に確認できます。</p>
       )}
@@ -1418,6 +1478,7 @@ function StoreMomentumRanking({ points }: { points: StoreRadarPoint[] }) {
 const femaleGenderPattern = /(女性|女の子|女子|単女|単独女性|主婦|人妻|奥様|女性予約|女性来店|女性無料|女性一人)/g
 const maleGenderPattern = /(男性|男の子|男子|単男|単独男性|男性予約|男性来店|男性一人|紳士|旦那)/g
 const postMarkerPattern = /(20\d{2}年\d{1,2}月\d{1,2}日|\d{4}[-/]\d{1,2}[-/]\d{1,2}|投稿者|書き込み|来店予告|No\.\d+)/g
+const postNumberPattern = /(?:記事番号[:：]?\s*|No[.\s]*)(\d{3,})/gi
 
 function countGenderSignals(text: string, pattern: RegExp) {
   return text.match(pattern)?.length ?? 0
@@ -1429,6 +1490,41 @@ function estimatePostCount(record: PostRecord) {
   return Math.max(1, Math.min(80, markers || Math.ceil(record.body.length / 700)))
 }
 
+function normalizedObservationKey(value: string) {
+  return value.replace(/\s+/g, ' ').replace(/[0-9０-９]{1,2}[:時][0-9０-９]{0,2}/g, '00:00').trim().slice(0, 160)
+}
+
+function collectObservationKeys(record: PostRecord) {
+  const keys = new Set<string>()
+  for (const match of record.body.matchAll(postNumberPattern)) {
+    if (match[1]) keys.add(`no:${match[1]}`)
+  }
+  extractWatchedAuthorEntries(record.body).forEach((entry) => {
+    const key = normalizedObservationKey([entry.name, entry.gender, entry.body].filter(Boolean).join(' '))
+    if (key.length >= 3) keys.add(`author:${key}`)
+  })
+  if (keys.size) return keys
+
+  const fallbackKey = normalizedObservationKey(record.body)
+  if (fallbackKey) keys.add(`body:${fallbackKey}`)
+  return keys
+}
+
+function summarizeStoreObservationVolume(records: PostRecord[]) {
+  const uniqueKeys = new Set<string>()
+  let rawEstimate = 0
+
+  records.forEach((record) => {
+    rawEstimate += estimatePostCount(record)
+    collectObservationKeys(record).forEach((key) => uniqueKeys.add(key))
+  })
+
+  return {
+    observedCount: uniqueKeys.size,
+    rawEstimate,
+  }
+}
+
 function buildGenderPostRankings(records: PostRecord[], stores: StoreProfile[]): GenderPostRanking[] {
   const recordsByStore = new Map<string, PostRecord[]>()
   records.forEach((record) => {
@@ -1438,7 +1534,7 @@ function buildGenderPostRankings(records: PostRecord[], stores: StoreProfile[]):
   return stores
     .map((store) => {
       const storeRecords = recordsByStore.get(store.id) ?? []
-      const postCount = storeRecords.reduce((sum, record) => sum + estimatePostCount(record), 0)
+      const observationVolume = summarizeStoreObservationVolume(storeRecords)
       const body = storeRecords.map((record) => record.body).join('\n')
       const femaleSignals = countGenderSignals(body, femaleGenderPattern)
       const maleSignals = countGenderSignals(body, maleGenderPattern)
@@ -1456,7 +1552,9 @@ function buildGenderPostRankings(records: PostRecord[], stores: StoreProfile[]):
       return {
         store,
         rank: 0,
-        postCount,
+        observedCount: observationVolume.observedCount,
+        rawEstimate: observationVolume.rawEstimate,
+        recordCount: storeRecords.length,
         femaleSignals,
         maleSignals,
         femaleRatio,
@@ -1465,22 +1563,22 @@ function buildGenderPostRankings(records: PostRecord[], stores: StoreProfile[]):
         verdict,
       }
     })
-    .toSorted((a, b) => b.postCount - a.postCount || b.signalTotal - a.signalTotal || b.femaleRatio - a.femaleRatio)
+    .toSorted((a, b) => b.observedCount - a.observedCount || b.signalTotal - a.signalTotal || b.femaleRatio - a.femaleRatio)
     .map((ranking, index) => ({ ...ranking, rank: index + 1 }))
 }
 
 function PostCountRankingCard({ rankings }: { rankings: GenderPostRanking[] }) {
-  const visibleRankings = rankings.filter((ranking) => ranking.postCount > 0).slice(0, 6)
+  const visibleRankings = rankings.filter((ranking) => ranking.observedCount > 0).slice(0, 6)
 
   return (
-    <section className="gender-ranking-card" aria-label="書き込み数ランキング">
+    <section className="gender-ranking-card" aria-label="観測投稿量ランキング">
       <div className="gender-ranking-head">
         <div>
-          <span>書き込み数</span>
-          <h2>投稿量が多い店舗</h2>
-          <p>BBS本文とスクショ抽出本文から、投稿のまとまり数を推定して並べます。</p>
+          <span>観測投稿</span>
+          <h2>反応が多い店舗</h2>
+          <p>記事番号・投稿者断片を重複除外して並べます。実人数や公式の投稿総数ではありません。</p>
         </div>
-        <strong>{visibleRankings[0] ? `${visibleRankings[0].postCount}件` : '--'}</strong>
+        <strong>{visibleRankings[0] ? `${visibleRankings[0].observedCount}件` : '--'}</strong>
       </div>
 
       <div className="gender-ranking-list">
@@ -1491,13 +1589,13 @@ function PostCountRankingCard({ rankings }: { rankings: GenderPostRanking[] }) {
               <div className="gender-store">
                 <div className="gender-store-title">
                   <strong>{formatBarName(ranking.store.name)}</strong>
-                  <em>{ranking.postCount}件</em>
+                  <em>{ranking.observedCount}件</em>
                 </div>
                 <div className="gender-ratio-bar" aria-label={`女性 ${ranking.femaleRatio}% 男性 ${ranking.maleRatio}%`}>
                   <i style={{ inlineSize: `${ranking.femaleRatio}%` }} />
                 </div>
                 <p>
-                  女性ワード {ranking.femaleSignals} / 男性ワード {ranking.maleSignals}
+                  女性ワード {ranking.femaleSignals} / 男性ワード {ranking.maleSignals} ・ 巡回断片 {ranking.recordCount}件
                 </p>
               </div>
               <dl className="gender-meta">
@@ -1513,7 +1611,7 @@ function PostCountRankingCard({ rankings }: { rankings: GenderPostRanking[] }) {
             </article>
           ))
         ) : (
-          <p className="muted-note">BBS巡回または投稿取り込みが入ると、書き込み数を表示します。</p>
+          <p className="muted-note">BBS巡回または投稿取り込みが入ると、観測投稿量を表示します。</p>
         )}
       </div>
     </section>
@@ -1575,6 +1673,7 @@ function GenderWordRatioRankingCard({ rankings }: { rankings: GenderPostRanking[
 }
 
 function StoreDiscoveryPanel({
+  allPoints,
   analyticsByStoreId,
   candidateCount,
   eventCountByStoreId,
@@ -1596,6 +1695,7 @@ function StoreDiscoveryPanel({
   onSignalFilterChange,
   onSortChange,
 }: {
+  allPoints: StoreRadarPoint[]
   analyticsByStoreId: Map<string, StoreBbsAnalytics>
   candidateCount: number
   eventCountByStoreId: Map<string, number>
@@ -1619,6 +1719,12 @@ function StoreDiscoveryPanel({
 }) {
   const visibleTop = points.slice(0, 9)
   const strongest = points[0]
+  const candidatePoints = allPoints.filter((point) => storeDecisions[point.store.id] === 'candidate').slice(0, 4)
+  const sortLabel =
+    sort === 'share' ? '比率が高い順' : sort === 'signals' ? '根拠が多い順' : sort === 'updated' ? '更新が新しい順' : '盛り上がり順'
+  const sessionLabel = sessionFilter === 'day' ? '昼あり' : sessionFilter === 'night' ? '夜あり' : '全時間'
+  const signalLabel =
+    signalFilter === 'female' ? '女性' : signalFilter === 'first' ? '初回' : signalFilter === 'group' ? '複数' : signalFilter === 'emoji' ? '絵文字' : '全根拠'
 
   return (
     <section className="store-discovery-card" aria-label="店舗探索">
@@ -1696,6 +1802,16 @@ function StoreDiscoveryPanel({
         </button>
       </div>
 
+      <div className="store-filter-status" aria-live="polite">
+        <span>
+          表示 {points.length}/{totalCount}
+        </span>
+        <strong>{sortLabel}</strong>
+        <em>
+          {sessionLabel} / {signalLabel}
+        </em>
+      </div>
+
       <div className="store-decision-strip" aria-label="候補整理">
         <article>
           <span>候補入り</span>
@@ -1712,6 +1828,29 @@ function StoreDiscoveryPanel({
         <button type="button" onClick={onReset}>
           条件を戻す
         </button>
+      </div>
+
+      <div className={`store-candidate-dock${candidatePoints.length ? '' : ' is-empty'}`} aria-label="候補店舗">
+        <div>
+          <span>候補リスト</span>
+          <strong>{candidatePoints.length ? '今日見返す店舗' : '気になる店舗を一時保存'}</strong>
+          <p>{candidatePoints.length ? '条件を変えても、候補入りした店舗はここに残ります。' : 'ランキングから候補に入れると、比較用にここへまとまります。'}</p>
+        </div>
+        {candidatePoints.length ? (
+          <div className="store-candidate-list">
+            {candidatePoints.map((point) => (
+              <button type="button" key={point.store.id} onClick={() => onOpenDetail(point.store.id)}>
+                <span>#{point.rank}</span>
+                <strong>{formatBarName(point.store.name)}</strong>
+                <em>{point.score}点</em>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <button type="button" onClick={onReset}>
+            条件を戻して探す
+          </button>
+        )}
       </div>
 
       <div className="store-explorer-grid">
@@ -1762,9 +1901,15 @@ function StoreExplorerCard({
   const sourceStatus = formatUserBbsStatus(source?.lastStatus)
   const reasonChips = buildReasonChips(point)
   const todayFit = todayCompatibilityLabel(analytics)
+  const decisionLabel =
+    decision === 'candidate' ? '候補' : decision === 'favorite' ? 'お気に入り' : decision === 'hidden' ? '非表示' : '比較中'
 
   return (
     <article className={`store-explorer-card is-${point.tone} ${decision ? `decision-${decision}` : ''}`}>
+      <div className="store-rank-line">
+        <span className="store-rank-badge">#{point.rank}</span>
+        <span className={`store-decision-badge ${decision ? `is-${decision}` : ''}`}>{decisionLabel}</span>
+      </div>
       <div className="store-card-top">
         <div>
           <span>
@@ -1826,7 +1971,7 @@ function StoreExplorerCard({
           className={decision === 'candidate' ? 'is-active' : ''}
           onClick={() => onDecisionChange(point.store.id, 'candidate')}
         >
-          {decision === 'candidate' ? '候補入り' : '候補に入れる'}
+          {decision === 'candidate' ? '候補から外す' : '候補に入れる'}
         </button>
         <button type="button" onClick={() => onOpenDetail(point.store.id)}>
           詳細
@@ -2317,6 +2462,15 @@ function normalizedLocalMatchIndex(body: string, term: string) {
   return normalizedIndex >= 0 ? (rawIndices[normalizedIndex] ?? -1) : -1
 }
 
+function dedupeWatchedHitsByStore(hits: WatchedWordHit[]) {
+  const seenStoreIds = new Set<string>()
+  return hits.filter((hit) => {
+    if (seenStoreIds.has(hit.store.id)) return false
+    seenStoreIds.add(hit.store.id)
+    return true
+  })
+}
+
 function normalizedLocalMatchRange(body: string, term: string) {
   const normalizedTerm = normalizeLocalSearchText(term)
   if (!normalizedTerm) return null
@@ -2373,7 +2527,9 @@ function buildCustomWatchedWordHits(
     if (scopedStoreId && post.storeId !== scopedStoreId) return
     const store = storeMap.get(post.storeId)
     if (!store) return
-    if (!post.body.includes(query) && !normalizeLocalSearchText(post.body).includes(normalizedQuery)) return
+    const watchedText = extractWatchedAuthorText(post.body)
+    if (!watchedText) return
+    if (!watchedText.includes(query) && !normalizeLocalSearchText(watchedText).includes(normalizedQuery)) return
 
     hits.push({
       id: `custom-${post.id}-${normalizedQuery}`,
@@ -2381,7 +2537,7 @@ function buildCustomWatchedWordHits(
       term: query,
       store,
       post,
-      snippet: buildLocalSnippet(post.body, query),
+      snippet: buildLocalSnippet(watchedText, query),
       severity: 'medium',
     })
   })
@@ -2464,6 +2620,7 @@ function buildReadableBbsLines(body: string) {
 
 type ReadableBbsEntry = {
   id: string
+  nameLabel: string
   timeLabel: string
   genderLabel: string
   lines: string[]
@@ -2481,13 +2638,6 @@ function splitReadableBlock(block: string) {
     .filter(Boolean)
 }
 
-function splitAuthorLine(line: string) {
-  const match = line.match(
-    /^(投稿者[:：]\s*.+?)(\s+(?=(初めて|はじめて|久しぶり|今日|本日|明日|行き|行く|伺|お邪魔|予定|よろしく|誰か|どなた|女性|男性|単男|単女|[0-9０-９]{1,2}\s*(時|:))).+)$/,
-  )
-  return match ? { meta: match[1].trim(), body: match[2].trim() } : { meta: line, body: '' }
-}
-
 function extractReadableTimeLabel(value: string) {
   const prefixedTime = value.match(/(?:投稿日時?|投稿日)[:：]?\s*([^\n]{4,42})/i)
   if (prefixedTime?.[1]) return prefixedTime[1].trim()
@@ -2501,14 +2651,105 @@ function extractReadableTimeLabel(value: string) {
   return shortTime?.[1]?.trim() ?? ''
 }
 
-function resolveReadableGenderLabel(value: string) {
-  if (/(女性|単女|女です|女子|♀|（女|\(女)/i.test(value)) return '女性'
-  if (/(男性|単男|男です|男子|♂|（男|\(男)/i.test(value)) return '男性'
+function normalizeReadableGender(value: string) {
+  if (/(女性|単女|女です|女子|♀|（女|\(女|\(女性|（女性)/i.test(value)) return '女性'
+  if (/(男性|単男|男です|男子|♂|（男|\(男|\(男性|（男性)/i.test(value)) return '男性'
   if (/(カップル|二人組|2人組|２人組|ペア)/i.test(value)) return '複数'
   return '記載なし'
 }
 
-function buildReadableBbsEntries(body: string, fallbackTimeLabel: string): ReadableBbsEntry[] {
+function cleanReadableName(value: string) {
+  return value
+    .replace(/^投稿者[:：]\s*/, '')
+    .replace(/[（(]\s*(女性|男性|単女|単男|女|男)\s*[）)]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function cleanReadableBody(value: string) {
+  return value
+    .replace(/^書き込み[:：]?\s*/, '')
+    .replace(/^削除\s*/, '')
+    .replace(/^返信[:：]?\s*/, '')
+    .replace(/\s+返信\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function parseReadableAuthorLine(line: string) {
+  const raw = line.replace(/^投稿者[:：]\s*/, '').replace(/\s+/g, ' ').trim()
+  const genderMatch = raw.match(/^(.+?)\s*[（(]\s*(女性|男性|単女|単男|女|男)\s*[）)]\s*(.*)$/i)
+  if (genderMatch) {
+    return {
+      name: cleanReadableName(genderMatch[1] ?? ''),
+      gender: normalizeReadableGender(genderMatch[2] ?? ''),
+      body: cleanReadableBody(genderMatch[3] ?? ''),
+    }
+  }
+
+  const contentMatch = raw.match(
+    /^(.+?)\s+(?=(初めて|はじめて|久しぶり|今日|本日|明日|朝|昼|夜|行き|行く|伺|お邪魔|予定|よろしく|誰か|どなた|女性|男性|単男|単女|[0-9０-９]{1,2}\s*(時|:)))(.+)$/,
+  )
+  if (contentMatch) {
+    return {
+      name: cleanReadableName(contentMatch[1] ?? ''),
+      gender: normalizeReadableGender(raw),
+      body: cleanReadableBody(contentMatch[4] ?? ''),
+    }
+  }
+
+  return {
+    name: cleanReadableName(raw),
+    gender: normalizeReadableGender(raw),
+    body: '',
+  }
+}
+
+function parseReadableNumberedLine(line: string) {
+  const withoutNumber = line
+    .replace(/^記事番号[:：]?\s*\d+\s*/i, '')
+    .replace(/^No[.\s]*\d+\)?\s*/i, '')
+    .trim()
+  const cleaned = cleanReadableBody(withoutNumber)
+  if (!cleaned) return null
+
+  const trailingAuthor = cleaned.match(/^(.*?)\s+([^()\s]+(?:\s*さん)?)\s*[（(][^（）()]{3,}[）)]\s*$/)
+  if (trailingAuthor) {
+    return {
+      name: cleanReadableName(trailingAuthor[2] ?? ''),
+      gender: normalizeReadableGender(cleaned),
+      body: cleanReadableBody(trailingAuthor[1] ?? ''),
+    }
+  }
+
+  return {
+    name: '',
+    gender: normalizeReadableGender(cleaned),
+    body: cleaned,
+  }
+}
+
+function readableEntryMatchesTerm(entry: { name: string; gender: string }, term: string) {
+  const query = normalizeLocalSearchText(term)
+  if (!query) return true
+  return normalizeLocalSearchText([entry.name, entry.gender].join(' ')).includes(query)
+}
+
+function buildReadableBbsEntries(body: string, fallbackTimeLabel: string, term = ''): ReadableBbsEntry[] {
+  const authorEntries = extractWatchedAuthorEntries(body).filter((entry) => readableEntryMatchesTerm(entry, term))
+  if (authorEntries.length || term.trim()) {
+    return authorEntries.map((entry, index) => {
+      const contentLines = splitLongReadableLine(cleanReadableBody(entry.body || '書き込み内容を抽出できませんでした。'))
+      return {
+        id: `author-${index}-${entry.name}-${entry.gender}-${contentLines.join('').slice(0, 20)}`,
+        nameLabel: entry.name || '記載なし',
+        timeLabel: fallbackTimeLabel,
+        genderLabel: entry.gender,
+        lines: contentLines,
+      }
+    })
+  }
+
   const blocks = body
     .replace(/\r\n?/g, '\n')
     .split(/\n{2,}/)
@@ -2516,14 +2757,46 @@ function buildReadableBbsEntries(body: string, fallbackTimeLabel: string): Reada
     .filter(Boolean)
 
   const sourceBlocks = blocks.length ? blocks : [body]
+  const entries: ReadableBbsEntry[] = []
 
-  return sourceBlocks.map((block, index) => {
-    const genderParts: string[] = []
+  function createEntry(block: string, index: number, nameLabel: string, genderLabel: string, timeLabel: string, lines: string[]) {
+    const contentLines = lines.map(cleanReadableBody).filter(Boolean).flatMap((line) => splitLongReadableLine(line))
+    if (!contentLines.length) return
+    const joined = [nameLabel, genderLabel, ...contentLines].join(' ')
+    entries.push({
+      id: `${entries.length}-${index}-${timeLabel || fallbackTimeLabel}-${block.slice(0, 20)}`,
+      nameLabel: nameLabel || '記載なし',
+      timeLabel: timeLabel || fallbackTimeLabel,
+      genderLabel: genderLabel === '記載なし' ? normalizeReadableGender(joined) : genderLabel,
+      lines: contentLines,
+    })
+  }
+
+  sourceBlocks.forEach((block, index) => {
+    let nameLabel = ''
+    let genderLabel = '記載なし'
     let timeLabel = ''
     const bodyLines: string[] = []
+    const flush = () => {
+      createEntry(block, index, nameLabel, genderLabel, timeLabel, bodyLines)
+      nameLabel = ''
+      genderLabel = '記載なし'
+      timeLabel = ''
+      bodyLines.length = 0
+    }
 
     splitReadableBlock(block).forEach((line) => {
-      if (/^(記事番号[:：]?|No[.\s]*\d+|Re[:：]|返信[:：])/i.test(line)) return
+      if (/^(Re[:：]?|返信[:：]?)$/i.test(line)) return
+      if (/^(記事番号[:：]?|No[.\s]*\d+)/i.test(line)) {
+        const numbered = parseReadableNumberedLine(line)
+        if (!numbered) {
+          if (bodyLines.length) flush()
+          return
+        }
+        if (bodyLines.length) flush()
+        createEntry(block, index, numbered.name, numbered.gender, timeLabel, [numbered.body])
+        return
+      }
       if (/^(投稿日時?[:：]|投稿日[:：])/i.test(line)) {
         timeLabel ||= extractReadableTimeLabel(line)
         return
@@ -2533,49 +2806,57 @@ function buildReadableBbsEntries(body: string, fallbackTimeLabel: string): Reada
         return
       }
       if (/^書き込み[:：]?/.test(line)) {
-        const writtenBody = line.replace(/^書き込み[:：]?\s*/, '').trim()
+        const writtenBody = cleanReadableBody(line)
         if (writtenBody) bodyLines.push(...splitLongReadableLine(writtenBody))
         return
       }
       if (/^投稿者[:：]/.test(line)) {
-        const authorLine = splitAuthorLine(line)
-        genderParts.push(authorLine.meta)
+        if (bodyLines.length) flush()
+        const authorLine = parseReadableAuthorLine(line)
+        nameLabel = authorLine.name
+        genderLabel = authorLine.gender
         if (authorLine.body) bodyLines.push(...splitLongReadableLine(authorLine.body))
         return
       }
       timeLabel ||= extractReadableTimeLabel(line)
-      bodyLines.push(...splitLongReadableLine(line))
+      const cleanedLine = cleanReadableBody(line)
+      if (cleanedLine) bodyLines.push(...splitLongReadableLine(cleanedLine))
     })
 
-    const lines = bodyLines.length ? bodyLines : splitLongReadableLine(block.replace(/[ \t\u3000]+/g, ' ').trim())
-    const genderLabel = resolveReadableGenderLabel([...genderParts, ...lines].join(' '))
-
-    return {
-      id: `${index}-${timeLabel || fallbackTimeLabel}-${block.slice(0, 16)}`,
-      timeLabel: timeLabel || fallbackTimeLabel,
-      genderLabel,
-      lines,
-    }
+    flush()
   })
+
+  return entries
 }
 
 function HighlightedReadableBody({ body, fallbackTimeLabel, term }: { body: string; fallbackTimeLabel: string; term: string }) {
-  const entries = buildReadableBbsEntries(body, fallbackTimeLabel)
+  const entries = buildReadableBbsEntries(body, fallbackTimeLabel, term)
   return (
     <div className="watch-detail-entry-list">
-      {entries.map((entry) => (
+      {entries.length ? entries.map((entry) => (
         <article className="watch-detail-entry" key={entry.id}>
           <header>
-            <span>時刻 {entry.timeLabel}</span>
-            <span>性別 {entry.genderLabel}</span>
+            <div>
+              <span>名前</span>
+              <strong>{renderHighlightedText(entry.nameLabel, term)}</strong>
+            </div>
+            <div>
+              <span>性別</span>
+              <strong>{renderHighlightedText(entry.genderLabel, term)}</strong>
+            </div>
+            <div>
+              <span>書き込み時間</span>
+              <strong>{entry.timeLabel}</strong>
+            </div>
           </header>
           <div>
+            <span>書き込み内容</span>
             {entry.lines.map((line, index) => (
               <p key={`${index}-${line.slice(0, 20)}`}>{renderHighlightedText(line, term)}</p>
             ))}
           </div>
         </article>
-      ))}
+      )) : <p className="muted-note">一致した投稿者名の書き込みを抽出できませんでした。</p>}
     </div>
   )
 }
@@ -2632,10 +2913,11 @@ function WatchedWordsPanel({
   const activeBookmark = searchTerm
     ? bookmarks.find((bookmark) => normalizeLocalSearchText(bookmark.pattern) === normalizeLocalSearchText(searchTerm))
     : null
+  const historyLabel = '直近24時間'
   const resultTitle = searchTerm ? `任意ワード「${searchTerm}」` : 'テンプレート・保存ワード'
   const resultLead = searchTerm
-    ? '入力または保存済みワードで本文を完全一致に近い形で検索しています。'
-    : '有効なテンプレートと保存済みワードをまとめて監視しています。'
+    ? `${historyLabel}の投稿者名・性別表記だけから検索しています。`
+    : `${historyLabel}の投稿者名・性別表記だけを監視しています。`
 
   useEffect(() => {
     if (!selectedHit) return
@@ -2651,7 +2933,7 @@ function WatchedWordsPanel({
       <div className="section-heading">
         <span>検索</span>
         <h2>注目ワード検索</h2>
-        <p>テンプレート監視、保存済みワード、店舗範囲を分けて確認できます。保存ワードを押すと、その語だけの検索に切り替わります。</p>
+        <p>テンプレート監視、保存済みワード、店舗範囲を分けて確認できます。本文ではなく、直近24時間の投稿者名・性別表記だけを見ます。</p>
       </div>
 
       <div className="watch-filter-panel">
@@ -2728,8 +3010,9 @@ function WatchedWordsPanel({
         </button>
       </form>
       <div className="watch-helper-row">
-        <span>検索: 入力語だけを表示</span>
+        <span>検索: 投稿者名だけを確認</span>
         <span>保存: 次回以降も監視</span>
+        <span>対象: {historyLabel}</span>
       </div>
       {hasScopeState ? (
         <div className="watch-search-state">
@@ -2782,6 +3065,7 @@ function WatchedWordsPanel({
         </div>
         <div className="watch-applied-tags" aria-label="現在の表示条件">
           <span>{selectedStoreName}</span>
+          <span>対象: {historyLabel}</span>
           {searchTerm ? (
             <span>検索語: {searchTerm}</span>
           ) : (
@@ -2812,10 +3096,10 @@ function WatchedWordsPanel({
         ) : (
           <p className="muted-note">
             {searchTerm
-              ? `「${searchTerm}」は巡回済みBBS内でまだ一致していません。表記ゆれを短めの語にすると拾いやすくなります。`
+              ? `「${searchTerm}」は直近24時間の投稿者名・性別表記ではまだ一致していません。表記ゆれを短めの語にすると拾いやすくなります。`
               : bookmarks.length
-                ? '保存済みワードの一致はまだありません。ワードを押すとその語で再検索できます。'
-                : '検索ワードを入力して保存してください。巡回済みBBSに一致すると、本文種別つきでここに出ます。'}
+                ? '直近24時間では保存済みワードの一致はまだありません。ワードを押すとその語で再検索できます。'
+                : '検索ワードを入力して保存してください。巡回済みBBSの投稿者名に一致すると、ここに出ます。'}
           </p>
         )}
       </div>
@@ -2871,10 +3155,10 @@ function formatUserBbsStatus(status?: string) {
 }
 
 function formatMatchSource(match: ExactTermMatch | WatchedWordHit) {
-  if (match.post.id.startsWith('snapshot-')) return 'スクショ抽出文'
-  if (match.post.source === 'scrape') return 'BBS本文'
-  if (match.post.source === 'csv') return '取込本文'
-  return '投稿本文'
+  if (match.post.id.startsWith('snapshot-')) return 'スクショ由来'
+  if (match.post.source === 'scrape') return 'BBS由来'
+  if (match.post.source === 'csv') return '取込データ'
+  return '投稿データ'
 }
 
 function ExactSearchCard({
@@ -2903,7 +3187,7 @@ function ExactSearchCard({
   return (
     <section className="app-card form-card compact-search-card">
       <FormTitle icon={<MagnifyingGlass size={19} weight="bold" />} title="監視カテゴリ" />
-      <p className="form-note">人物名や呼び名をカテゴリ別に監視します。結果は全店BBS本文とスクショ抽出文から、完全一致した箇所だけを表示します。</p>
+      <p className="form-note">人物名や呼び名をカテゴリ別に監視します。直近24時間の投稿者名・性別表記だけを見て、完全一致した箇所を表示します。</p>
       <div className="term-grid">
         <label>
           <span>人気単独男性を監視</span>
@@ -2973,6 +3257,16 @@ function ExactMatchList({
     { key: 'popularSingleFemale', label: '女性監視' },
     { key: 'negativePerson', label: '苦手監視' },
   ]
+  const [selectedMatch, setSelectedMatch] = useState<ExactTermMatch | null>(null)
+
+  useEffect(() => {
+    if (!selectedMatch) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedMatch(null)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [selectedMatch])
 
   if (!matches.length) {
     return (
@@ -3027,11 +3321,48 @@ function ExactMatchList({
               {formatMatchSource(match)} / {formatRadarCapturedAt(match.post.postedAt)}
             </small>
             <p>
-              {formatBarName(match.store.name)} / {match.snippet}
+              {formatBarName(match.store.name)} / {renderHighlightedText(match.snippet, match.term)}
             </p>
+            <footer className="match-card-footer">
+              <span>一致した投稿者の書き込みを確認</span>
+              <button type="button" onClick={() => setSelectedMatch(match)}>
+                詳細を見る
+              </button>
+            </footer>
           </article>
         ))}
       </div>
+      {selectedMatch ? (
+        <div className="watch-detail-layer" role="presentation" onClick={() => setSelectedMatch(null)}>
+          <section
+            aria-labelledby="exact-detail-title"
+            aria-modal="true"
+            className="watch-detail-modal"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="watch-detail-header">
+              <div>
+                <span>{selectedMatch.groupLabel}</span>
+                <h3 id="exact-detail-title">{formatBarName(selectedMatch.store.name)}</h3>
+                <p>
+                  {formatMatchSource(selectedMatch)} / {formatRadarCapturedAt(selectedMatch.post.postedAt)}
+                </p>
+              </div>
+              <button aria-label="詳細を閉じる" type="button" onClick={() => setSelectedMatch(null)}>
+                <X size={18} weight="bold" />
+              </button>
+            </header>
+            <div className="watch-detail-body">
+              <HighlightedReadableBody
+                body={selectedMatch.post.body}
+                fallbackTimeLabel={formatRadarCapturedAt(selectedMatch.post.postedAt)}
+                term={selectedMatch.term}
+              />
+            </div>
+          </section>
+        </div>
+      ) : null}
     </>
   )
 }

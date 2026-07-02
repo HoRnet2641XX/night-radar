@@ -3,7 +3,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Crosshair, EnvelopeSimple, GoogleLogo, XLogo } from '@phosphor-icons/react'
+import { Crosshair, EnvelopeSimple, XLogo } from '@phosphor-icons/react'
 import { motion, useReducedMotion } from 'motion/react'
 import styles from './night-radar-auth-page.module.css'
 
@@ -66,17 +66,17 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
   const isSignup = mode === 'signup'
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState('')
-  const [oauthPending, setOauthPending] = useState<'google' | 'x' | ''>('')
+  const [oauthPending, setOauthPending] = useState<'x' | ''>('')
   const [message, setMessage] = useState<AuthMessage>({
     tone: initialError ? 'error' : 'idle',
     text:
       initialError ??
       (isSignup
-        ? 'Google、X、メール認証のいずれかで会員登録できます。'
+        ? 'Xまたはメール認証で会員登録できます。'
         : '登録済みの方法でログインしてください。'),
   })
 
-  async function startOAuth(provider: 'google' | 'x') {
+  async function startOAuth(provider: 'x') {
     setOauthPending(provider)
     setMessage({ tone: 'idle', text: '認証画面へ移動します。' })
     try {
@@ -162,10 +162,6 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
           </div>
 
           <div className={styles.oauthStack}>
-            <button className={styles.oauthButton} type="button" onClick={() => startOAuth('google')} disabled={Boolean(busy) || Boolean(oauthPending)}>
-              <GoogleLogo size={20} weight="bold" />
-              {oauthPending === 'google' ? '認証画面を開いています' : `Googleで${isSignup ? '登録' : 'ログイン'}`}
-            </button>
             <button className={styles.oauthButton} type="button" onClick={() => startOAuth('x')} disabled={Boolean(busy) || Boolean(oauthPending)}>
               <XLogo size={18} weight="bold" />
               {oauthPending === 'x' ? '認証画面を開いています' : `Xで${isSignup ? '登録' : 'ログイン'}`}

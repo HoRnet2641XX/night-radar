@@ -131,6 +131,27 @@ create table if not exists public.bbs_snapshots (
 
 create index if not exists bbs_snapshots_store_captured_idx on public.bbs_snapshots (store_id, captured_at desc);
 
+create table if not exists public.bbs_normalized_posts (
+  id text primary key default gen_random_uuid()::text,
+  source_id text references public.bbs_sources(id) on delete set null,
+  store_id text not null references public.stores(id) on delete cascade,
+  source_url text,
+  article_no text,
+  author_name text not null default '記載なし',
+  author_gender text not null default '記載なし',
+  posted_at timestamptz,
+  observed_at timestamptz not null default now(),
+  body text not null,
+  body_hash text not null,
+  content_key text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (store_id, content_key)
+);
+
+create index if not exists bbs_normalized_posts_store_observed_idx on public.bbs_normalized_posts (store_id, observed_at desc);
+create index if not exists bbs_normalized_posts_store_posted_idx on public.bbs_normalized_posts (store_id, posted_at desc);
+
 create table if not exists public.exact_terms (
   id text primary key default gen_random_uuid()::text,
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -245,6 +266,7 @@ alter table public.store_situations enable row level security;
 alter table public.bbs_sources enable row level security;
 alter table public.crawl_runs enable row level security;
 alter table public.bbs_snapshots enable row level security;
+alter table public.bbs_normalized_posts enable row level security;
 alter table public.exact_terms enable row level security;
 alter table public.exact_matches enable row level security;
 alter table public.word_bookmarks enable row level security;
@@ -302,6 +324,10 @@ drop policy if exists "bbs snapshots owner read through store" on public.bbs_sna
 drop policy if exists "bbs snapshots owner manage through store" on public.bbs_snapshots;
 drop policy if exists "bbs snapshots authenticated read" on public.bbs_snapshots;
 create policy "bbs snapshots authenticated read" on public.bbs_snapshots
+  for select to authenticated using (true);
+
+drop policy if exists "bbs normalized posts authenticated read" on public.bbs_normalized_posts;
+create policy "bbs normalized posts authenticated read" on public.bbs_normalized_posts
   for select to authenticated using (true);
 
 drop policy if exists "exact terms owner manage" on public.exact_terms;

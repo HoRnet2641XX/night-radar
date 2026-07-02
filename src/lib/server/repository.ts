@@ -2,10 +2,18 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { User } from '@supabase/supabase-js'
 import { events as demoEvents, posts as demoPosts, stores as demoStores, storeSituations, wordCategories } from '../demo-data'
 import { highestAudienceForPlan, normalizePlan, planLimitMessage, planLimits, planRank } from '../plans'
-import { buildSearchableBbsRecords, scoreEvents, searchExactBbsTerms } from '../scoring'
+import {
+  buildEffectiveBbsPostRecords,
+  buildSearchableBbsRecords,
+  extractNormalizedBbsPostsFromText,
+  filterPostsWithinHours,
+  scoreEvents,
+  searchExactBbsTerms,
+} from '../scoring'
 import { eventWeekday } from '../date'
 import type {
   BbsSnapshot,
+  BbsNormalizedPost,
   BbsSource,
   CrawlRun,
   DashboardState,
@@ -79,6 +87,7 @@ function demoDashboardState(mode: RuntimeMode = 'demo', connectionNote?: string)
     bbsSources: [],
     crawlRuns: [],
     bbsSnapshots: [],
+    bbsNormalizedPosts: [],
     storeDecisions: {},
     exactTerms: defaultExactTerms,
     wordBookmarks: [],
@@ -260,6 +269,68 @@ function toPostRow(post: PostRecord) {
     body: post.body,
     body_hash: bodyHash(post.body),
     keywords: post.keywords,
+  }
+}
+
+function toBbsNormalizedPost(row: DbRow): BbsNormalizedPost {
+  return {
+    id: stringField(row, 'id'),
+    sourceId: optionalStringField(row, 'source_id'),
+    storeId: stringField(row, 'store_id'),
+    sourceUrl: optionalStringField(row, 'source_url'),
+    articleNo: optionalStringField(row, 'article_no'),
+    authorName: stringField(row, 'author_name', '記載なし'),
+    authorGender: stringField(row, 'author_gender', '記載なし'),
+    postedAt: optionalStringField(row, 'posted_at'),
+    observedAt: stringField(row, 'observed_at'),
+    body: stringField(row, 'body'),
+    bodyHash: stringField(row, 'body_hash'),
+    contentKey: stringField(row, 'content_key'),
+  }
+}
+
+function normalizedPostContentKey(input: {
+  articleNo?: string
+  authorName: string
+  authorGender: string
+  body: string
+}) {
+  const articleNo = input.articleNo?.trim()
+  if (articleNo) return `article:${articleNo}`
+
+  const authorName = input.authorName.replace(/\s+/g, ' ').trim() || '記載なし'
+  const authorGender = input.authorGender.replace(/\s+/g, '').trim() || '記載なし'
+  return `body:${bodyHash([authorName, authorGender, input.body].join('|'))}`
+}
+
+function toBbsNormalizedPostRow(input: {
+  source: BbsSource
+  observedAt: string
+  post: ReturnType<typeof extractNormalizedBbsPostsFromText>[number]
+}) {
+  const body = input.post.body.trim()
+  const articleNo = input.post.articleNo?.trim() || null
+  const authorName = input.post.authorName.trim() || '記載なし'
+  const authorGender = input.post.authorGender.trim() || '記載なし'
+
+  return {
+    id: randomUUID(),
+    source_id: input.source.id,
+    store_id: input.source.storeId,
+    source_url: input.source.url,
+    article_no: articleNo,
+    author_name: authorName,
+    author_gender: authorGender,
+    posted_at: input.post.postedAt || null,
+    observed_at: input.observedAt,
+    body,
+    body_hash: bodyHash(body),
+    content_key: normalizedPostContentKey({
+      articleNo: articleNo ?? undefined,
+      authorName,
+      authorGender,
+      body,
+    }),
   }
 }
 
@@ -685,6 +756,29 @@ async function savePostRow(supabase: DataClient, input: Partial<PostRecord>) {
   return toPost(data)
 }
 
+async function saveNormalizedBbsPostsFromText(
+  supabase: DataClient,
+  source: BbsSource,
+  extractedText: string,
+  observedAt: string,
+) {
+  const posts = extractNormalizedBbsPostsFromText(extractedText, observedAt)
+  if (!posts.length) return []
+
+  const rows = posts.map((post) => toBbsNormalizedPostRow({ source, observedAt, post }))
+  const { data, error } = await supabase
+    .from('bbs_normalized_posts')
+    .upsert(rows, { onConflict: 'store_id,content_key' })
+    .select('*')
+
+  if (error) {
+    if (isMissingRelationError(error)) return []
+    throw new RepositoryError(error.message, 400)
+  }
+
+  return (data ?? []).map(toBbsNormalizedPost)
+}
+
 async function savePostWithAccess(access: Extract<WriteAccess, { mode: 'database' }>, input: Partial<PostRecord>) {
   return savePostRow(access.supabase, input)
 }
@@ -755,6 +849,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     sourceResult,
     crawlResult,
     snapshotResult,
+    normalizedPostResult,
     termResult,
     bookmarkResult,
     noticeResult,
@@ -781,6 +876,14 @@ export async function getDashboardState(): Promise<DashboardState> {
       storeIds.length
         ? supabase.from('bbs_snapshots').select('*').in('store_id', storeIds).order('captured_at', { ascending: false }).limit(800)
         : Promise.resolve({ data: [], error: null }),
+      storeIds.length
+        ? supabase
+            .from('bbs_normalized_posts')
+            .select('*')
+            .in('store_id', storeIds)
+            .order('observed_at', { ascending: false })
+            .limit(5000)
+        : Promise.resolve({ data: [], error: null }),
       supabase.from('exact_terms').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
       supabase.from('word_bookmarks').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase
@@ -799,6 +902,8 @@ export async function getDashboardState(): Promise<DashboardState> {
       supabase.from('subscriptions').select('*').eq('user_id', user.id).maybeSingle(),
     ])
 
+  const normalizedPostError =
+    normalizedPostResult.error && !isMissingRelationError(normalizedPostResult.error) ? normalizedPostResult.error : null
   const firstError =
     eventResult.error ||
     postResult.error ||
@@ -806,6 +911,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     sourceResult.error ||
     crawlResult.error ||
     snapshotResult.error ||
+    normalizedPostError ||
     termResult.error ||
     bookmarkResult.error ||
     noticeResult.error ||
@@ -815,7 +921,9 @@ export async function getDashboardState(): Promise<DashboardState> {
   if (firstError) return demoDashboardState('demo', firstError.message)
 
   const events = (eventResult.data ?? []).map(toEvent)
-  const posts = (postResult.data ?? []).map(toPost)
+  const rawPosts = (postResult.data ?? []).map(toPost)
+  const bbsNormalizedPosts = normalizedPostResult.error ? [] : (normalizedPostResult.data ?? []).map(toBbsNormalizedPost)
+  const posts = buildEffectiveBbsPostRecords(rawPosts, bbsNormalizedPosts)
   const scoredEvents = scoreEvents(events, stores, posts)
   const decisionResult = await supabase.from('user_store_decisions').select('*').eq('user_id', user.id)
   if (decisionResult.error && !isMissingRelationError(decisionResult.error)) {
@@ -834,6 +942,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     bbsSources: (sourceResult.data ?? []).map(toBbsSource),
     crawlRuns: (crawlResult.data ?? []).map(toCrawlRun),
     bbsSnapshots: (snapshotResult.data ?? []).map(toBbsSnapshot),
+    bbsNormalizedPosts,
     storeDecisions: storeDecisionRowsToState(decisionResult.error ? [] : decisionResult.data),
     exactTerms: exactRowsToState(termResult.data),
     wordBookmarks: (bookmarkResult.data ?? []).map(toWordBookmark),
@@ -947,7 +1056,9 @@ export async function saveAndSearchExactTerms(exactTerms: ExactTermState, fallba
   }
 
   const state = await getDashboardState()
-  const matches = searchExactBbsTerms(buildSearchableBbsRecords(state.posts, state.bbsSnapshots), state.stores, groups)
+  const searchableRecords = buildSearchableBbsRecords(state.posts, state.bbsSnapshots)
+  const recentRecords = filterPostsWithinHours(searchableRecords, state.setupStatus.generatedAt, 24)
+  const matches = searchExactBbsTerms(recentRecords, state.stores, groups)
   const persistableMatches = matches.filter((match) => !match.post.id.startsWith('snapshot-'))
   if (persistableMatches.length) {
     await access.supabase.from('exact_matches').upsert(
@@ -1154,12 +1265,22 @@ async function crawlSourceRow(
     browserSession?: BrowserSnapshotSession | null
     captureBrowserScreenshot?: boolean
   } = {},
-): Promise<{ source: BbsSource; run: CrawlRun; post: PostRecord | null; snapshot: BbsSnapshot | null }> {
+): Promise<{
+  source: BbsSource
+  run: CrawlRun
+  post: PostRecord | null
+  snapshot: BbsSnapshot | null
+  normalizedPosts: BbsNormalizedPost[]
+}> {
   const source = toBbsSource(row)
   const result = await scrapePublicPage(source.url)
   const candidatePost = scrapeResultToPost(result, source.storeId)
   const post = candidatePost ? await savePostRow(supabase, candidatePost) : null
   const snapshot = result.status === 'ok' ? await buildBbsSnapshot(source, result, options.browserSession, options) : null
+  const normalizedPosts =
+    result.status === 'ok'
+      ? await saveNormalizedBbsPostsFromText(supabase, source, snapshot?.extractedText ?? result.extractedText, result.fetchedAt)
+      : []
   const fetchedAt = result.fetchedAt
 
   await supabase
@@ -1197,6 +1318,7 @@ async function crawlSourceRow(
       lastMessage: result.message ?? result.title,
     },
     post,
+    normalizedPosts,
     run: {
       id: runRow?.id ?? randomUUID(),
       sourceId: source.id,

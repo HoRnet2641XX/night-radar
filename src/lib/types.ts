@@ -108,6 +108,21 @@ export type BbsSnapshot = {
   capturedAt: string
 }
 
+export type BbsNormalizedPost = {
+  id: string
+  sourceId?: string
+  storeId: string
+  sourceUrl?: string
+  articleNo?: string
+  authorName: string
+  authorGender: string
+  postedAt?: string
+  observedAt: string
+  body: string
+  bodyHash: string
+  contentKey: string
+}
+
 export type StoreRadarPoint = {
   store: StoreProfile
   score: number
@@ -294,6 +309,7 @@ export type DashboardState = {
   bbsSources: BbsSource[]
   crawlRuns: CrawlRun[]
   bbsSnapshots: BbsSnapshot[]
+  bbsNormalizedPosts: BbsNormalizedPost[]
   storeDecisions: Record<string, StoreDecisionState>
   exactTerms: ExactTermState
   wordBookmarks: WordBookmark[]

@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: '会員登録 | ナイトレーダー',
-  description: 'ナイトレーダーの会員登録。Google、X、メール認証でアプリを開始できます。',
+  description: 'ナイトレーダーの会員登録。Xまたはメール認証でアプリを開始できます。',
 }
 
 export default async function SignupPage() {

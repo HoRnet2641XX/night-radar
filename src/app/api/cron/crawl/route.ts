@@ -62,7 +62,7 @@ function compactCronCrawlResult(result: CronCrawlResult, elapsedMs: number) {
     batch: result.batch,
     filters: result.filters,
     failureNotificationCount: result.failureNotificationCount,
-    results: result.results.map(({ source, run, post, snapshot }) => ({
+    results: result.results.map(({ source, run, post, snapshot, normalizedPosts }) => ({
       source: {
         id: source.id,
         storeId: source.storeId,
@@ -99,6 +99,7 @@ function compactCronCrawlResult(result: CronCrawlResult, elapsedMs: number) {
             extractedTextLength: snapshot.extractedText.length,
           }
         : null,
+      normalizedPostCount: normalizedPosts.length,
     })),
   }
 }
