@@ -417,7 +417,10 @@ function buildPublicStoreSummary(input: {
   const recentPosts = filterPostsWithinHours(input.posts, generatedAt, 24)
   const recentThreeHourCount = filterPostsWithinHours(input.posts, generatedAt, 3).length
   const recentNormalizedPosts = filterNormalizedPostsWithinHours(input.normalizedPosts, generatedAt, 24)
-  const femalePostCount = recentNormalizedPosts.filter(isFemaleNormalizedPost).length
+  const femalePostCount = Math.max(
+    recentNormalizedPosts.filter(isFemaleNormalizedPost).length,
+    recentPosts.filter(isFemalePostRecord).length,
+  )
   const todayEventCount = input.events.filter(isTodayEvent).length
   const weekendEventCount = input.events.filter((event) => /金曜|土曜|日曜/.test(event.weekday)).length
   const womenRatio = computeWomenRatio(input.normalizedPosts, point)
@@ -522,6 +525,10 @@ function filterNormalizedPostsWithinHours(posts: BbsNormalizedPost[], reference:
 
 function isFemaleNormalizedPost(post: BbsNormalizedPost) {
   return /女性|単女|女|♀/i.test(post.authorGender)
+}
+
+function isFemalePostRecord(post: PostRecord) {
+  return /投稿者[:：][^。\n]{0,80}[（(]\s*(女性|単女|女|♀)\s*[）)]|[（(]\s*(女性|単女|女|♀)\s*[）)]/i.test(post.body)
 }
 
 function japanDateKey(date: Date) {
