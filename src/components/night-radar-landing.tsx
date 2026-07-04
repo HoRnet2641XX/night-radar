@@ -212,7 +212,7 @@ export function NightRadarLanding() {
               <Image
                 className={styles.phoneImage}
                 data-phone
-                src="/lp/generated/hero-iphone-device.png"
+                src="/lp/generated/hero-iphone-device.webp"
                 width={754}
                 height={1377}
                 priority
@@ -280,7 +280,7 @@ export function NightRadarLanding() {
           </div>
           <figure className={styles.alleyFigure} data-motion-item data-motion-card>
             <Image
-              src="/lp/generated/night-alley.png"
+              src="/lp/generated/night-alley.webp"
               width={1672}
               height={941}
               loading="lazy"
@@ -449,7 +449,6 @@ export function NightRadarLanding() {
         <nav aria-label="フッターナビゲーション">
           <a href={appHref('/privacy')}>プライバシー</a>
           <a href={appHref('/terms')}>利用規約</a>
-          <a href={appHref('/contact')}>お問い合わせ</a>
           <a href={appHref('/login?next=/app')}>ログイン</a>
         </nav>
       </footer>

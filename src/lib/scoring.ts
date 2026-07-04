@@ -17,7 +17,7 @@ import type {
   WeekdayPostStat,
   WordBookmark,
 } from './types'
-import { eventWeekday, formatEventDateLabel, parseDateInJapan, weekdayFromDate, weekdayLabels } from './date'
+import { eventWeekday, formatEventDateLabel, parseDateInJapan, weekdayFromDate, weekdayIndexForDateInJapan, weekdayLabels } from './date'
 
 export { weekdayLabels }
 
@@ -741,9 +741,10 @@ export function scoreEvents(events: EventInput[], stores: StoreProfile[], posts:
   }))
 }
 
-export function summarizeSignals(scoredEvents: ScoredEvent[]) {
-  const dayTop = scoredEvents.filter((event) => event.session === 'day').toSorted((a, b) => b.score - a.score)[0]
-  const nightTop = scoredEvents.filter((event) => event.session === 'night').toSorted((a, b) => b.score - a.score)[0]
+export function summarizeSignals(scoredEvents: ScoredEvent[], options: { referenceDate?: Date } = {}) {
+  const orderedEvents = prioritizeScoredEventsForToday(scoredEvents, options)
+  const dayTop = orderedEvents.filter((event) => event.session === 'day')[0]
+  const nightTop = orderedEvents.filter((event) => event.session === 'night')[0]
 
   return {
     dayTop,
@@ -751,6 +752,29 @@ export function summarizeSignals(scoredEvents: ScoredEvent[]) {
     hotCount: scoredEvents.filter((event) => event.tone === 'hot').length,
     paidCount: scoredEvents.filter((event) => event.paidOnly).length,
   }
+}
+
+function eventDateDistanceDays(event: EventInput, referenceDate: Date) {
+  const eventDate = resolveForecastDate(event, referenceDate)
+  if (!eventDate) return Number.POSITIVE_INFINITY
+  return Math.round((eventDate.getTime() - startOfJapanDate(referenceDate).getTime()) / (24 * 60 * 60 * 1000))
+}
+
+function eventDatePriority(event: EventInput, referenceDate: Date) {
+  const diffDays = eventDateDistanceDays(event, referenceDate)
+  if (!Number.isFinite(diffDays)) return Number.POSITIVE_INFINITY
+  if (diffDays === 0) return 0
+  if (diffDays > 0) return 10 + diffDays
+  return 100 + Math.abs(diffDays)
+}
+
+export function prioritizeScoredEventsForToday(scoredEvents: ScoredEvent[], options: { referenceDate?: Date } = {}) {
+  const referenceDate = options.referenceDate ?? new Date()
+  return scoredEvents.toSorted((a, b) => {
+    const priorityDiff = eventDatePriority(a, referenceDate) - eventDatePriority(b, referenceDate)
+    if (priorityDiff) return priorityDiff
+    return b.score - a.score
+  })
 }
 
 export function parseExactTerms(value: string) {
@@ -982,7 +1006,8 @@ function resolveForecastDate(event: EventInput, referenceDate: Date) {
 
   const weekdayIndex = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜'].indexOf(eventWeekday(event))
   if (weekdayIndex < 0) return null
-  const offset = (weekdayIndex - reference.getDay() + 7) % 7
+  const referenceWeekdayIndex = weekdayIndexForDateInJapan(reference)
+  const offset = (weekdayIndex - referenceWeekdayIndex + 7) % 7
   return new Date(reference.getTime() + offset * 24 * 60 * 60 * 1000)
 }
 
@@ -1037,7 +1062,11 @@ export function buildVisitForecasts(
         ].slice(0, 4),
       }
     })
-    .toSorted((a, b) => b.score - a.score)
+    .toSorted((a, b) => {
+      const datePriority = eventDatePriority(a.event, referenceDate) - eventDatePriority(b.event, referenceDate)
+      if (datePriority) return datePriority
+      return b.score - a.score
+    })
     .map((forecast, index) => ({ ...forecast, rank: index + 1 }))
 }
 

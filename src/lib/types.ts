@@ -16,6 +16,13 @@ export type StoreProfile = {
   id: string
   name: string
   area: string
+  address?: string
+  nearestStation?: string
+  phone?: string
+  officialUrl?: string
+  mapUrl?: string
+  priceNote?: string
+  tags: string[]
   hasDaytime: boolean
   hasNight: boolean
   openingHourDay: string

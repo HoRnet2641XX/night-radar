@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { BbsNormalizedPost, BbsSnapshot, BbsSnapshotMetrics, EventInput, PostRecord } from './types'
+import type { BbsNormalizedPost, BbsSnapshot, BbsSnapshotMetrics, EventInput, PostRecord, ScoredEvent } from './types'
 import { events, posts, stores } from './demo-data'
 import { formatEventDateLabel, weekdayLabelForJapanDate } from './date'
 import {
@@ -18,9 +18,11 @@ import {
   filterPostsWithinHours,
   normalizeWatchedSearchText,
   parseExactTerms,
+  prioritizeScoredEventsForToday,
   scoreBbsSnapshot,
   scoreEvents,
   searchExactBbsTerms,
+  summarizeSignals,
 } from './scoring'
 
 describe('Japan calendar dates', () => {
@@ -126,6 +128,72 @@ describe('scoreEvents', () => {
     const forecasts = buildVisitForecasts([event], [store], [])
 
     assert.equal(forecasts[0].dateLabel, '6/13(土)')
+  })
+
+  it('prioritizes today on the TOP summary even when tomorrow has a higher raw score', () => {
+    const store = stores[0]
+    const todayEvent = {
+      id: 'today-saturday-event',
+      storeId: store.id,
+      date: '2026-07-04',
+      weekday: '土曜',
+      startsAt: '19:00',
+      session: 'night',
+      category: '通常',
+      title: '今日の候補',
+      score: 72,
+      rank: 2,
+      tone: 'warm',
+      paidOnly: false,
+      store,
+      metrics: {},
+      reasons: ['土曜との相性が高い'],
+    } as ScoredEvent
+    const tomorrowEvent = {
+      ...todayEvent,
+      id: 'tomorrow-sunday-event',
+      date: '2026-07-05',
+      weekday: '日曜',
+      title: '明日の高得点候補',
+      score: 99,
+      rank: 1,
+      reasons: ['日曜との相性が高い'],
+    } as ScoredEvent
+    const referenceDate = new Date('2026-07-03T15:30:00.000Z')
+
+    assert.equal(prioritizeScoredEventsForToday([tomorrowEvent, todayEvent], { referenceDate })[0].id, 'today-saturday-event')
+    assert.equal(summarizeSignals([tomorrowEvent, todayEvent], { referenceDate }).nightTop?.id, 'today-saturday-event')
+  })
+
+  it('prioritizes today on visit forecasts before high-score future events', () => {
+    const store = stores[0]
+    const todayEvent: EventInput = {
+      id: 'forecast-today-event',
+      storeId: store.id,
+      date: '2026-07-04',
+      weekday: '土曜',
+      startsAt: '19:00',
+      session: 'night',
+      category: '通常営業',
+      title: '今日の予測候補',
+    }
+    const futureEvent: EventInput = {
+      id: 'forecast-future-event',
+      storeId: store.id,
+      date: '2026-07-05',
+      weekday: '日曜',
+      startsAt: '19:00',
+      session: 'night',
+      category: '女性無料 初めて歓迎',
+      title: '明日の高得点候補',
+      details: '女性無料、初めて歓迎、予約参加、人数条件が具体的な高得点イベント。',
+    }
+    const referenceDate = new Date('2026-07-03T15:30:00.000Z')
+
+    const forecasts = buildVisitForecasts([futureEvent, todayEvent], [store], [], { referenceDate, windowDays: 14 })
+
+    assert.equal(forecasts[0].id, 'forecast-today-event')
+    assert.equal(forecasts[0].dateLabel, '7/4(土)')
   })
 })
 

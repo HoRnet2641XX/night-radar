@@ -44,7 +44,15 @@ type SupabaseServerClient = NonNullable<Awaited<ReturnType<typeof createSupabase
 type SupabaseAdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>
 type DataClient = SupabaseServerClient | SupabaseAdminClient
 type DbRow = Record<string, unknown>
+type DbListResult = { data: DbRow[] | null; error: { code?: string; message?: string } | null }
 type RecordKind = 'stores' | 'events' | 'posts' | 'situations' | 'bbsSources'
+type CrawlSourceResult = {
+  source: BbsSource
+  run: CrawlRun
+  post: PostRecord | null
+  snapshot: BbsSnapshot | null
+  normalizedPosts: BbsNormalizedPost[]
+}
 type WriteAccess =
   | { mode: 'database'; supabase: SupabaseServerClient; user: User }
   | { mode: 'demo'; message: string }
@@ -70,6 +78,33 @@ export const defaultNotificationPreference: NotificationPreference = {
   webhookUrl: '',
   channel: 'in_app',
   audience: 'free',
+}
+
+const recentDashboardPostWindowHours = 48
+const storeSelectColumns =
+  'id,name,area,address,nearest_station,phone,official_url,map_url,price_note,tags,has_daytime,has_night,opening_hour_day,opening_hour_night,pr_structure,strong_days,strong_events,weak_events,trust_seed,created_at'
+const legacyStoreSelectColumns =
+  'id,name,area,has_daytime,has_night,opening_hour_day,opening_hour_night,pr_structure,strong_days,strong_events,weak_events,trust_seed,created_at'
+const eventSelectColumns = 'id,store_id,date_label,weekday,starts_at,session,category,title,details,source_url,created_at'
+const postSelectColumns = 'id,store_id,source,source_url,posted_at,body,keywords,created_at'
+const situationSelectColumns = 'id,store_id,status,title,note,source_url,observed_at'
+const sourceSelectColumns =
+  'id,store_id,label,url,parser_type,active,crawl_interval_minutes,last_fetched_at,last_status,last_message,created_at'
+const crawlRunSelectColumns = 'id,source_id,store_id,url,status,message,fetched_at,post_id'
+const snapshotLightSelectColumns = 'id,source_id,store_id,url,metrics,radar_score,captured_at'
+const snapshotSearchSelectColumns = 'id,source_id,store_id,url,metrics,radar_score,captured_at,extracted_text'
+const normalizedPostSelectColumns =
+  'id,source_id,store_id,source_url,article_no,author_name,author_gender,posted_at,observed_at,body,body_hash,content_key'
+const exactTermSelectColumns = 'id,user_id,term_group,term,created_at'
+const wordBookmarkSelectColumns = 'id,user_id,label,pattern,match_type,created_at'
+const notificationJobSelectColumns = 'id,user_id,title,body,channel,audience,scheduled_for,status,created_at'
+const notificationPreferenceSelectColumns = 'user_id,email,webhook_url,channel,audience'
+const importBatchSelectColumns = 'id,user_id,kind,imported_count,error_count,created_at'
+const subscriptionSelectColumns = 'user_id,plan,status,stripe_customer_id,stripe_subscription_id'
+const storeDecisionSelectColumns = 'id,user_id,store_id,decision,updated_at'
+
+function isoHoursAgo(hours: number) {
+  return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
 }
 
 function demoDashboardState(mode: RuntimeMode = 'demo', connectionNote?: string): DashboardState {
@@ -163,6 +198,13 @@ function toStore(row: DbRow): StoreProfile {
     id: stringField(row, 'id'),
     name: stringField(row, 'name'),
     area: stringField(row, 'area', '未設定'),
+    address: optionalStringField(row, 'address'),
+    nearestStation: optionalStringField(row, 'nearest_station'),
+    phone: optionalStringField(row, 'phone'),
+    officialUrl: optionalStringField(row, 'official_url'),
+    mapUrl: optionalStringField(row, 'map_url'),
+    priceNote: optionalStringField(row, 'price_note'),
+    tags: stringArrayField(row, 'tags'),
     hasDaytime: booleanField(row, 'has_daytime'),
     hasNight: booleanField(row, 'has_night', true),
     openingHourDay: stringField(row, 'opening_hour_day', '13:00'),
@@ -181,6 +223,13 @@ function toStoreRow(store: StoreProfile, ownerId: string) {
     owner_id: ownerId || null,
     name: store.name,
     area: store.area,
+    address: store.address || null,
+    nearest_station: store.nearestStation || null,
+    phone: store.phone || null,
+    official_url: store.officialUrl || null,
+    map_url: store.mapUrl || null,
+    price_note: store.priceNote || null,
+    tags: store.tags,
     has_daytime: store.hasDaytime,
     has_night: store.hasNight,
     opening_hour_day: store.openingHourDay,
@@ -201,6 +250,13 @@ function normalizeStore(input: Partial<StoreProfile>): StoreProfile {
     id: ensureId(input.id),
     name,
     area: String(input.area ?? '未設定'),
+    address: String(input.address ?? '').trim() || undefined,
+    nearestStation: String(input.nearestStation ?? '').trim() || undefined,
+    phone: String(input.phone ?? '').trim() || undefined,
+    officialUrl: String(input.officialUrl ?? '').trim() || undefined,
+    mapUrl: String(input.mapUrl ?? '').trim() || undefined,
+    priceNote: String(input.priceNote ?? '').trim() || undefined,
+    tags: listValue(input.tags),
     hasDaytime: Boolean(input.hasDaytime),
     hasNight: input.hasNight ?? true,
     openingHourDay: String(input.openingHourDay ?? '13:00'),
@@ -620,6 +676,11 @@ function isMissingRelationError(error?: { code?: string; message?: string } | nu
   )
 }
 
+function isMissingColumnError(error?: { code?: string; message?: string } | null) {
+  if (!error) return false
+  return error.code === '42703' || /column .* does not exist/i.test(error.message ?? '')
+}
+
 function storeDecisionRowsToState(rows?: DbRow[] | null): Record<string, StoreDecisionState> {
   const decisions: Record<string, StoreDecisionState> = {}
   rows?.forEach((row) => {
@@ -850,14 +911,15 @@ export async function getDashboardState(): Promise<DashboardState> {
   } = await supabase.auth.getUser()
   if (!user) return demoDashboardState('anonymous', 'ログイン待ち')
 
-  const { data: storeRows, error: storeError } = await supabase
-    .from('stores')
-    .select('*')
-    .order('created_at', { ascending: false })
-  if (storeError) return demoDashboardState('demo', storeError.message)
+  let storeResult = (await supabase.from('stores').select(storeSelectColumns).order('created_at', { ascending: false })) as DbListResult
+  if (isMissingColumnError(storeResult.error)) {
+    storeResult = (await supabase.from('stores').select(legacyStoreSelectColumns).order('created_at', { ascending: false })) as DbListResult
+  }
+  if (storeResult.error) return demoDashboardState('demo', storeResult.error.message)
 
-  const storeIds = (storeRows ?? []).map((row) => row.id)
-  const stores = (storeRows ?? []).map(toStore)
+  const storeIds = (storeResult.data ?? []).map((row) => row.id)
+  const stores = (storeResult.data ?? []).map(toStore)
+  const recentPostThreshold = isoHoursAgo(recentDashboardPostWindowHours)
 
   const [
     eventResult,
@@ -876,47 +938,62 @@ export async function getDashboardState(): Promise<DashboardState> {
   ] =
     await Promise.all([
       storeIds.length
-        ? supabase.from('events').select('*').in('store_id', storeIds).order('created_at', { ascending: false })
+        ? supabase.from('events').select(eventSelectColumns).in('store_id', storeIds).order('created_at', { ascending: false }).limit(1500)
         : Promise.resolve({ data: [], error: null }),
       storeIds.length
-        ? supabase.from('posts').select('*').in('store_id', storeIds).order('posted_at', { ascending: false }).limit(5000)
+        ? supabase
+            .from('posts')
+            .select(postSelectColumns)
+            .in('store_id', storeIds)
+            .order('posted_at', { ascending: false })
+            .limit(1200)
         : Promise.resolve({ data: [], error: null }),
       storeIds.length
-        ? supabase.from('store_situations').select('*').in('store_id', storeIds).order('observed_at', { ascending: false })
+        ? supabase
+            .from('store_situations')
+            .select(situationSelectColumns)
+            .in('store_id', storeIds)
+            .order('observed_at', { ascending: false })
         : Promise.resolve({ data: [], error: null }),
       storeIds.length
-        ? supabase.from('bbs_sources').select('*').in('store_id', storeIds).order('created_at', { ascending: false })
+        ? supabase.from('bbs_sources').select(sourceSelectColumns).in('store_id', storeIds).order('created_at', { ascending: false })
         : Promise.resolve({ data: [], error: null }),
       storeIds.length
-        ? supabase.from('crawl_runs').select('*').in('store_id', storeIds).order('fetched_at', { ascending: false }).limit(20)
+        ? supabase.from('crawl_runs').select(crawlRunSelectColumns).in('store_id', storeIds).order('fetched_at', { ascending: false }).limit(20)
         : Promise.resolve({ data: [], error: null }),
       storeIds.length
-        ? supabase.from('bbs_snapshots').select('*').in('store_id', storeIds).order('captured_at', { ascending: false }).limit(800)
+        ? supabase
+            .from('bbs_snapshots')
+            .select(snapshotLightSelectColumns)
+            .in('store_id', storeIds)
+            .order('captured_at', { ascending: false })
+            .limit(320)
         : Promise.resolve({ data: [], error: null }),
       storeIds.length
         ? supabase
             .from('bbs_normalized_posts')
-            .select('*')
+            .select(normalizedPostSelectColumns)
             .in('store_id', storeIds)
+            .gte('observed_at', recentPostThreshold)
             .order('observed_at', { ascending: false })
-            .limit(5000)
+            .limit(2200)
         : Promise.resolve({ data: [], error: null }),
-      supabase.from('exact_terms').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
-      supabase.from('word_bookmarks').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+      supabase.from('exact_terms').select(exactTermSelectColumns).eq('user_id', user.id).order('created_at', { ascending: true }),
+      supabase.from('word_bookmarks').select(wordBookmarkSelectColumns).eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase
         .from('notification_jobs')
-        .select('*')
+        .select(notificationJobSelectColumns)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(20),
-      supabase.from('notification_preferences').select('*').eq('user_id', user.id).maybeSingle(),
+      supabase.from('notification_preferences').select(notificationPreferenceSelectColumns).eq('user_id', user.id).maybeSingle(),
       supabase
         .from('import_batches')
-        .select('*')
+        .select(importBatchSelectColumns)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(12),
-      supabase.from('subscriptions').select('*').eq('user_id', user.id).maybeSingle(),
+      supabase.from('subscriptions').select(subscriptionSelectColumns).eq('user_id', user.id).maybeSingle(),
     ])
 
   const normalizedPostError =
@@ -937,12 +1014,25 @@ export async function getDashboardState(): Promise<DashboardState> {
     subscriptionResult.error
   if (firstError) return demoDashboardState('demo', firstError.message)
 
+  let snapshotRows = snapshotResult.data ?? []
+  if (normalizedPostResult.error && isMissingRelationError(normalizedPostResult.error) && storeIds.length) {
+    const fallbackSnapshotResult = await supabase
+      .from('bbs_snapshots')
+      .select(snapshotSearchSelectColumns)
+      .in('store_id', storeIds)
+      .gte('captured_at', recentPostThreshold)
+      .order('captured_at', { ascending: false })
+      .limit(120)
+
+    if (!fallbackSnapshotResult.error) snapshotRows = fallbackSnapshotResult.data ?? snapshotRows
+  }
+
   const events = (eventResult.data ?? []).map(toEvent)
   const rawPosts = (postResult.data ?? []).map(toPost)
   const bbsNormalizedPosts = normalizedPostResult.error ? [] : (normalizedPostResult.data ?? []).map(toBbsNormalizedPost)
   const posts = buildEffectiveBbsPostRecords(rawPosts, bbsNormalizedPosts)
   const scoredEvents = scoreEvents(events, stores, posts)
-  const decisionResult = await supabase.from('user_store_decisions').select('*').eq('user_id', user.id)
+  const decisionResult = await supabase.from('user_store_decisions').select(storeDecisionSelectColumns).eq('user_id', user.id)
   if (decisionResult.error && !isMissingRelationError(decisionResult.error)) {
     return demoDashboardState('demo', decisionResult.error.message)
   }
@@ -960,7 +1050,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     situations: (situationResult.data ?? []).map(toSituation),
     bbsSources: (sourceResult.data ?? []).map(toBbsSource),
     crawlRuns: (crawlResult.data ?? []).map(toCrawlRun),
-    bbsSnapshots: (snapshotResult.data ?? []).map(toBbsSnapshot),
+    bbsSnapshots: snapshotRows.map(toBbsSnapshot),
     bbsNormalizedPosts,
     storeDecisions: storeDecisionRowsToState(decisionResult.error ? [] : decisionResult.data),
     exactTerms: exactRowsToState(termResult.data),
@@ -1284,13 +1374,7 @@ async function crawlSourceRow(
     browserSession?: BrowserSnapshotSession | null
     captureBrowserScreenshot?: boolean
   } = {},
-): Promise<{
-  source: BbsSource
-  run: CrawlRun
-  post: PostRecord | null
-  snapshot: BbsSnapshot | null
-  normalizedPosts: BbsNormalizedPost[]
-}> {
+): Promise<CrawlSourceResult> {
   const source = toBbsSource(row)
   const result = await scrapePublicPage(source.url)
   const candidatePost = scrapeResultToPost(result, source.storeId)
@@ -1349,6 +1433,97 @@ async function crawlSourceRow(
       postId: post?.id,
     },
     snapshot: snapshotRow ? toBbsSnapshot(snapshotRow) : snapshot,
+  }
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error || 'Unknown error')
+}
+
+function fallbackFailedCrawlResult(row: DbRow, message: string, fetchedAt: string): CrawlSourceResult {
+  const source = toBbsSource(row)
+  return {
+    source: {
+      ...source,
+      lastFetchedAt: fetchedAt,
+      lastStatus: 'failed',
+      lastMessage: message,
+    },
+    run: {
+      id: randomUUID(),
+      sourceId: source.id,
+      storeId: source.storeId,
+      url: source.url,
+      status: 'failed',
+      message,
+      fetchedAt,
+    },
+    post: null,
+    snapshot: null,
+    normalizedPosts: [],
+  }
+}
+
+async function saveFailedCrawlRun(supabase: DataClient, row: DbRow, error: unknown): Promise<CrawlSourceResult> {
+  const source = toBbsSource(row)
+  const fetchedAt = new Date().toISOString()
+  const message = `巡回処理で例外が発生しました: ${errorMessage(error)}`.slice(0, 500)
+
+  await supabase
+    .from('bbs_sources')
+    .update({
+      last_fetched_at: fetchedAt,
+      last_status: 'failed',
+      last_message: message,
+    })
+    .eq('id', source.id)
+
+  const { data } = await supabase
+    .from('crawl_runs')
+    .insert({
+      source_id: source.id,
+      store_id: source.storeId,
+      url: source.url,
+      status: 'failed',
+      message,
+      fetched_at: fetchedAt,
+      post_id: null,
+    })
+    .select('*')
+    .single()
+
+  if (!data) return fallbackFailedCrawlResult(row, message, fetchedAt)
+
+  return {
+    source: {
+      ...source,
+      lastFetchedAt: fetchedAt,
+      lastStatus: 'failed',
+      lastMessage: message,
+    },
+    run: toCrawlRun(data),
+    post: null,
+    snapshot: null,
+    normalizedPosts: [],
+  }
+}
+
+async function crawlSourceRowSafely(
+  supabase: DataClient,
+  row: DbRow,
+  options: {
+    browserSession?: BrowserSnapshotSession | null
+    captureBrowserScreenshot?: boolean
+  } = {},
+) {
+  try {
+    return await crawlSourceRow(supabase, row, options)
+  } catch (error) {
+    try {
+      return await saveFailedCrawlRun(supabase, row, error)
+    } catch {
+      return fallbackFailedCrawlResult(row, `巡回処理で例外が発生しました: ${errorMessage(error)}`.slice(0, 500), new Date().toISOString())
+    }
   }
 }
 
@@ -1456,7 +1631,7 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
   try {
     for (const row of crawlRows) {
       results.push(
-        await crawlSourceRow(supabase, row, {
+        await crawlSourceRowSafely(supabase, row, {
           browserSession,
           captureBrowserScreenshot: captureBrowserScreenshots,
         }),

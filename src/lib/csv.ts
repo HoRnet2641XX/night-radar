@@ -7,6 +7,13 @@ const storeSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   area: z.string().default('未設定'),
+  address: z.string().optional(),
+  nearestStation: z.string().optional(),
+  phone: z.string().optional(),
+  officialUrl: z.string().optional(),
+  mapUrl: z.string().optional(),
+  priceNote: z.string().optional(),
+  tags: z.string().default(''),
   hasDaytime: z.coerce.boolean().default(false),
   hasNight: z.coerce.boolean().default(true),
   openingHourDay: z.string().default('13:00'),
@@ -48,6 +55,18 @@ const headerAliases: Record<string, string> = {
   店舗名: 'name',
   店名: 'name',
   エリア: 'area',
+  住所: 'address',
+  最寄り: 'nearestStation',
+  最寄駅: 'nearestStation',
+  電話: 'phone',
+  電話番号: 'phone',
+  phone: 'phone',
+  公式URL: 'officialUrl',
+  公式サイト: 'officialUrl',
+  地図URL: 'mapUrl',
+  料金: 'priceNote',
+  料金メモ: 'priceNote',
+  タグ: 'tags',
   昼営業: 'hasDaytime',
   夜営業: 'hasNight',
   昼開始: 'openingHourDay',
@@ -139,6 +158,7 @@ export function parseCsvText(text: string, kind: 'stores' | 'events' | 'posts') 
       const store = result.data as z.infer<typeof storeSchema>
       items.push({
         ...store,
+        tags: splitList(store.tags),
         strongDays: splitList(store.strongDays),
         strongEvents: splitList(store.strongEvents),
         weakEvents: splitList(store.weakEvents),
@@ -164,7 +184,7 @@ export function parseCsvText(text: string, kind: 'stores' | 'events' | 'posts') 
 
 export const csvTemplates = {
   stores:
-    'id,name,area,hasDaytime,hasNight,openingHourDay,openingHourNight,prStructure,strongDays,strongEvents,weakEvents,trustSeed\nsample-store,サンプル店,都内,true,true,13:00,19:00,具体型,"火曜,金曜","昼主婦系,初心者系",SM系,72\n',
+    'id,name,area,address,nearestStation,phone,officialUrl,mapUrl,priceNote,tags,hasDaytime,hasNight,openingHourDay,openingHourNight,prStructure,strongDays,strongEvents,weakEvents,trustSeed\nsample-store,サンプル店,都内,東京都内,最寄駅,03-0000-0000,https://example.com,https://maps.google.com,公式で確認,"昼営業,初心者",true,true,13:00,19:00,具体型,"火曜,金曜","昼主婦系,初心者系",SM系,72\n',
   events:
     'id,storeId,date,weekday,startsAt,session,category,title,sourceUrl\nev-sample,sample-store,今日,火曜,13:00,day,昼主婦系,昼イベント,https://example.com\n',
   posts:

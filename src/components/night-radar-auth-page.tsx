@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Crosshair, XLogo } from '@phosphor-icons/react'
-import { motion, useReducedMotion } from 'motion/react'
 import styles from './night-radar-auth-page.module.css'
 
 type AuthMode = 'login' | 'signup'
@@ -48,7 +47,6 @@ function authErrorText(value: string | null) {
 
 export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
   const searchParams = useSearchParams()
-  const reduceMotion = useReducedMotion()
   const nextPath = useMemo(() => safeNextPath(searchParams.get('next')), [searchParams])
   const initialError = useMemo(() => authErrorText(searchParams.get('error')), [searchParams])
   const isSignup = mode === 'signup'
@@ -96,12 +94,7 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
 
   return (
     <main className={styles.authPage} id="main">
-      <motion.div
-        className={styles.authCard}
-        initial={reduceMotion ? false : { opacity: 0, y: 16 }}
-        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-        transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
-      >
+      <div className={styles.authCard}>
         <div className={styles.brand}>
           <Link className={styles.brandLogo} href="/">
             <span className={styles.brandMark}>
@@ -137,7 +130,7 @@ export function NightRadarAuthPage({ mode }: { mode: AuthMode }) {
         <Link className={styles.backLink} href="/">
           紹介ページへ戻る
         </Link>
-      </motion.div>
+      </div>
     </main>
   )
 }

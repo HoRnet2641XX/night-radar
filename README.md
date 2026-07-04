@@ -6,6 +6,9 @@ It now includes:
 
 - Supabase-backed store, event, post, situation, BBS source, BBS snapshot, word bookmark, exact-term, notification, score snapshot, and subscription tables
 - operator-managed shared venue catalog
+- public discovery pages: `/shops`, `/ranking`, `/areas`, `/features`, `/map`, `/likes`, and `/guides`
+- store detail pages with hours, price note, area/address, official URL, BBS URL, map link, and recent signals
+- PWA manifest, sitemap, robots, RSS feed, FAQ/schema.org JSON-LD, breadcrumbs, and collection schema
 - CSV/SQL-based catalog seeding for stores, events, posts, and BBS sources
 - BBS screenshots and cron crawling for operator-managed sources
 - vertical store radar, store share donut, watched-word hits, forecast ranking, and monthly event calendar
@@ -14,9 +17,8 @@ It now includes:
 - weekday posting ratio, store pulse, and event score calculation
 - OpenAI analysis with deterministic heuristic fallback
 - notification preferences and dispatch through in-app, Resend email, or webhook
-- Supabase auth through Google, X, and email OTP
+- Supabase auth through X OAuth
 - Stripe Checkout, webhook subscription sync, and billing portal
-- Basic Auth gate for private deployments
 - Terms and Privacy pages
 
 ## Run
@@ -50,7 +52,7 @@ For a step-by-step setup checklist with dashboard URLs, see `docs/setup/external
 4. If the project already exists, also run `supabase/migrations/20260629_user_store_decisions.sql` to persist candidate / hidden store decisions.
 5. For the initial venue catalog, run `supabase/seed-store-catalog.sql`.
 6. For a local/demo catalog instead, run `supabase/seed-demo-catalog.sql`.
-7. Enable Auth providers: Email OTP, Google, and X / Twitter OAuth 2.0.
+7. Enable Auth providers: X / Twitter OAuth 2.0.
 8. Add redirect URLs:
    - `http://localhost:3010/api/auth/callback`
    - `https://YOUR_DOMAIN/api/auth/callback`
@@ -105,13 +107,9 @@ Persistent database operations apply plan limits after Supabase is connected:
 - Standard: 1000 CSV rows, 20 BBS sources, 10 exact-match terms per group, 12 notification jobs
 - Premium: 5000 CSV rows, 60 BBS sources, 30 exact-match terms per group, 30 notification jobs
 
-### Basic Auth
-
-Set `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD` in Vercel to protect the whole app before Supabase login.
-
 ## CSV columns
 
-- Stores: `id,name,area,hasDaytime,hasNight,openingHourDay,openingHourNight,prStructure,strongDays,strongEvents,weakEvents,trustSeed`
+- Stores: `id,name,area,address,nearestStation,officialUrl,mapUrl,priceNote,tags,hasDaytime,hasNight,openingHourDay,openingHourNight,prStructure,strongDays,strongEvents,weakEvents,trustSeed`
 - Events: `id,storeId,date,weekday,startsAt,session,category,title,sourceUrl`
 - Posts: `id,storeId,source,sourceUrl,postedAt,body,keywords`
 

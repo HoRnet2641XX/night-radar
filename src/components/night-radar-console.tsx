@@ -1,7 +1,7 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
 import {
   Broadcast,
   CalendarDots,
@@ -43,6 +43,7 @@ import {
   filterPostsWithinHours,
   normalizeWatchedSearchText,
   parseExactTerms,
+  prioritizeScoredEventsForToday,
   searchExactBbsTerms,
   summarizeSignals,
   watchedTemplateRules,
@@ -119,6 +120,39 @@ const exactTermLabels = {
   popularSingleFemale: '人気単独女性',
   negativePerson: '不人気・苦手',
 } as const
+
+const bodyScrollLockState = {
+  count: 0,
+  overflow: '',
+  paddingRight: '',
+}
+
+function useBodyScrollLock(locked: boolean) {
+  useEffect(() => {
+    if (!locked || typeof window === 'undefined') return
+
+    if (bodyScrollLockState.count === 0) {
+      bodyScrollLockState.overflow = document.body.style.overflow
+      bodyScrollLockState.paddingRight = document.body.style.paddingRight
+
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
+      document.body.style.overflow = 'hidden'
+      if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`
+    }
+
+    bodyScrollLockState.count += 1
+
+    return () => {
+      bodyScrollLockState.count = Math.max(0, bodyScrollLockState.count - 1)
+      if (bodyScrollLockState.count > 0) return
+
+      document.body.style.overflow = bodyScrollLockState.overflow
+      document.body.style.paddingRight = bodyScrollLockState.paddingRight
+      bodyScrollLockState.overflow = ''
+      bodyScrollLockState.paddingRight = ''
+    }
+  }, [locked])
+}
 
 const officialEventStoreNames: Record<string, string> = {
   agreeable: 'AgreeAble',
@@ -271,7 +305,6 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   })
   const [showFirstGuide, setShowFirstGuide] = useState(false)
   const [busy, setBusy] = useState('')
-  const reduceMotion = useReducedMotion()
 
   useEffect(() => {
     window.localStorage.setItem(storeDecisionStorageKey, JSON.stringify(storeDecisions))
@@ -288,6 +321,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     return () => window.clearTimeout(guideTimer)
   }, [firstGuideStorageKey, isSignedIn])
 
+  const todayOrderedScoredEvents = useMemo(() => prioritizeScoredEventsForToday(scoredEvents), [scoredEvents])
   const summary = useMemo(() => summarizeSignals(scoredEvents), [scoredEvents])
   const storeAnalytics = useMemo(() => buildStoreBbsAnalytics(stores, posts), [stores, posts])
   const storeRadar = useMemo(() => buildStoreRadarPoints(stores, posts, bbsSnapshots), [stores, posts, bbsSnapshots])
@@ -307,40 +341,6 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     calendarEvents.forEach((event) => map.set(event.storeId, (map.get(event.storeId) ?? 0) + 1))
     return map
   }, [calendarEvents])
-  const filteredStoreRadar = useMemo(() => {
-    const query = normalizeLocalSearchText(storeQuery)
-    const filtered = storeRadar.filter((point) => {
-      if (storeDecisions[point.store.id] === 'hidden') return false
-
-      if (query) {
-        const haystack = normalizeLocalSearchText(
-          [point.store.name, point.store.area, point.store.prStructure, point.verdict].join(' '),
-        )
-        if (!haystack.includes(query)) return false
-      }
-
-      if (storeSessionFilter === 'day' && !point.store.hasDaytime) return false
-      if (storeSessionFilter === 'night' && !point.store.hasNight) return false
-
-      if (storeSignalFilter === 'female' && point.signals.femaleOnly < 1) return false
-      if (storeSignalFilter === 'first' && point.signals.firstVisit < 1) return false
-      if (storeSignalFilter === 'group' && point.signals.groupVisit < 1) return false
-      if (storeSignalFilter === 'emoji' && point.signals.emoji < 1) return false
-
-      return true
-    })
-
-    return filtered.toSorted((a, b) => {
-      if (storeSort === 'share') return b.share - a.share || b.score - a.score
-      if (storeSort === 'signals') return b.signals.totalSignals - a.signals.totalSignals || b.score - a.score
-      if (storeSort === 'updated') {
-        const bTime = b.lastCapturedAt ? new Date(b.lastCapturedAt).getTime() : 0
-        const aTime = a.lastCapturedAt ? new Date(a.lastCapturedAt).getTime() : 0
-        return bTime - aTime || b.score - a.score
-      }
-      return b.score - a.score || b.share - a.share
-    })
-  }, [storeDecisions, storeQuery, storeRadar, storeSessionFilter, storeSignalFilter, storeSort])
   const normalizedStoreIds = useMemo(() => new Set(bbsNormalizedPosts.map((post) => post.storeId)), [bbsNormalizedPosts])
   const searchableBbsSnapshots = useMemo(
     () => (normalizedStoreIds.size ? bbsSnapshots.filter((snapshot) => !normalizedStoreIds.has(snapshot.storeId)) : bbsSnapshots),
@@ -355,6 +355,51 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     () => buildGenderPostRankings(searchableBbsRecords, stores),
     [searchableBbsRecords, stores],
   )
+  const genderRankingByStoreId = useMemo(
+    () => new Map(genderPostRankings.map((ranking) => [ranking.store.id, ranking])),
+    [genderPostRankings],
+  )
+  const filteredStoreRadar = useMemo(() => {
+    const query = normalizeLocalSearchText(storeQuery)
+    const filtered = storeRadar.filter((point) => {
+      const genderRanking = genderRankingByStoreId.get(point.store.id)
+      const displaySignals = getDisplaySignalCounts(point, genderRanking)
+
+      if (storeDecisions[point.store.id] === 'hidden') return false
+
+      if (query) {
+        const haystack = normalizeLocalSearchText(
+          [point.store.name, point.store.area, point.store.prStructure, point.verdict].join(' '),
+        )
+        if (!haystack.includes(query)) return false
+      }
+
+      if (storeSessionFilter === 'day' && !point.store.hasDaytime) return false
+      if (storeSessionFilter === 'night' && !point.store.hasNight) return false
+
+      if (storeSignalFilter === 'female' && displaySignals.female < 1) return false
+      if (storeSignalFilter === 'first' && displaySignals.first < 1) return false
+      if (storeSignalFilter === 'group' && displaySignals.group < 1) return false
+      if (storeSignalFilter === 'emoji' && displaySignals.emoji < 1) return false
+
+      return true
+    })
+
+    return filtered.toSorted((a, b) => {
+      if (storeSort === 'share') return b.share - a.share || b.score - a.score
+      if (storeSort === 'signals') {
+        const bAttention = getDisplayAttentionCount(b, genderRankingByStoreId.get(b.store.id))
+        const aAttention = getDisplayAttentionCount(a, genderRankingByStoreId.get(a.store.id))
+        return bAttention - aAttention || b.score - a.score
+      }
+      if (storeSort === 'updated') {
+        const bTime = b.lastCapturedAt ? new Date(b.lastCapturedAt).getTime() : 0
+        const aTime = a.lastCapturedAt ? new Date(a.lastCapturedAt).getTime() : 0
+        return bTime - aTime || b.score - a.score
+      }
+      return b.score - a.score || b.share - a.share
+    })
+  }, [genderRankingByStoreId, storeDecisions, storeQuery, storeRadar, storeSessionFilter, storeSignalFilter, storeSort])
   const watchedWordHits = useMemo(
     () =>
       buildWatchedWordHits(recentWatchedBbsRecords, stores, wordBookmarks, {
@@ -403,7 +448,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     () => (exactMatchFilter === 'all' ? activeExactMatches : activeExactMatches.filter((match) => match.group === exactMatchFilter)),
     [activeExactMatches, exactMatchFilter],
   )
-  const featuredEvent = summary.dayTop ?? summary.nightTop ?? scoredEvents[0]
+  const featuredEvent = todayOrderedScoredEvents[0] ?? summary.dayTop ?? summary.nightTop
   const visibleMatches = filteredExactMatches.slice(0, 16)
   const currentPlan = subscription.plan
   const currentLimits = planLimits[currentPlan]
@@ -426,10 +471,19 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   const selectedStoreSource = selectedStorePoint ? bbsSourceByStoreId.get(selectedStorePoint.store.id) : undefined
   const selectedStoreAnalytics = selectedStorePoint ? storeAnalyticsById.get(selectedStorePoint.store.id) : undefined
   const selectedStoreEventCount = selectedStorePoint ? eventCountByStoreId.get(selectedStorePoint.store.id) ?? 0 : 0
+  const selectedStoreGenderRanking = selectedStorePoint ? genderRankingByStoreId.get(selectedStorePoint.store.id) : undefined
   const candidateStoreCount = Object.values(storeDecisions).filter((state) => state === 'candidate').length
   const favoriteStoreCount = Object.values(storeDecisions).filter((state) => state === 'favorite').length
   const hiddenStoreCount = Object.values(storeDecisions).filter((state) => state === 'hidden').length
   const activeNavItem = navItems.find((item) => item.key === activeNav) ?? navItems[0]
+  useBodyScrollLock(Boolean(selectedStorePoint))
+
+  useEffect(() => {
+    if (selectedStorePoint || bodyScrollLockState.count > 0) return
+    if (document.body.style.overflow !== 'hidden') return
+    document.body.style.overflow = ''
+    document.body.style.paddingRight = ''
+  }, [selectedStorePoint])
 
   function navigateTo(item: (typeof navItems)[number]) {
     setActiveNav(item.key)
@@ -685,19 +739,16 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
             const isActive = activeNav === item.key
 
             return (
-              <motion.button
+              <button
                 aria-pressed={isActive}
                 className={isActive ? 'is-active' : ''}
                 key={item.key}
                 type="button"
                 onClick={() => navigateTo(item)}
-                whileHover={reduceMotion ? undefined : { y: -1 }}
-                whileTap={reduceMotion ? undefined : { scale: 0.96 }}
-                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
               >
                 <span className="nav-icon-shell">{item.icon}</span>
                 <span className="nav-label">{item.label}</span>
-              </motion.button>
+              </button>
             )
           })}
         </nav>
@@ -801,7 +852,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
                 <p>点数は「曜日相性・イベント種別・掲示板投稿の具体性」を合わせた優先度です。</p>
               </div>
               <div className="score-list">
-                {scoredEvents.slice(0, 5).map((event) => (
+                {todayOrderedScoredEvents.slice(0, 5).map((event) => (
                   <ScoreRow event={event} key={event.id} />
                 ))}
               </div>
@@ -816,6 +867,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
             <TodayDecisionCard
               featuredEvent={featuredEvent}
               hotStore={hotStore}
+              hotStoreRanking={hotStore ? genderRankingByStoreId.get(hotStore.store.id) : undefined}
               latestCaptureLabel={latestCaptureLabel}
               onOpenForecast={() => {
                 setActiveNav('stores')
@@ -828,7 +880,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
               busy={busy}
             />
 
-            <StoreMomentumRanking points={storeRadar} />
+            <StoreMomentumRanking points={storeRadar} rankings={genderPostRankings} />
 
             <MonthlyCalendarPreview events={calendarEvents} stores={stores} />
 
@@ -868,6 +920,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
               candidateCount={candidateStoreCount}
               eventCountByStoreId={eventCountByStoreId}
               favoriteCount={favoriteStoreCount}
+              genderRankingByStoreId={genderRankingByStoreId}
               hiddenCount={hiddenStoreCount}
               points={filteredStoreRadar}
               query={storeQuery}
@@ -885,6 +938,8 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
               onSignalFilterChange={setStoreSignalFilter}
               onSortChange={setStoreSort}
             />
+
+            <StoreGenderRadar points={filteredStoreRadar} rankings={genderPostRankings} />
 
             <PostCountRankingCard rankings={genderPostRankings.slice(0, 6)} />
 
@@ -916,6 +971,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
                 analytics={selectedStoreAnalytics}
                 decision={storeDecisions[selectedStorePoint.store.id]}
                 eventCount={selectedStoreEventCount}
+                genderRanking={selectedStoreGenderRanking}
                 point={selectedStorePoint}
                 source={selectedStoreSource}
                 onClose={() => setSelectedStoreId(null)}
@@ -1007,7 +1063,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
           </section>
         )}
 
-        {busy ? <BusyOverlay label={loadingLabelForBusy(busy)} reduceMotion={Boolean(reduceMotion)} /> : null}
+        {busy ? <BusyOverlay label={loadingLabelForBusy(busy)} /> : null}
       </section>
     </main>
   )
@@ -1025,7 +1081,7 @@ function loadingLabelForBusy(value: string) {
   return labels[value] ?? '処理しています'
 }
 
-function BusyOverlay({ label, reduceMotion }: { label: string; reduceMotion: boolean }) {
+function BusyOverlay({ label }: { label: string }) {
   useEffect(() => {
     const originalOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -1035,14 +1091,10 @@ function BusyOverlay({ label, reduceMotion }: { label: string; reduceMotion: boo
   }, [])
 
   return (
-    <motion.div
+    <div
       aria-live="polite"
       className="busy-overlay"
-      initial={reduceMotion ? false : { opacity: 0 }}
-      animate={reduceMotion ? undefined : { opacity: 1 }}
-      exit={reduceMotion ? undefined : { opacity: 0 }}
       role="status"
-      transition={{ duration: 0.18, ease: 'easeOut' }}
     >
       <div className="busy-loader" aria-hidden="true">
         <span />
@@ -1051,7 +1103,7 @@ function BusyOverlay({ label, reduceMotion }: { label: string; reduceMotion: boo
       </div>
       <p>{label}</p>
       <small>完了するまでこの画面でお待ちください</small>
-    </motion.div>
+    </div>
   )
 }
 
@@ -1111,52 +1163,33 @@ const backdropNodes = [
 ]
 
 function RadarBackdrop() {
-  const reduceMotion = useReducedMotion()
-
   return (
     <div className="radar-backdrop" aria-hidden="true">
-      <motion.div
-        className="backdrop-aurora"
-        animate={
-          reduceMotion
-            ? undefined
-            : {
-                opacity: [0.48, 0.78, 0.58, 0.48],
-                x: [0, 18, -10, 0],
-                y: [0, -12, 8, 0],
-              }
-        }
-        transition={{ duration: 18, ease: 'easeInOut', repeat: Infinity }}
-      />
-      <motion.div
-        className="backdrop-sweep"
-        animate={reduceMotion ? undefined : { x: ['-42%', '118%'], opacity: [0, 0.9, 0] }}
-        transition={{ duration: 5.8, ease: 'easeInOut', repeat: Infinity, repeatDelay: 1.6 }}
-      />
+      <div className="backdrop-aurora" />
+      <div className="backdrop-sweep" />
       <svg className="backdrop-circuit" viewBox="0 0 640 920" preserveAspectRatio="none">
-        <motion.path
+        <path
+          className="path-a"
           d="M40 142 C160 104 220 188 318 151 C438 105 498 146 606 90"
-          pathLength={1}
-          initial={false}
-          animate={reduceMotion ? undefined : { pathLength: [0.18, 1, 0.42], opacity: [0.18, 0.58, 0.22] }}
-          transition={{ duration: 9, ease: 'easeInOut', repeat: Infinity }}
         />
-        <motion.path
+        <path
+          className="path-b"
           d="M24 672 C146 590 222 710 330 620 C438 528 514 614 626 548"
-          pathLength={1}
-          initial={false}
-          animate={reduceMotion ? undefined : { pathLength: [0.24, 0.78, 1], opacity: [0.12, 0.46, 0.2] }}
-          transition={{ duration: 11, ease: 'easeInOut', repeat: Infinity, delay: 1.4 }}
         />
       </svg>
       <div className="backdrop-grid" />
       {backdropNodes.map((node) => (
-        <motion.span
+        <span
           className="backdrop-node"
           key={`${node.x}-${node.y}`}
-          style={{ '--node-x': node.x, '--node-y': node.y, '--node-size': `${node.size}px` } as CSSProperties}
-          animate={reduceMotion ? undefined : { scale: [1, 1.8, 1], opacity: [0.34, 0.82, 0.34] }}
-          transition={{ duration: 3.6, ease: 'easeInOut', repeat: Infinity, delay: node.delay }}
+          style={
+            {
+              '--node-delay': `${node.delay}s`,
+              '--node-size': `${node.size}px`,
+              '--node-x': node.x,
+              '--node-y': node.y,
+            } as CSSProperties
+          }
         />
       ))}
     </div>
@@ -1252,6 +1285,7 @@ function ActionButton({ icon, label, onClick, disabled = false }: { icon: ReactN
 
 function TodayDecisionCard({
   hotStore,
+  hotStoreRanking,
   watchStore,
   featuredEvent,
   topForecast,
@@ -1262,6 +1296,7 @@ function TodayDecisionCard({
   onOpenForecast,
 }: {
   hotStore?: StoreRadarPoint
+  hotStoreRanking?: GenderPostRanking
   watchStore?: StoreRadarPoint
   featuredEvent?: ScoredEvent
   topForecast?: VisitForecast
@@ -1273,14 +1308,16 @@ function TodayDecisionCard({
 }) {
   const score = hotStore?.score ?? featuredEvent?.score ?? 0
   const scoreProgress = `${Math.max(0, Math.min(100, score))}%`
+  const hotStoreAttentionCount = getDisplayAttentionCount(hotStore, hotStoreRanking)
+  const hotStoreSignals = getDisplaySignalCounts(hotStore, hotStoreRanking)
   const primaryReason =
-    topForecast?.reasons[0] ??
     featuredEvent?.reasons[0] ??
-    (hotStore ? `${hotStore.verdict}、注目シグナル ${hotStore.signals.totalSignals}件` : '掲示板の巡回後に判定が出ます。')
+    topForecast?.reasons[0] ??
+    (hotStore ? `${hotStore.verdict}、注目 ${hotStoreAttentionCount}件` : '掲示板の巡回後に判定が出ます。')
   const secondaryReason = hotStore
-    ? `女性${hotStore.signals.femaleOnly} / 初${hotStore.signals.firstVisit} / 複${hotStore.signals.groupVisit}`
+    ? `女性${hotStoreSignals.female} / 初${hotStoreSignals.first} / 複${hotStoreSignals.group}`
     : `巡回 ${latestCaptureLabel}`
-  const reasonChips = buildReasonChips(hotStore)
+  const reasonChips = buildReasonChips(hotStore, hotStoreRanking)
 
   return (
     <section className="today-decision-card" aria-label="今日の結論">
@@ -1314,6 +1351,27 @@ function TodayDecisionCard({
           <dd>{formatSourceSummary(sourceHealth, latestCaptureLabel)}</dd>
         </div>
       </dl>
+      <div className="decision-route" aria-label="判断の流れ">
+        <article>
+          <span>まず見る</span>
+          <strong>{hotStore ? formatBarName(hotStore.store.name) : '巡回待ち'}</strong>
+          <p>{hotStore ? hotStore.verdict : 'BBS巡回後に候補を出します。'}</p>
+        </article>
+        <article>
+          <span>比較する</span>
+          <strong>{watchStore ? formatBarName(watchStore.store.name) : '候補なし'}</strong>
+          <p>{watchStore ? watchStore.verdict : '2番手の動きを検出中です。'}</p>
+        </article>
+        <article>
+          <span>確認する</span>
+          <strong>{featuredEvent?.title ?? topForecast?.event?.title ?? '月間イベント'}</strong>
+          <p>
+            {featuredEvent
+              ? `${formatBarName(featuredEvent.store.name)} / ${formatEventDateLabel(featuredEvent)} ${featuredEvent.startsAt}`
+              : '予定とBBSを合わせて確認します。'}
+          </p>
+        </article>
+      </div>
       <div className="reason-chip-row" aria-label="スコア内訳">
         {reasonChips.map((chip) => (
           <span key={chip}>{chip}</span>
@@ -1353,14 +1411,146 @@ function formatSourceSummary(health: SourceHealth, latestCaptureLabel: string) {
   return `最終更新 ${latestCaptureLabel} / ${healthText}`
 }
 
-function buildReasonChips(point?: StoreRadarPoint) {
+function clampSignalCount(value: number, ceiling: number) {
+  if (!value) return 0
+  if (ceiling > 0) return Math.min(value, ceiling)
+  return Math.min(value, 99)
+}
+
+function getDisplayAttentionCount(point?: StoreRadarPoint, ranking?: GenderPostRanking) {
+  if (!point) return 0
+  if (ranking?.observedCount) return ranking.observedCount
+  if (point.postCount) return point.postCount
+  return Math.min(point.signals.totalSignals, 99)
+}
+
+function getDisplaySignalCounts(point?: StoreRadarPoint, ranking?: GenderPostRanking) {
+  if (!point) {
+    return {
+      female: 0,
+      male: 0,
+      first: 0,
+      group: 0,
+      emoji: 0,
+      comeback: 0,
+    }
+  }
+
+  const attentionCount = getDisplayAttentionCount(point, ranking)
+  const female = ranking?.femaleSignals ? Math.min(ranking.femaleSignals, attentionCount || ranking.femaleSignals) : point.signals.femaleOnly
+  const male = ranking?.maleSignals ? Math.min(ranking.maleSignals, attentionCount || ranking.maleSignals) : 0
+
+  return {
+    female: clampSignalCount(female, attentionCount),
+    male: clampSignalCount(male, attentionCount),
+    first: clampSignalCount(point.signals.firstVisit, attentionCount),
+    group: clampSignalCount(point.signals.groupVisit, attentionCount),
+    emoji: clampSignalCount(point.signals.emoji, attentionCount),
+    comeback: clampSignalCount(point.signals.comeback, attentionCount),
+  }
+}
+
+function rootUrlFromUrl(url?: string) {
+  if (!url) return undefined
+  try {
+    const parsed = new URL(url)
+    return `${parsed.protocol}//${parsed.hostname}/`
+  } catch {
+    return undefined
+  }
+}
+
+function resolveStorePrimaryUrl(store: StoreProfile, source?: BbsSource) {
+  return store.officialUrl?.trim() || rootUrlFromUrl(source?.url)
+}
+
+function resolveStoreMapUrl(store: StoreProfile) {
+  if (store.mapUrl?.trim()) return store.mapUrl.trim()
+  const query = [store.address, store.name, store.area].filter(Boolean).join(' ')
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+}
+
+function resolveStoreFaviconUrl(storeUrl?: string) {
+  if (!storeUrl) return undefined
+  return `https://www.google.com/s2/favicons?domain_url=${encodeURIComponent(storeUrl)}&sz=64`
+}
+
+function storeDetailValue(value?: string) {
+  return value?.trim() || '未登録'
+}
+
+function StoreInlineRadar({
+  point,
+  ranking,
+  variant = 'compact',
+}: {
+  point: StoreRadarPoint
+  ranking?: GenderPostRanking
+  variant?: 'compact' | 'featured' | 'detail'
+}) {
+  const hasGenderSignal = Boolean(ranking?.signalTotal)
+  const femaleRatio = hasGenderSignal ? ranking?.femaleRatio ?? 0 : 0
+  const maleRatio = hasGenderSignal ? ranking?.maleRatio ?? 0 : 0
+  const attentionCount = getDisplayAttentionCount(point, ranking)
+  const scoreHeight = Math.max(4, Math.min(100, point.score))
+  const shareHeight = Math.max(4, Math.min(100, point.share))
+  const femaleHeight = hasGenderSignal ? Math.max(4, Math.min(100, femaleRatio)) : 4
+  const attentionHeight = Math.max(4, Math.min(100, attentionCount ? Math.round((attentionCount / 40) * 100) : 4))
+
+  return (
+    <div
+      className={`store-inline-radar is-${variant}`}
+      style={
+        {
+          '--female-ratio': `${femaleRatio}%`,
+          '--score-height': `${scoreHeight}%`,
+          '--share-height': `${shareHeight}%`,
+          '--female-height': `${femaleHeight}%`,
+          '--attention-height': `${attentionHeight}%`,
+        } as CSSProperties
+      }
+    >
+      <div className="store-inline-donut" aria-label={`女性ワード比率 ${femaleRatio}%、男性ワード比率 ${maleRatio}%`}>
+        <span>{hasGenderSignal ? femaleRatio : '--'}<small>%</small></span>
+      </div>
+      <div className="store-inline-bars" aria-label="店舗別の縦グラフ">
+        <span>
+          <i className="score" />
+          <em>熱量</em>
+          <strong>{point.score}</strong>
+        </span>
+        <span>
+          <i className="share" />
+          <em>比率</em>
+          <strong>{point.share}%</strong>
+        </span>
+        <span>
+          <i className="female" />
+          <em>女性</em>
+          <strong>{hasGenderSignal ? `${femaleRatio}%` : '--'}</strong>
+        </span>
+        <span>
+          <i className="attention" />
+          <em>注目</em>
+          <strong>{attentionCount || '--'}</strong>
+        </span>
+      </div>
+      <p>
+        {hasGenderSignal ? `女性 ${femaleRatio}% / 男性 ${maleRatio}%` : '男女ワードは蓄積中'}・注目 {attentionCount || 0}
+      </p>
+    </div>
+  )
+}
+
+function buildReasonChips(point?: StoreRadarPoint, ranking?: GenderPostRanking) {
   if (!point) return ['巡回待ち']
 
+  const displaySignals = getDisplaySignalCounts(point, ranking)
   const chips = [
-    point.postCount ? `投稿 +${point.postCount}` : '',
-    point.signals.femaleOnly ? `女性ワード +${point.signals.femaleOnly}` : '',
-    point.signals.firstVisit ? `初回ワード +${point.signals.firstVisit}` : '',
-    point.signals.groupVisit ? `複数 +${point.signals.groupVisit}` : '',
+    point.postCount ? `投稿 ${point.postCount}` : '',
+    displaySignals.female ? `女性 ${displaySignals.female}` : '',
+    displaySignals.first ? `初回 ${displaySignals.first}` : '',
+    displaySignals.group ? `複数 ${displaySignals.group}` : '',
     point.snapshotCount ? `スクショ +${point.snapshotCount}` : '',
   ].filter(Boolean)
 
@@ -1377,7 +1567,8 @@ function todayCompatibilityLabel(analytics?: StoreBbsAnalytics) {
   return `今日は${todayWeekday}の過去投稿 ${todayStat.count}件`
 }
 
-function StoreMomentumRanking({ points }: { points: StoreRadarPoint[] }) {
+function StoreMomentumRanking({ points, rankings }: { points: StoreRadarPoint[]; rankings: GenderPostRanking[] }) {
+  const rankingByStoreId = new Map(rankings.map((ranking) => [ranking.store.id, ranking]))
   const rankedPoints = points.slice(0, 5)
   const strongest = rankedPoints[0]
   const followingPoints = rankedPoints.slice(1)
@@ -1407,7 +1598,7 @@ function StoreMomentumRanking({ points }: { points: StoreRadarPoint[] }) {
                   <p>{strongest.verdict} / {formatRadarCapturedAt(strongest.lastCapturedAt)}</p>
                 </div>
                 <div className="reason-chip-row compact" aria-label={`${formatBarName(strongest.store.name)}の根拠`}>
-                  {buildReasonChips(strongest).map((chip) => (
+                  {buildReasonChips(strongest, rankingByStoreId.get(strongest.store.id)).map((chip) => (
                     <span key={chip}>{chip}</span>
                   ))}
                 </div>
@@ -1431,7 +1622,9 @@ function StoreMomentumRanking({ points }: { points: StoreRadarPoint[] }) {
           <div className="momentum-ranking-list">
             {followingPoints.map((point) => {
               const storeName = formatBarName(point.store.name)
-              const reasonChips = buildReasonChips(point)
+              const ranking = rankingByStoreId.get(point.store.id)
+              const reasonChips = buildReasonChips(point, ranking)
+              const attentionCount = getDisplayAttentionCount(point, ranking)
 
               return (
                 <article className={`momentum-ranking-row ${point.tone}`} key={point.store.id}>
@@ -1458,7 +1651,7 @@ function StoreMomentumRanking({ points }: { points: StoreRadarPoint[] }) {
                     </div>
                     <div>
                       <dt>注目</dt>
-                      <dd>{point.signals.totalSignals}</dd>
+                      <dd>{attentionCount}</dd>
                     </div>
                     <div>
                       <dt>更新</dt>
@@ -1481,10 +1674,6 @@ const femaleGenderPattern = /(女性|女の子|女子|単女|単独女性|主婦
 const maleGenderPattern = /(男性|男の子|男子|単男|単独男性|男性予約|男性来店|男性一人|紳士|旦那)/g
 const postMarkerPattern = /(20\d{2}年\d{1,2}月\d{1,2}日|\d{4}[-/]\d{1,2}[-/]\d{1,2}|投稿者|書き込み|来店予告|No\.\d+)/g
 const postNumberPattern = /(?:記事番号[:：]?\s*|No[.\s]*)(\d{3,})/gi
-
-function countGenderSignals(text: string, pattern: RegExp) {
-  return text.match(pattern)?.length ?? 0
-}
 
 function estimatePostCount(record: PostRecord) {
   if (record.source !== 'scrape') return 1
@@ -1512,6 +1701,46 @@ function collectObservationKeys(record: PostRecord) {
   return keys
 }
 
+function matchesGenderPattern(value: string, pattern: RegExp) {
+  pattern.lastIndex = 0
+  const matched = pattern.test(value)
+  pattern.lastIndex = 0
+  return matched
+}
+
+function collectGenderObservationKeys(record: PostRecord, pattern: RegExp) {
+  const keys = new Set<string>()
+  const entries = extractWatchedAuthorEntries(record.body)
+
+  entries.forEach((entry, index) => {
+    const target = [entry.name, entry.gender, entry.body].filter(Boolean).join(' ')
+    if (!matchesGenderPattern(target, pattern)) return
+
+    const normalizedKey = normalizedObservationKey(target)
+    keys.add(normalizedKey ? `entry:${normalizedKey}` : `entry:${record.id}:${index}`)
+  })
+
+  if (keys.size) return keys
+
+  collectObservationKeys(record).forEach((key) => {
+    if (matchesGenderPattern(key, pattern)) keys.add(key)
+  })
+
+  if (keys.size) return keys
+  if (matchesGenderPattern(record.body, pattern)) keys.add(`record:${record.id}`)
+  return keys
+}
+
+function countUniqueGenderSignals(records: PostRecord[], pattern: RegExp) {
+  const uniqueKeys = new Set<string>()
+
+  records.forEach((record) => {
+    collectGenderObservationKeys(record, pattern).forEach((key) => uniqueKeys.add(`${record.storeId}:${key}`))
+  })
+
+  return uniqueKeys.size
+}
+
 function summarizeStoreObservationVolume(records: PostRecord[]) {
   const uniqueKeys = new Set<string>()
   let rawEstimate = 0
@@ -1537,9 +1766,8 @@ function buildGenderPostRankings(records: PostRecord[], stores: StoreProfile[]):
     .map((store) => {
       const storeRecords = recordsByStore.get(store.id) ?? []
       const observationVolume = summarizeStoreObservationVolume(storeRecords)
-      const body = storeRecords.map((record) => record.body).join('\n')
-      const femaleSignals = countGenderSignals(body, femaleGenderPattern)
-      const maleSignals = countGenderSignals(body, maleGenderPattern)
+      const femaleSignals = countUniqueGenderSignals(storeRecords, femaleGenderPattern)
+      const maleSignals = countUniqueGenderSignals(storeRecords, maleGenderPattern)
       const signalTotal = femaleSignals + maleSignals
       const femaleRatio = signalTotal ? Math.round((femaleSignals / signalTotal) * 100) : 0
       const maleRatio = signalTotal ? 100 - femaleRatio : 0
@@ -1567,6 +1795,133 @@ function buildGenderPostRankings(records: PostRecord[], stores: StoreProfile[]):
     })
     .toSorted((a, b) => b.observedCount - a.observedCount || b.signalTotal - a.signalTotal || b.femaleRatio - a.femaleRatio)
     .map((ranking, index) => ({ ...ranking, rank: index + 1 }))
+}
+
+function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; rankings: GenderPostRanking[] }) {
+  const rankingByStoreId = new Map(rankings.map((ranking) => [ranking.store.id, ranking]))
+  const visiblePoints = points.slice(0, 18)
+  const leader = visiblePoints[0]
+  const radarItems = visiblePoints.map((point) => {
+    const ranking = rankingByStoreId.get(point.store.id)
+    const hasGenderSignal = Boolean(ranking?.signalTotal)
+    const femaleRatio = hasGenderSignal ? ranking?.femaleRatio ?? 50 : 50
+    const maleRatio = hasGenderSignal ? ranking?.maleRatio ?? 50 : 50
+    const x = Math.max(6, Math.min(94, femaleRatio))
+    const y = Math.max(7, Math.min(93, point.score))
+    const signalTotal = ranking?.signalTotal ?? 0
+    const tone = !hasGenderSignal ? 'neutral' : femaleRatio >= 60 ? 'female' : maleRatio >= 60 ? 'male' : 'balanced'
+    const size = Math.max(13, Math.min(24, 13 + Math.round(signalTotal / 2)))
+
+    return {
+      point,
+      ranking,
+      femaleRatio,
+      maleRatio,
+      signalTotal,
+      tone,
+      style: {
+        insetInlineStart: `${x}%`,
+        insetBlockEnd: `${y}%`,
+        '--dot-size': `${size}px`,
+      } as CSSProperties,
+    }
+  })
+  const femaleLeaningCount = radarItems.filter((item) => item.tone === 'female').length
+  const maleLeaningCount = radarItems.filter((item) => item.tone === 'male').length
+  const balancedCount = radarItems.filter((item) => item.tone === 'balanced').length
+  const barItems = radarItems.slice(0, 8)
+
+  return (
+    <section className="gender-radar-card" aria-label="店舗別の盛り上がりと男女比率">
+      <div className="gender-radar-head">
+        <div>
+          <span>男女比レーダー</span>
+          <h2>盛り上がりと男女ワードの偏り</h2>
+          <p>縦は盛り上がり、横は女性ワード比率です。実人数ではなく、BBS本文に出てくる男女系ワードから見ています。</p>
+        </div>
+        <strong>{leader ? formatBarName(leader.store.name) : '観測中'}</strong>
+      </div>
+
+      <div className="gender-radar-layout">
+        <div className="gender-radar-map" aria-label="盛り上がりと女性比率の分布">
+          <span className="gender-axis-y">盛り上がり</span>
+          <span className="gender-axis-x">女性比率</span>
+          <span className="gender-quadrant top-left">男性寄り・高反応</span>
+          <span className="gender-quadrant top-right">女性寄り・高反応</span>
+          <span className="gender-quadrant bottom-left">男性寄り・静か</span>
+          <span className="gender-quadrant bottom-right">女性寄り・静か</span>
+          {radarItems.map((item, index) => (
+            <span
+              aria-label={`${formatBarName(item.point.store.name)}、盛り上がり${item.point.score}点、女性比率${item.femaleRatio}%、男性比率${item.maleRatio}%`}
+              className={`gender-radar-dot is-${item.tone}`}
+              key={item.point.store.id}
+              style={item.style}
+              title={`${formatBarName(item.point.store.name)} / ${item.point.score}点 / 女性${item.femaleRatio}% 男性${item.maleRatio}%`}
+            >
+              {index + 1}
+            </span>
+          ))}
+        </div>
+
+        <div className="gender-radar-side">
+          <dl className="gender-radar-summary">
+            <div>
+              <dt>女性寄り</dt>
+              <dd>{femaleLeaningCount}店</dd>
+            </div>
+            <div>
+              <dt>男性寄り</dt>
+              <dd>{maleLeaningCount}店</dd>
+            </div>
+            <div>
+              <dt>近い</dt>
+              <dd>{balancedCount}店</dd>
+            </div>
+          </dl>
+          <div className="gender-radar-list">
+            {radarItems.slice(0, 7).map((item, index) => (
+              <article key={item.point.store.id}>
+                <span>{index + 1}</span>
+                <div>
+                  <strong>{formatBarName(item.point.store.name)}</strong>
+                  <p>
+                    盛り上がり {item.point.score}点 / 女性 {item.femaleRatio}% / 男性 {item.maleRatio}%
+                  </p>
+                </div>
+                <em>{item.ranking?.verdict ?? '判定語が少ない'}</em>
+              </article>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="gender-radar-bars" aria-label="店舗別の円グラフと縦グラフ">
+        {barItems.map((item) => (
+          <article
+            className={`gender-radar-bar-item is-${item.tone}`}
+            key={item.point.store.id}
+            style={
+              {
+                '--bar-height': `${Math.max(4, Math.min(100, item.point.score))}%`,
+                '--female-ratio': `${item.femaleRatio}%`,
+              } as CSSProperties
+            }
+          >
+            <div className="gender-radar-pie" aria-label={`${formatBarName(item.point.store.name)} 女性比率 ${item.femaleRatio}%`}>
+              <span>{item.femaleRatio}</span>
+            </div>
+            <div className="gender-radar-column" aria-label={`${formatBarName(item.point.store.name)} 盛り上がり ${item.point.score}点`}>
+              <i />
+            </div>
+            <div className="gender-radar-bar-caption">
+              <strong>{formatBarName(item.point.store.name)}</strong>
+              <span>{item.point.score}点</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
 }
 
 function PostCountRankingCard({ rankings }: { rankings: GenderPostRanking[] }) {
@@ -1680,6 +2035,7 @@ function StoreDiscoveryPanel({
   candidateCount,
   eventCountByStoreId,
   favoriteCount,
+  genderRankingByStoreId,
   hiddenCount,
   points,
   query,
@@ -1702,6 +2058,7 @@ function StoreDiscoveryPanel({
   candidateCount: number
   eventCountByStoreId: Map<string, number>
   favoriteCount: number
+  genderRankingByStoreId: Map<string, GenderPostRanking>
   hiddenCount: number
   points: StoreRadarPoint[]
   query: string
@@ -1722,6 +2079,7 @@ function StoreDiscoveryPanel({
   const visibleTop = points.slice(0, 9)
   const strongest = points[0]
   const candidatePoints = allPoints.filter((point) => storeDecisions[point.store.id] === 'candidate').slice(0, 4)
+  const visibleCards = strongest ? visibleTop.slice(1) : visibleTop
   const sortLabel =
     sort === 'share' ? '比率が高い順' : sort === 'signals' ? '根拠が多い順' : sort === 'updated' ? '更新が新しい順' : '盛り上がり順'
   const sessionLabel = sessionFilter === 'day' ? '昼あり' : sessionFilter === 'night' ? '夜あり' : '全時間'
@@ -1735,6 +2093,9 @@ function StoreDiscoveryPanel({
           <span>店舗を探す</span>
           <h2>盛り上がりと根拠で比較</h2>
           <p>一覧ではなく、今日見る価値があるお店だけを絞り込みます。</p>
+          <Link className="store-public-link" href="/shops">
+            公開店舗一覧を見る
+          </Link>
         </div>
         <dl>
           <div>
@@ -1855,13 +2216,27 @@ function StoreDiscoveryPanel({
         )}
       </div>
 
+      {strongest ? (
+        <StoreSpotlightCard
+          analytics={analyticsByStoreId.get(strongest.store.id)}
+          decision={storeDecisions[strongest.store.id]}
+          eventCount={eventCountByStoreId.get(strongest.store.id) ?? 0}
+          genderRanking={genderRankingByStoreId.get(strongest.store.id)}
+          point={strongest}
+          source={sourceByStoreId.get(strongest.store.id)}
+          onDecisionChange={onDecisionChange}
+          onOpenDetail={onOpenDetail}
+        />
+      ) : null}
+
       <div className="store-explorer-grid">
-        {visibleTop.length ? (
-          visibleTop.map((point) => (
+        {visibleCards.length ? (
+          visibleCards.map((point) => (
             <StoreExplorerCard
               analytics={analyticsByStoreId.get(point.store.id)}
               decision={storeDecisions[point.store.id]}
               eventCount={eventCountByStoreId.get(point.store.id) ?? 0}
+              genderRanking={genderRankingByStoreId.get(point.store.id)}
               key={point.store.id}
               point={point}
               source={sourceByStoreId.get(point.store.id)}
@@ -1877,10 +2252,11 @@ function StoreDiscoveryPanel({
   )
 }
 
-function StoreExplorerCard({
+function StoreSpotlightCard({
   analytics,
   decision,
   eventCount,
+  genderRanking,
   point,
   source,
   onDecisionChange,
@@ -1889,19 +2265,95 @@ function StoreExplorerCard({
   analytics?: StoreBbsAnalytics
   decision?: StoreDecisionState
   eventCount: number
+  genderRanking?: GenderPostRanking
   point: StoreRadarPoint
   source?: BbsSource
   onDecisionChange: (storeId: string, state: StoreDecisionState) => void
   onOpenDetail: (storeId: string) => void
 }) {
+  const reasonChips = buildReasonChips(point, genderRanking)
+  const sourceStatus = formatUserBbsStatus(source?.lastStatus)
+  const todayFit = todayCompatibilityLabel(analytics)
+
+  return (
+    <article className={`store-spotlight-card is-${point.tone} ${decision ? `decision-${decision}` : ''}`} aria-label="本命店舗">
+      <div className="store-spotlight-copy">
+        <span>いま最初に見る店舗</span>
+        <h3>{formatBarName(point.store.name)}</h3>
+        <p>{point.verdict}。{todayFit}</p>
+        <div className="reason-chip-row compact" aria-label={`${formatBarName(point.store.name)}の根拠`}>
+          {reasonChips.map((chip) => (
+            <span key={chip}>{chip}</span>
+          ))}
+        </div>
+      </div>
+      <div className="store-spotlight-score">
+        <strong>{point.score}</strong>
+        <span>点</span>
+      </div>
+      <StoreInlineRadar point={point} ranking={genderRanking} variant="featured" />
+      <dl className="store-spotlight-facts">
+        <div>
+          <dt>比率</dt>
+          <dd>{point.share}%</dd>
+        </div>
+        <div>
+          <dt>予定</dt>
+          <dd>{eventCount}</dd>
+        </div>
+        <div>
+          <dt>巡回</dt>
+          <dd>{sourceStatus}</dd>
+        </div>
+        <div>
+          <dt>料金</dt>
+          <dd>{point.store.priceNote?.trim() || '公式確認'}</dd>
+        </div>
+      </dl>
+      <div className="store-spotlight-actions">
+        <button
+          type="button"
+          className={decision === 'candidate' ? 'is-active' : ''}
+          onClick={() => onDecisionChange(point.store.id, 'candidate')}
+        >
+          {decision === 'candidate' ? '候補から外す' : '候補に入れる'}
+        </button>
+        <button type="button" onClick={() => onOpenDetail(point.store.id)}>
+          店舗詳細
+        </button>
+      </div>
+    </article>
+  )
+}
+
+function StoreExplorerCard({
+  analytics,
+  decision,
+  eventCount,
+  genderRanking,
+  point,
+  source,
+  onDecisionChange,
+  onOpenDetail,
+}: {
+  analytics?: StoreBbsAnalytics
+  decision?: StoreDecisionState
+  eventCount: number
+  genderRanking?: GenderPostRanking
+  point: StoreRadarPoint
+  source?: BbsSource
+  onDecisionChange: (storeId: string, state: StoreDecisionState) => void
+  onOpenDetail: (storeId: string) => void
+}) {
+  const displaySignals = getDisplaySignalCounts(point, genderRanking)
   const signalItems = [
-    { label: '女性', value: point.signals.femaleOnly },
-    { label: '初回', value: point.signals.firstVisit },
-    { label: '複数', value: point.signals.groupVisit },
-    { label: '絵文字', value: point.signals.emoji },
+    { label: '女性', value: displaySignals.female },
+    { label: '初回', value: displaySignals.first },
+    { label: '複数', value: displaySignals.group },
+    { label: '絵文字', value: displaySignals.emoji },
   ]
   const sourceStatus = formatUserBbsStatus(source?.lastStatus)
-  const reasonChips = buildReasonChips(point)
+  const reasonChips = buildReasonChips(point, genderRanking)
   const todayFit = todayCompatibilityLabel(analytics)
   const decisionLabel =
     decision === 'candidate' ? '候補' : decision === 'favorite' ? 'お気に入り' : decision === 'hidden' ? '非表示' : '比較中'
@@ -1927,6 +2379,8 @@ function StoreExplorerCard({
       </div>
 
       <p>{point.verdict}</p>
+
+      <StoreInlineRadar point={point} ranking={genderRanking} />
 
       <div className="store-signal-grid">
         {signalItems.map((item) => (
@@ -1954,6 +2408,10 @@ function StoreExplorerCard({
           <dt>巡回</dt>
           <dd>{sourceStatus}</dd>
         </div>
+        <div>
+          <dt>料金</dt>
+          <dd>{point.store.priceNote?.trim() || '公式確認'}</dd>
+        </div>
       </dl>
 
       <div className="store-card-note">
@@ -1976,7 +2434,7 @@ function StoreExplorerCard({
           {decision === 'candidate' ? '候補から外す' : '候補に入れる'}
         </button>
         <button type="button" onClick={() => onOpenDetail(point.store.id)}>
-          詳細
+          店舗詳細
         </button>
       </div>
       <details className="store-more-actions">
@@ -2003,6 +2461,7 @@ function StoreDetailDrawer({
   analytics,
   decision,
   eventCount,
+  genderRanking,
   point,
   source,
   onClose,
@@ -2011,16 +2470,22 @@ function StoreDetailDrawer({
   analytics?: StoreBbsAnalytics
   decision?: StoreDecisionState
   eventCount: number
+  genderRanking?: GenderPostRanking
   point: StoreRadarPoint
   source?: BbsSource
   onClose: () => void
   onDecisionChange: (storeId: string, state: StoreDecisionState) => void
 }) {
+  const displaySignals = getDisplaySignalCounts(point, genderRanking)
+  const primaryUrl = resolveStorePrimaryUrl(point.store, source)
+  const faviconUrl = resolveStoreFaviconUrl(primaryUrl)
+  const mapUrl = resolveStoreMapUrl(point.store)
+  const phone = point.store.phone?.trim()
   const signalReasons = [
-    point.signals.femaleOnly ? `女性関連 ${point.signals.femaleOnly}件` : '',
-    point.signals.firstVisit ? `初回系 ${point.signals.firstVisit}件` : '',
-    point.signals.comeback ? `久しぶり系 ${point.signals.comeback}件` : '',
-    point.signals.groupVisit ? `複数来店 ${point.signals.groupVisit}件` : '',
+    displaySignals.female ? `女性関連 ${displaySignals.female}件` : '',
+    displaySignals.first ? `初回系 ${displaySignals.first}件` : '',
+    displaySignals.comeback ? `久しぶり系 ${displaySignals.comeback}件` : '',
+    displaySignals.group ? `複数来店 ${displaySignals.group}件` : '',
     eventCount ? `月間イベント ${eventCount}件` : '',
   ].filter(Boolean)
   const todayFit = todayCompatibilityLabel(analytics)
@@ -2045,6 +2510,52 @@ function StoreDetailDrawer({
           </div>
           <em>{point.share}%</em>
         </div>
+
+        <StoreInlineRadar point={point} ranking={genderRanking} variant="detail" />
+
+        <section className="store-contact-card" aria-label="店舗基本情報">
+          <div className="store-contact-title">
+            <span>店舗基本情報</span>
+            <strong>行く前に確認</strong>
+          </div>
+          <dl>
+            <div className="store-contact-url">
+              <dt>店舗URL</dt>
+              <dd>
+                {faviconUrl ? <img alt="" src={faviconUrl} width={18} height={18} loading="lazy" /> : <span className="store-favicon-placeholder">N</span>}
+                {primaryUrl ? (
+                  <a href={primaryUrl} target="_blank" rel="noreferrer">
+                    {primaryUrl}
+                  </a>
+                ) : (
+                  <span>{storeDetailValue(primaryUrl)}</span>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>電話番号</dt>
+              <dd>
+                {phone ? (
+                  <a href={`tel:${phone.replace(/[^\d+]/g, '')}`}>{phone}</a>
+                ) : (
+                  <span>{storeDetailValue(phone)}</span>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>地図URL</dt>
+              <dd>
+                <a href={mapUrl} target="_blank" rel="noreferrer">
+                  {mapUrl}
+                </a>
+              </dd>
+            </div>
+            <div>
+              <dt>料金</dt>
+              <dd>{point.store.priceNote?.trim() || '公式で確認'}</dd>
+            </div>
+          </dl>
+        </section>
 
         <dl className="store-detail-metrics">
           <div>
@@ -2082,6 +2593,7 @@ function StoreDetailDrawer({
           <span>運用メモ</span>
           <p>{analytics?.verdict ? `${todayFit}。${analytics.verdict}` : 'BBS投稿とスクリーンショットを蓄積中です。'}</p>
           <small>最終更新: {formatRadarCapturedAt(point.lastCapturedAt)} / BBS: {formatUserBbsStatus(source?.lastStatus)}</small>
+          <small>料金: {point.store.priceNote?.trim() || '公式で確認'} / 場所: {point.store.address?.trim() || formatStoreArea(point.store.area)}</small>
         </section>
 
         {source?.url ? (
@@ -2156,6 +2668,7 @@ function MonthlyCalendarPreview({ events, stores }: { events: EventInput[]; stor
   const cells = useMemo(() => buildCalendarPreviewCells(events, stores, activeMonthKey), [activeMonthKey, events, stores])
   const eventCount = cells.reduce((sum, cell) => sum + cell.items.length, 0)
   const [selectedDay, setSelectedDay] = useState<CalendarPreviewCell | null>(null)
+  useBodyScrollLock(Boolean(selectedDay))
 
   const openDrawerOnSmallScreen = (cell: CalendarPreviewCell) => {
     if (cell.isBlank || !cell.items.length) return
@@ -2903,6 +3416,7 @@ function WatchedWordsPanel({
   onUseBookmark: (bookmark: WordBookmark) => void
 }) {
   const [selectedHit, setSelectedHit] = useState<WatchedWordHit | null>(null)
+  useBodyScrollLock(Boolean(selectedHit))
   const selectedStoreName =
     selectedStoreId === 'all'
       ? '全店舗'
@@ -3260,6 +3774,7 @@ function ExactMatchList({
     { key: 'negativePerson', label: '苦手監視' },
   ]
   const [selectedMatch, setSelectedMatch] = useState<ExactTermMatch | null>(null)
+  useBodyScrollLock(Boolean(selectedMatch))
 
   useEffect(() => {
     if (!selectedMatch) return

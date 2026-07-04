@@ -2,10 +2,13 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3010'),
   title: 'ナイトレーダー',
   description: '公開情報と投稿メモから、今日見るべき夜のシグナルをスマホで素早く判断するレーダーアプリ。',
+  manifest: '/manifest.webmanifest',
   icons: {
     icon: '/favicon.svg',
+    apple: '/favicon.svg',
   },
   openGraph: {
     title: 'ナイトレーダー',

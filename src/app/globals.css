@@ -193,6 +193,15 @@ a:focus-visible {
   transform: translateY(0);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 ::selection {
   background: oklch(58% 0.18 24 / 0.26);
 }
@@ -1068,11 +1077,16 @@ a:focus-visible {
 }
 
 .calendar-drawer-backdrop {
+  --calendar-modal-max-block: calc(100dvh - 36px);
+
   position: fixed;
   inset: 0;
   z-index: 80;
-  display: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
   background: rgba(0, 0, 0, 0.52);
+  overscroll-behavior: contain;
   padding: 18px;
 }
 
@@ -1080,14 +1094,12 @@ a:focus-visible {
   display: grid;
   gap: 12px;
   width: min(100%, 640px);
-  max-height: min(82dvh, 680px);
+  max-height: min(680px, var(--calendar-modal-max-block));
   overflow: auto;
-  align-self: end;
-  justify-self: center;
   border: 1px solid oklch(78% 0.075 198 / 0.2);
-  border-radius: 22px 22px 14px 14px;
+  border-radius: 20px;
   background: rgba(5, 10, 19, 0.98);
-  box-shadow: 0 -24px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.55);
   padding: 14px;
 }
 
@@ -1163,7 +1175,14 @@ a:focus-visible {
   }
 
   .calendar-drawer-backdrop {
-    display: grid;
+    --calendar-modal-max-block: calc(100dvh - 20px);
+
+    padding: 10px;
+  }
+
+  .calendar-day-drawer {
+    max-height: var(--calendar-modal-max-block);
+    border-radius: 18px;
   }
 
   .calendar-event-detail p {
