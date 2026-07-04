@@ -111,7 +111,7 @@ const navScreenCopy: Record<NavKey, { title: string; body: string }> = {
   today: { title: '今日', body: '結論、盛り上がり、月間イベント、注目ワードだけを先に見ます。' },
   search: { title: '検索', body: '登録ワードと監視カテゴリで、全店BBSの一致箇所を確認します。' },
   calendar: { title: 'カレンダー', body: '月間イベントを日付単位で確認します。日別詳細は開いた時だけ表示します。' },
-  stores: { title: '店舗', body: '候補店舗を盛り上がり順に比較し、気になる店舗だけ残します。' },
+  stores: { title: '店舗', body: '候補店舗を女性書き込み順に比較し、気になる店舗だけ残します。' },
   settings: { title: '設定', body: 'ログイン状態、店舗マスタ、公開情報の扱いを確認します。' },
 }
 
@@ -386,10 +386,15 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     })
 
     return filtered.toSorted((a, b) => {
+      const bGenderRanking = genderRankingByStoreId.get(b.store.id)
+      const aGenderRanking = genderRankingByStoreId.get(a.store.id)
+      const bFemalePosts = bGenderRanking?.femaleSignals ?? 0
+      const aFemalePosts = aGenderRanking?.femaleSignals ?? 0
+
       if (storeSort === 'share') return b.share - a.share || b.score - a.score
       if (storeSort === 'signals') {
-        const bAttention = getDisplayAttentionCount(b, genderRankingByStoreId.get(b.store.id))
-        const aAttention = getDisplayAttentionCount(a, genderRankingByStoreId.get(a.store.id))
+        const bAttention = getDisplayAttentionCount(b, bGenderRanking)
+        const aAttention = getDisplayAttentionCount(a, aGenderRanking)
         return bAttention - aAttention || b.score - a.score
       }
       if (storeSort === 'updated') {
@@ -397,7 +402,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
         const aTime = a.lastCapturedAt ? new Date(a.lastCapturedAt).getTime() : 0
         return bTime - aTime || b.score - a.score
       }
-      return b.score - a.score || b.share - a.share
+      return bFemalePosts - aFemalePosts || b.score - a.score || b.share - a.share
     })
   }, [genderRankingByStoreId, storeDecisions, storeQuery, storeRadar, storeSessionFilter, storeSignalFilter, storeSort])
   const watchedWordHits = useMemo(
@@ -912,7 +917,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
 
         {view === 'capture' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="店舗" title="盛り上がり順に店舗を見る" body="BBS、月間イベント、注目シグナルをまとめて、候補店舗だけを見比べます。" />
+            <ViewIntro eyebrow="店舗" title="女性書き込み順に店舗を見る" body="BBS、月間イベント、注目シグナルをまとめて、候補店舗だけを見比べます。" />
 
             <StoreDiscoveryPanel
               allPoints={storeRadar}
@@ -1569,7 +1574,13 @@ function todayCompatibilityLabel(analytics?: StoreBbsAnalytics) {
 
 function StoreMomentumRanking({ points, rankings }: { points: StoreRadarPoint[]; rankings: GenderPostRanking[] }) {
   const rankingByStoreId = new Map(rankings.map((ranking) => [ranking.store.id, ranking]))
-  const rankedPoints = points.slice(0, 5)
+  const rankedPoints = points
+    .toSorted((a, b) => {
+      const bRanking = rankingByStoreId.get(b.store.id)
+      const aRanking = rankingByStoreId.get(a.store.id)
+      return (bRanking?.femaleSignals ?? 0) - (aRanking?.femaleSignals ?? 0) || b.score - a.score || b.share - a.share
+    })
+    .slice(0, 5)
   const strongest = rankedPoints[0]
   const followingPoints = rankedPoints.slice(1)
 
@@ -1577,9 +1588,9 @@ function StoreMomentumRanking({ points, rankings }: { points: StoreRadarPoint[];
     <section className="momentum-ranking-card" aria-label="お店の盛り上がりランキング">
       <div className="momentum-ranking-head">
         <div>
-          <span>盛り上がりランキング</span>
-          <h2>今夜、反応が濃いお店</h2>
-          <p>直近の巡回、投稿者名の注目語、イベント量から、まず見たい候補を浮かび上がらせます。</p>
+          <span>女性書き込みランキング</span>
+          <h2>今夜、女性の反応が見えるお店</h2>
+          <p>女性表記のある書き込み数を優先し、同数なら熱量と更新の強さで並べます。</p>
         </div>
         <strong>{strongest ? `${strongest.share}%` : '--'}</strong>
       </div>
@@ -1620,7 +1631,7 @@ function StoreMomentumRanking({ points, rankings }: { points: StoreRadarPoint[];
           ) : null}
 
           <div className="momentum-ranking-list">
-            {followingPoints.map((point) => {
+            {followingPoints.map((point, index) => {
               const storeName = formatBarName(point.store.name)
               const ranking = rankingByStoreId.get(point.store.id)
               const reasonChips = buildReasonChips(point, ranking)
@@ -1628,7 +1639,7 @@ function StoreMomentumRanking({ points, rankings }: { points: StoreRadarPoint[];
 
               return (
                 <article className={`momentum-ranking-row ${point.tone}`} key={point.store.id}>
-                  <span className="momentum-rank">{point.rank}</span>
+                  <span className="momentum-rank">{index + 2}</span>
                   <div className="momentum-store">
                     <div className="momentum-store-title">
                       <strong>{storeName}</strong>
@@ -1793,7 +1804,7 @@ function buildGenderPostRankings(records: PostRecord[], stores: StoreProfile[]):
         verdict,
       }
     })
-    .toSorted((a, b) => b.observedCount - a.observedCount || b.signalTotal - a.signalTotal || b.femaleRatio - a.femaleRatio)
+    .toSorted((a, b) => b.femaleSignals - a.femaleSignals || b.observedCount - a.observedCount || b.signalTotal - a.signalTotal || b.femaleRatio - a.femaleRatio)
     .map((ranking, index) => ({ ...ranking, rank: index + 1 }))
 }
 
@@ -1925,17 +1936,17 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
 }
 
 function PostCountRankingCard({ rankings }: { rankings: GenderPostRanking[] }) {
-  const visibleRankings = rankings.filter((ranking) => ranking.observedCount > 0).slice(0, 6)
+  const visibleRankings = rankings.filter((ranking) => ranking.femaleSignals > 0 || ranking.observedCount > 0).slice(0, 6)
 
   return (
-    <section className="gender-ranking-card" aria-label="観測投稿量ランキング">
+    <section className="gender-ranking-card" aria-label="女性書き込みランキング">
       <div className="gender-ranking-head">
         <div>
-          <span>観測投稿</span>
-          <h2>反応が多い店舗</h2>
-          <p>記事番号・投稿者断片を重複除外して並べます。実人数や公式の投稿総数ではありません。</p>
+          <span>女性書き込み</span>
+          <h2>女性の反応が多い店舗</h2>
+          <p>性別表記のある投稿者断片を重複除外して並べます。実人数や公式の投稿総数ではありません。</p>
         </div>
-        <strong>{visibleRankings[0] ? `${visibleRankings[0].observedCount}件` : '--'}</strong>
+        <strong>{visibleRankings[0] ? `${visibleRankings[0].femaleSignals}件` : '--'}</strong>
       </div>
 
       <div className="gender-ranking-list">
@@ -1946,13 +1957,13 @@ function PostCountRankingCard({ rankings }: { rankings: GenderPostRanking[] }) {
               <div className="gender-store">
                 <div className="gender-store-title">
                   <strong>{formatBarName(ranking.store.name)}</strong>
-                  <em>{ranking.observedCount}件</em>
+                  <em>女性 {ranking.femaleSignals}件</em>
                 </div>
                 <div className="gender-ratio-bar" aria-label={`女性 ${ranking.femaleRatio}% 男性 ${ranking.maleRatio}%`}>
                   <i style={{ inlineSize: `${ranking.femaleRatio}%` }} />
                 </div>
                 <p>
-                  女性ワード {ranking.femaleSignals} / 男性ワード {ranking.maleSignals} ・ 巡回断片 {ranking.recordCount}件
+                  観測投稿 {ranking.observedCount}件 / 男性ワード {ranking.maleSignals}件 ・ 巡回断片 {ranking.recordCount}件
                 </p>
               </div>
               <dl className="gender-meta">
@@ -2081,7 +2092,7 @@ function StoreDiscoveryPanel({
   const candidatePoints = allPoints.filter((point) => storeDecisions[point.store.id] === 'candidate').slice(0, 4)
   const visibleCards = strongest ? visibleTop.slice(1) : visibleTop
   const sortLabel =
-    sort === 'share' ? '比率が高い順' : sort === 'signals' ? '根拠が多い順' : sort === 'updated' ? '更新が新しい順' : '盛り上がり順'
+    sort === 'share' ? '比率が高い順' : sort === 'signals' ? '根拠が多い順' : sort === 'updated' ? '更新が新しい順' : '女性書き込み順'
   const sessionLabel = sessionFilter === 'day' ? '昼あり' : sessionFilter === 'night' ? '夜あり' : '全時間'
   const signalLabel =
     signalFilter === 'female' ? '女性' : signalFilter === 'first' ? '初回' : signalFilter === 'group' ? '複数' : signalFilter === 'emoji' ? '絵文字' : '全根拠'
@@ -2131,7 +2142,7 @@ function StoreDiscoveryPanel({
           />
         </label>
         <select aria-label="並び替え" value={sort} onChange={(event) => onSortChange(event.target.value as StoreSortKey)}>
-          <option value="hot">盛り上がり順</option>
+          <option value="hot">女性書き込み順</option>
           <option value="share">比率が高い順</option>
           <option value="signals">根拠が多い順</option>
           <option value="updated">更新が新しい順</option>
@@ -2231,7 +2242,7 @@ function StoreDiscoveryPanel({
 
       <div className="store-explorer-grid">
         {visibleCards.length ? (
-          visibleCards.map((point) => (
+          visibleCards.map((point, index) => (
             <StoreExplorerCard
               analytics={analyticsByStoreId.get(point.store.id)}
               decision={storeDecisions[point.store.id]}
@@ -2239,6 +2250,7 @@ function StoreDiscoveryPanel({
               genderRanking={genderRankingByStoreId.get(point.store.id)}
               key={point.store.id}
               point={point}
+              rank={index + 2}
               source={sourceByStoreId.get(point.store.id)}
               onDecisionChange={onDecisionChange}
               onOpenDetail={onOpenDetail}
@@ -2332,6 +2344,7 @@ function StoreExplorerCard({
   eventCount,
   genderRanking,
   point,
+  rank,
   source,
   onDecisionChange,
   onOpenDetail,
@@ -2341,6 +2354,7 @@ function StoreExplorerCard({
   eventCount: number
   genderRanking?: GenderPostRanking
   point: StoreRadarPoint
+  rank: number
   source?: BbsSource
   onDecisionChange: (storeId: string, state: StoreDecisionState) => void
   onOpenDetail: (storeId: string) => void
@@ -2361,7 +2375,7 @@ function StoreExplorerCard({
   return (
     <article className={`store-explorer-card is-${point.tone} ${decision ? `decision-${decision}` : ''}`}>
       <div className="store-rank-line">
-        <span className="store-rank-badge">#{point.rank}</span>
+        <span className="store-rank-badge">#{rank}</span>
         <span className={`store-decision-badge ${decision ? `is-${decision}` : ''}`}>{decisionLabel}</span>
       </div>
       <div className="store-card-top">

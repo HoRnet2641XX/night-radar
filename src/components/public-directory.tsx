@@ -12,6 +12,7 @@ import {
   publicAreas,
   publicConditions,
   publicRankingKinds,
+  sortByRanking,
   storeDetailPath,
   type PublicDirectoryState,
   type PublicStoreSummary,
@@ -141,7 +142,7 @@ export function DirectoryHero({ state }: { state: PublicDirectoryState }) {
   const hotCount = state.summaries.filter((summary) => summary.point.score >= 74).length
   const openCount = state.summaries.filter((summary) => summary.isOpenNow).length
   const todayEventCount = state.summaries.reduce((sum, summary) => sum + summary.todayEventCount, 0)
-  const top = state.summaries[0]
+  const top = sortByRanking(state.summaries, 'today')[0]
 
   return (
     <section className={styles.heroPanel}>
@@ -149,7 +150,7 @@ export function DirectoryHero({ state }: { state: PublicDirectoryState }) {
         <p className={styles.kicker}>今日行くべき店を決めるレーダー</p>
         <h1>店舗を探す前に、今夜の動きを見る。</h1>
         <p>
-          BBS、イベント、更新時刻、女性率をまとめて、候補に残す店だけを比較します。
+          BBS、イベント、更新時刻、女性の書き込みをまとめて、候補に残す店だけを比較します。
         </p>
         <div className={styles.heroActions}>
           <Link href="/shops">店舗を探す</Link>
@@ -184,13 +185,8 @@ export function DirectoryHero({ state }: { state: PublicDirectoryState }) {
 }
 
 export function PublicSummaryStrip({ state }: { state: PublicDirectoryState }) {
-  const activeWomenRatios = state.summaries
-    .map((summary) => summary.womenRatio)
-    .filter((value): value is number => typeof value === 'number')
-  const averageWomenRatio = activeWomenRatios.length
-    ? Math.round(activeWomenRatios.reduce((sum, value) => sum + value, 0) / activeWomenRatios.length)
-    : null
   const recentThreeHours = state.summaries.reduce((sum, summary) => sum + summary.recentThreeHourCount, 0)
+  const femalePostTotal = state.summaries.reduce((sum, summary) => sum + summary.femalePostCount, 0)
 
   return (
     <section className={styles.summaryStrip} aria-label="公開サマリー">
@@ -200,9 +196,9 @@ export function PublicSummaryStrip({ state }: { state: PublicDirectoryState }) {
         <p>正規化投稿から集計</p>
       </article>
       <article>
-        <span>女性率</span>
-        <strong>{averageWomenRatio == null ? '観測中' : `${averageWomenRatio}%`}</strong>
-        <p>性別表記がある投稿から算出</p>
+        <span>女性投稿</span>
+        <strong>{femalePostTotal}件</strong>
+        <p>直近24時間の性別表記から集計</p>
       </article>
       <article>
         <span>巡回対象</span>
@@ -360,8 +356,8 @@ function DecisionLeaderCard({ summary }: { summary: PublicStoreSummary }) {
           <dd>{summary.recentThreeHourCount}件</dd>
         </div>
         <div>
-          <dt>女性率</dt>
-          <dd>{summary.womenRatio == null ? '観測中' : `${summary.womenRatio}%`}</dd>
+          <dt>女性投稿</dt>
+          <dd>{summary.femalePostCount}件</dd>
         </div>
         <div>
           <dt>更新</dt>
@@ -402,8 +398,8 @@ function DecisionMiniCard({ summary, rank }: { summary: PublicStoreSummary; rank
       </div>
       <dl>
         <div>
-          <dt>女性率</dt>
-          <dd>{summary.womenRatio == null ? '観測中' : `${summary.womenRatio}%`}</dd>
+          <dt>女性投稿</dt>
+          <dd>{summary.femalePostCount}件</dd>
         </div>
         <div>
           <dt>更新</dt>
@@ -432,8 +428,8 @@ function DecisionListRow({ summary, rank }: { summary: PublicStoreSummary; rank:
           <dd>{summary.point.score}</dd>
         </div>
         <div>
-          <dt>女性率</dt>
-          <dd>{summary.womenRatio == null ? '観測中' : `${summary.womenRatio}%`}</dd>
+          <dt>女性投稿</dt>
+          <dd>{summary.femalePostCount}件</dd>
         </div>
         <div>
           <dt>直近</dt>
@@ -464,8 +460,8 @@ export function PublicStoreCard({ summary, rank }: { summary: PublicStoreSummary
       <p className={styles.reasonText}>{summary.primaryReason}</p>
       <dl className={styles.storeFacts}>
         <div>
-          <dt>女性率</dt>
-          <dd>{summary.womenRatio == null ? '観測中' : `${summary.womenRatio}%`}</dd>
+          <dt>女性投稿</dt>
+          <dd>{summary.femalePostCount}件</dd>
         </div>
         <div>
           <dt>直近3時間</dt>
@@ -537,6 +533,10 @@ export function RankingView({ kind, state }: { kind: RankingKind; state: PublicD
             <div>
               <dt>スコア</dt>
               <dd>{leader.point.score}</dd>
+            </div>
+            <div>
+              <dt>女性投稿</dt>
+              <dd>{leader.femalePostCount}件</dd>
             </div>
             <div>
               <dt>女性率</dt>
@@ -632,8 +632,8 @@ export function StoreDetailView({ summary }: { summary: PublicStoreSummary }) {
         </article>
         <article>
           <span>根拠</span>
-          <strong>{summary.recentPostCount}件</strong>
-          <p>直近24時間の投稿換算。直近3時間は{summary.recentThreeHourCount}件です。</p>
+          <strong>女性 {summary.femalePostCount}件</strong>
+          <p>直近24時間の性別表記から集計。直近3時間は{summary.recentThreeHourCount}件です。</p>
         </article>
       </section>
 
@@ -642,6 +642,7 @@ export function StoreDetailView({ summary }: { summary: PublicStoreSummary }) {
           <h2>今日見る理由</h2>
           <ul>
             <li>{summary.primaryReason}</li>
+            <li>女性書き込み: {summary.femalePostCount}件</li>
             <li>女性率: {summary.womenRatio == null ? '観測中' : `${summary.womenRatio}%`}</li>
             <li>本日のイベント: {summary.todayEventCount}件</li>
             <li>最終更新: {summary.lastUpdatedLabel}</li>

@@ -102,6 +102,7 @@ export type PublicStoreSummary = {
   priceLabel: string
   sessionLabel: string
   womenRatio: number | null
+  femalePostCount: number
   recentPostCount: number
   recentThreeHourCount: number
   todayEventCount: number
@@ -131,11 +132,11 @@ export type PublicDirectoryState = {
 export const publicAreas = Object.entries(areaSlugMap).map(([slug, label]) => ({ slug, label }))
 export const publicConditions = Object.entries(conditionLabels).map(([key, label]) => ({ key: key as ConditionKey, label }))
 export const publicRankingKinds: Array<{ key: RankingKind; label: string; description: string }> = [
-  { key: 'today', label: '今日', description: '投稿鮮度、イベント、直近の根拠から今日の候補を並べます。' },
-  { key: 'weekend', label: '週末', description: '週末イベントと金土日の相性が見える順です。' },
-  { key: 'female', label: '女性率', description: '投稿者名と性別表記から女性比率が高い順に見ます。' },
-  { key: 'events', label: 'イベントあり', description: '本日または直近イベントが登録されている店舗を優先します。' },
-  { key: 'open', label: '営業中', description: '営業時間が判定できる店舗だけを上位にします。' },
+  { key: 'today', label: '今日', description: '女性の書き込み数、投稿鮮度、イベントから今日の候補を並べます。' },
+  { key: 'weekend', label: '週末', description: '週末イベントを優先しつつ、女性の書き込みが多い店舗を上にします。' },
+  { key: 'female', label: '女性書込', description: '直近の性別表記から女性の書き込みが多い順に見ます。' },
+  { key: 'events', label: 'イベントあり', description: '本日または直近イベントがある店舗の中で、女性の書き込みが多い順に見ます。' },
+  { key: 'open', label: '営業中', description: '営業時間が判定できる店舗の中で、女性の書き込みが多い順に見ます。' },
 ]
 
 function stringField(row: DbRow, key: string, fallback = '') {
@@ -415,6 +416,8 @@ function buildPublicStoreSummary(input: {
   ])
   const recentPosts = filterPostsWithinHours(input.posts, generatedAt, 24)
   const recentThreeHourCount = filterPostsWithinHours(input.posts, generatedAt, 3).length
+  const recentNormalizedPosts = filterNormalizedPostsWithinHours(input.normalizedPosts, generatedAt, 24)
+  const femalePostCount = recentNormalizedPosts.filter(isFemaleNormalizedPost).length
   const todayEventCount = input.events.filter(isTodayEvent).length
   const weekendEventCount = input.events.filter((event) => /金曜|土曜|日曜/.test(event.weekday)).length
   const womenRatio = computeWomenRatio(input.normalizedPosts, point)
@@ -429,7 +432,9 @@ function buildPublicStoreSummary(input: {
           ? '比較に残す'
           : '観測中'
   const primaryReason =
-    todayEventCount > 0
+    femalePostCount > 0
+      ? `女性書き込み ${femalePostCount}件`
+      : todayEventCount > 0
       ? '本日のイベントあり'
       : recentThreeHourCount > 0
         ? '直近3時間で投稿あり'
@@ -455,6 +460,7 @@ function buildPublicStoreSummary(input: {
     priceLabel,
     sessionLabel: formatStoreSessionLabel(point.store),
     womenRatio,
+    femalePostCount,
     recentPostCount: recentPosts.length,
     recentThreeHourCount,
     todayEventCount,
@@ -498,6 +504,24 @@ function computeWomenRatio(posts: BbsNormalizedPost[], point: StoreRadarPoint) {
   }
   if (point.signals.totalSignals <= 0) return null
   return Math.round((point.signals.femaleOnly / point.signals.totalSignals) * 100)
+}
+
+function normalizedPostTime(post: BbsNormalizedPost) {
+  return new Date(post.postedAt ?? post.observedAt).getTime()
+}
+
+function filterNormalizedPostsWithinHours(posts: BbsNormalizedPost[], reference: string, hours: number) {
+  const referenceTime = new Date(reference).getTime()
+  if (!Number.isFinite(referenceTime)) return []
+  const minTime = referenceTime - hours * 60 * 60 * 1000
+  return posts.filter((post) => {
+    const time = normalizedPostTime(post)
+    return Number.isFinite(time) && time >= minTime && time <= referenceTime
+  })
+}
+
+function isFemaleNormalizedPost(post: BbsNormalizedPost) {
+  return /女性|単女|女|♀/i.test(post.authorGender)
 }
 
 function japanDateKey(date: Date) {
@@ -617,12 +641,23 @@ export function matchesCondition(summary: PublicStoreSummary, condition: Conditi
 
 export function sortByRanking(summaries: PublicStoreSummary[], ranking: RankingKind) {
   return [...summaries].toSorted((a, b) => {
-    if (ranking === 'female') return (b.womenRatio ?? -1) - (a.womenRatio ?? -1) || b.point.score - a.point.score
-    if (ranking === 'events') return b.todayEventCount - a.todayEventCount || b.events.length - a.events.length || b.point.score - a.point.score
-    if (ranking === 'open') return Number(b.isOpenNow) - Number(a.isOpenNow) || b.point.score - a.point.score
-    if (ranking === 'weekend') return b.weekendEventCount - a.weekendEventCount || b.point.score - a.point.score
-    return b.point.score - a.point.score
+    if (ranking === 'events') {
+      return b.todayEventCount - a.todayEventCount || b.events.length - a.events.length || compareFemalePostActivity(a, b)
+    }
+    if (ranking === 'open') return Number(b.isOpenNow) - Number(a.isOpenNow) || compareFemalePostActivity(a, b)
+    if (ranking === 'weekend') return b.weekendEventCount - a.weekendEventCount || compareFemalePostActivity(a, b)
+    return compareFemalePostActivity(a, b)
   })
+}
+
+function compareFemalePostActivity(a: PublicStoreSummary, b: PublicStoreSummary) {
+  return (
+    b.femalePostCount - a.femalePostCount ||
+    b.recentThreeHourCount - a.recentThreeHourCount ||
+    b.recentPostCount - a.recentPostCount ||
+    (b.womenRatio ?? -1) - (a.womenRatio ?? -1) ||
+    b.point.score - a.point.score
+  )
 }
 
 export function buildPublicFaqSchema() {
