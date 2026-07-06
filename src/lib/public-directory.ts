@@ -417,10 +417,7 @@ function buildPublicStoreSummary(input: {
   const recentPosts = filterPostsWithinHours(input.posts, generatedAt, 24)
   const recentThreeHourCount = filterPostsWithinHours(input.posts, generatedAt, 3).length
   const recentNormalizedPosts = filterNormalizedPostsWithinHours(input.normalizedPosts, generatedAt, 24)
-  const femalePostCount = Math.max(
-    recentNormalizedPosts.filter(isFemaleNormalizedPost).length,
-    recentPosts.filter(isFemalePostRecord).length,
-  )
+  const femalePostCount = recentNormalizedPosts.filter(isFemaleNormalizedPost).length
   const todayEventCount = input.events.filter(isTodayEvent).length
   const weekendEventCount = input.events.filter((event) => /金曜|土曜|日曜/.test(event.weekday)).length
   const womenRatio = computeWomenRatio(input.normalizedPosts, point)
@@ -525,10 +522,6 @@ function filterNormalizedPostsWithinHours(posts: BbsNormalizedPost[], reference:
 
 function isFemaleNormalizedPost(post: BbsNormalizedPost) {
   return /女性|単女|女|♀/i.test(post.authorGender)
-}
-
-function isFemalePostRecord(post: PostRecord) {
-  return /投稿者[:：][^。\n]{0,80}[（(]\s*(女性|単女|女|♀)\s*[）)]|[（(]\s*(女性|単女|女|♀)\s*[）)]/i.test(post.body)
 }
 
 function japanDateKey(date: Date) {
@@ -639,7 +632,7 @@ export function filterPublicStores(
 export function matchesCondition(summary: PublicStoreSummary, condition: ConditionKey) {
   if (condition === 'open') return summary.isOpenNow
   if (condition === 'events') return summary.todayEventCount > 0 || summary.events.length > 0
-  if (condition === 'female') return (summary.womenRatio ?? 0) >= 45 || summary.point.signals.femaleOnly >= 4
+  if (condition === 'female') return summary.femalePostCount > 0 || (summary.womenRatio ?? 0) >= 45
   if (condition === 'price') return summary.priceLabel !== '公式で確認'
   if (condition === 'day') return summary.store.hasDaytime
   if (condition === 'night') return summary.store.hasNight

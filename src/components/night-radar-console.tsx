@@ -323,8 +323,12 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
 
   const todayOrderedScoredEvents = useMemo(() => prioritizeScoredEventsForToday(scoredEvents), [scoredEvents])
   const summary = useMemo(() => summarizeSignals(scoredEvents), [scoredEvents])
-  const storeAnalytics = useMemo(() => buildStoreBbsAnalytics(stores, posts), [stores, posts])
-  const storeRadar = useMemo(() => buildStoreRadarPoints(stores, posts, bbsSnapshots), [stores, posts, bbsSnapshots])
+  const recentDisplayPosts = useMemo(
+    () => filterPostsWithinHours(posts, initialState.setupStatus.generatedAt, 24),
+    [initialState.setupStatus.generatedAt, posts],
+  )
+  const storeAnalytics = useMemo(() => buildStoreBbsAnalytics(stores, recentDisplayPosts), [recentDisplayPosts, stores])
+  const storeRadar = useMemo(() => buildStoreRadarPoints(stores, recentDisplayPosts, bbsSnapshots), [recentDisplayPosts, stores, bbsSnapshots])
   const storeAnalyticsById = useMemo(
     () => new Map(storeAnalytics.map((item) => [item.store.id, item])),
     [storeAnalytics],
@@ -352,8 +356,8 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     [initialState.setupStatus.generatedAt, searchableBbsRecords],
   )
   const genderPostRankings = useMemo(
-    () => buildGenderPostRankings(searchableBbsRecords, stores),
-    [searchableBbsRecords, stores],
+    () => buildGenderPostRankings(recentDisplayPosts, stores),
+    [recentDisplayPosts, stores],
   )
   const genderRankingByStoreId = useMemo(
     () => new Map(genderPostRankings.map((ranking) => [ranking.store.id, ranking])),
@@ -1418,15 +1422,15 @@ function formatSourceSummary(health: SourceHealth, latestCaptureLabel: string) {
 
 function clampSignalCount(value: number, ceiling: number) {
   if (!value) return 0
-  if (ceiling > 0) return Math.min(value, ceiling)
-  return Math.min(value, 99)
+  if (ceiling <= 0) return 0
+  return Math.min(value, ceiling)
 }
 
 function getDisplayAttentionCount(point?: StoreRadarPoint, ranking?: GenderPostRanking) {
   if (!point) return 0
-  if (ranking?.observedCount) return ranking.observedCount
+  if (ranking) return ranking.observedCount
   if (point.postCount) return point.postCount
-  return Math.min(point.signals.totalSignals, 99)
+  return 0
 }
 
 function getDisplaySignalCounts(point?: StoreRadarPoint, ranking?: GenderPostRanking) {
@@ -1442,8 +1446,8 @@ function getDisplaySignalCounts(point?: StoreRadarPoint, ranking?: GenderPostRan
   }
 
   const attentionCount = getDisplayAttentionCount(point, ranking)
-  const female = ranking?.femaleSignals ? Math.min(ranking.femaleSignals, attentionCount || ranking.femaleSignals) : point.signals.femaleOnly
-  const male = ranking?.maleSignals ? Math.min(ranking.maleSignals, attentionCount || ranking.maleSignals) : 0
+  const female = ranking ? ranking.femaleSignals : point.signals.femaleOnly
+  const male = ranking ? ranking.maleSignals : 0
 
   return {
     female: clampSignalCount(female, attentionCount),
@@ -1552,7 +1556,7 @@ function buildReasonChips(point?: StoreRadarPoint, ranking?: GenderPostRanking) 
 
   const displaySignals = getDisplaySignalCounts(point, ranking)
   const chips = [
-    point.postCount ? `投稿 ${point.postCount}` : '',
+    point.postCount ? `24h投稿 ${point.postCount}` : '',
     displaySignals.female ? `女性 ${displaySignals.female}` : '',
     displaySignals.first ? `初回 ${displaySignals.first}` : '',
     displaySignals.group ? `複数 ${displaySignals.group}` : '',
@@ -1944,7 +1948,7 @@ function PostCountRankingCard({ rankings }: { rankings: GenderPostRanking[] }) {
         <div>
           <span>女性書き込み</span>
           <h2>女性の反応が多い店舗</h2>
-          <p>性別表記のある投稿者断片を重複除外して並べます。実人数や公式の投稿総数ではありません。</p>
+          <p>直近24時間の正規化投稿・手入力投稿だけを重複除外して並べます。実人数や公式の投稿総数ではありません。</p>
         </div>
         <strong>{visibleRankings[0] ? `${visibleRankings[0].femaleSignals}件` : '--'}</strong>
       </div>
@@ -2411,7 +2415,7 @@ function StoreExplorerCard({
           <dd>{point.share}%</dd>
         </div>
         <div>
-          <dt>投稿</dt>
+          <dt>24h投稿</dt>
           <dd>{point.postCount}</dd>
         </div>
         <div>
@@ -2573,7 +2577,7 @@ function StoreDetailDrawer({
 
         <dl className="store-detail-metrics">
           <div>
-            <dt>掲示板投稿</dt>
+            <dt>24h投稿</dt>
             <dd>{point.postCount}件</dd>
           </div>
           <div>
