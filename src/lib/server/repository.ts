@@ -1260,6 +1260,8 @@ async function dispatchCrawlFailureNotifications(
   supabase: DataClient,
   results: Array<{ source: BbsSource; run: CrawlRun }>,
 ) {
+  if (process.env.CRAWL_FAILURE_NOTIFICATIONS !== '1') return []
+
   const failures = results.filter(({ run }) => run.status === 'blocked' || run.status === 'failed')
   if (!failures.length) return []
 

@@ -4,9 +4,9 @@ import type { NotificationChannel, NotificationJob, PlanKey, ScoredEvent } from 
 
 export function buildSignalNotifications(events: ScoredEvent[], audience: PlanKey, channel: NotificationChannel) {
   return events.slice(0, planLimits[audience].notificationJobs).map((event) => ({
-    id: `notice-${event.id}-${channel}`,
-    title: `${event.store.name} / ${event.title}`,
-    body: `${event.date} ${event.startsAt}、公開シグナル期待度 ${event.score}。${event.reasons.join(' / ')}`,
+    id: `today-candidate-${event.id}-${channel}`,
+    title: `今日の候補: ${event.store.name}`,
+    body: `今日18:00時点の候補です。${event.date} ${event.startsAt} / ${event.store.name} / ${event.title}。判断スコア ${event.score}。根拠: ${event.reasons.join(' / ')}`,
     channel,
     audience,
     scheduledFor: new Date().toISOString(),
