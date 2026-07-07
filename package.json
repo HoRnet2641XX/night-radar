@@ -11,6 +11,7 @@
     "check:ready": "node scripts/check-local-readiness.mjs",
     "catalog:upsert:bbs": "node scripts/upsert-bbs-sources.mjs",
     "catalog:upsert:events": "node scripts/upsert-official-events.mjs",
+    "bbs:backfill:normalized": "node --env-file=.env.local --import tsx scripts/backfill-normalized-bbs-posts.mjs",
     "start": "next start"
   },
   "dependencies": {

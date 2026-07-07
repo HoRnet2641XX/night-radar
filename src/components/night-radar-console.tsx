@@ -105,7 +105,7 @@ type Props = {
 const navItems: Array<{ key: NavKey; view: ViewKey; label: string; icon: ReactNode; targetId?: string }> = [
   { key: 'today', view: 'analytics', label: '今日', icon: <Broadcast size={20} weight="bold" /> },
   { key: 'search', view: 'automate', label: '名前', icon: <MagnifyingGlass size={20} weight="bold" /> },
-  { key: 'calendar', view: 'analytics', label: 'カレンダー', icon: <CalendarDots size={20} weight="bold" />, targetId: 'top-calendar' },
+  { key: 'calendar', view: 'analytics', label: 'カレンダー', icon: <CalendarDots size={20} weight="bold" /> },
   { key: 'stores', view: 'capture', label: '探す', icon: <Storefront size={20} weight="bold" /> },
   { key: 'settings', view: 'account', label: '設定', icon: <ShieldCheck size={20} weight="bold" /> },
 ]
@@ -478,8 +478,14 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   const visibleWatchedHits = dedupeWatchedHitsByStore(activeWatchedHits).slice(0, 8)
   const topForecasts = visitForecasts.slice(0, 3)
   const latestPost = posts[0]
-  const hotStore = storeRadar[0]
-  const watchStore = storeRadar.find((point) => point.rank > 1 && point.score >= 35) ?? storeRadar[1]
+  const hotStore = useMemo(
+    () => selectSpotlightStore(storeRadar, genderRankingByStoreId, bbsSourceByStoreId, eventCountByStoreId, initialState.setupStatus.generatedAt),
+    [bbsSourceByStoreId, eventCountByStoreId, genderRankingByStoreId, initialState.setupStatus.generatedAt, storeRadar],
+  )
+  const watchStore = useMemo(
+    () => storeRadar.find((point) => point.store.id !== hotStore?.store.id && point.score >= 35) ?? storeRadar.find((point) => point.store.id !== hotStore?.store.id),
+    [hotStore?.store.id, storeRadar],
+  )
   const sourceHealth = useMemo(() => buildSourceHealth(bbsSources), [bbsSources])
   const skipStore = useMemo(
     () => selectSkipStore(storeRadar, hotStore, watchStore, genderRankingByStoreId, bbsSourceByStoreId, eventCountByStoreId),
@@ -1563,6 +1569,58 @@ function storeSkipScore(point: StoreRadarPoint, ranking?: GenderPostRanking, sou
   return 100 - point.score + sourcePenalty + eventPenalty + femalePenalty
 }
 
+function stableHash(value: string) {
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0
+  }
+  return hash
+}
+
+function spotlightDateKey(generatedAt?: string) {
+  const date = generatedAt ? new Date(generatedAt) : new Date()
+  return dateKeyInJapan(Number.isNaN(date.getTime()) ? new Date() : date)
+}
+
+function storeSpotlightWeight(point: StoreRadarPoint, ranking?: GenderPostRanking, source?: BbsSource, eventCount = 0, originalIndex = 0) {
+  const femalePosts = ranking?.femaleSignals ?? 0
+  const updatedAt = point.lastCapturedAt ? new Date(point.lastCapturedAt).getTime() : 0
+  const freshnessHours = updatedAt ? Math.max(0, (Date.now() - updatedAt) / (1000 * 60 * 60)) : 48
+  const freshnessScore = Math.max(0, 18 - Math.min(18, freshnessHours))
+  const sourceScore = source?.lastStatus === 'ok' && !isSourceStale(source) ? 8 : 0
+  return point.score + Math.min(femalePosts, 10) * 2.4 + Math.min(eventCount, 4) * 4 + freshnessScore + sourceScore - originalIndex * 1.5
+}
+
+function selectSpotlightStore(
+  points: StoreRadarPoint[],
+  rankings?: Map<string, GenderPostRanking>,
+  sources?: Map<string, BbsSource>,
+  eventCounts?: Map<string, number>,
+  generatedAt?: string,
+) {
+  const activePoints = points.filter((point) => point.score > 0)
+  if (activePoints.length <= 1) return activePoints[0] ?? points[0]
+
+  const topScore = activePoints[0]?.score ?? 0
+  const candidates = activePoints
+    .filter((point, index) => {
+      const ranking = rankings?.get(point.store.id)
+      const eventCount = eventCounts?.get(point.store.id) ?? 0
+      return index < 8 && (point.score >= topScore - 18 || (ranking?.femaleSignals ?? 0) > 0 || eventCount > 0)
+    })
+    .map((point, index) => ({
+      point,
+      weight: storeSpotlightWeight(point, rankings?.get(point.store.id), sources?.get(point.store.id), eventCounts?.get(point.store.id) ?? 0, index),
+    }))
+    .toSorted((a, b) => b.weight - a.weight || b.point.score - a.point.score)
+
+  const pool = candidates.slice(0, Math.min(4, candidates.length))
+  if (pool.length <= 1) return pool[0]?.point ?? activePoints[0]
+
+  const seed = stableHash(`${spotlightDateKey(generatedAt)}:${pool.map(({ point }) => `${point.store.id}:${point.lastCapturedAt ?? ''}`).join('|')}`)
+  return pool[seed % pool.length]?.point ?? pool[0].point
+}
+
 function selectSkipStore(
   points: StoreRadarPoint[],
   primary?: StoreRadarPoint,
@@ -1985,9 +2043,9 @@ function StoreDiscoveryPanel({
   onSortChange: (value: StoreSortKey) => void
 }) {
   const visibleTop = points.slice(0, 9)
-  const strongest = points[0]
+  const strongest = selectSpotlightStore(points, genderRankingByStoreId, sourceByStoreId, eventCountByStoreId)
   const candidatePoints = allPoints.filter((point) => storeDecisions[point.store.id] === 'candidate').slice(0, 4)
-  const visibleCards = strongest ? visibleTop.slice(1) : visibleTop
+  const visibleCards = strongest ? visibleTop.filter((point) => point.store.id !== strongest.store.id).slice(0, 8) : visibleTop
   const sortLabel =
     sort === 'share' ? '比率が高い順' : sort === 'signals' ? '根拠が多い順' : sort === 'updated' ? '更新が新しい順' : '女性書き込み順'
   const sessionLabel = sessionFilter === 'current' ? '今から行ける' : sessionFilter === 'day' ? '昼営業' : sessionFilter === 'night' ? '夜営業' : '全時間'
@@ -2150,7 +2208,7 @@ function StoreDiscoveryPanel({
               genderRanking={genderRankingByStoreId.get(point.store.id)}
               key={point.store.id}
               point={point}
-              rank={index + 2}
+              rank={point.rank || index + 1}
               source={sourceByStoreId.get(point.store.id)}
               onDecisionChange={onDecisionChange}
               onOpenDetail={onOpenDetail}
@@ -2185,11 +2243,15 @@ function StoreSpotlightCard({
 }) {
   const todayFit = todayCompatibilityLabel(analytics)
   const decisionMetrics = buildDecisionMetrics(point, genderRanking, source, eventCount)
+  const rankLabel = storeRankLabel(point.rank)
 
   return (
     <article className={`store-spotlight-card is-${point.tone} ${decision ? `decision-${decision}` : ''}`} aria-label="本命店舗">
       <div className="store-spotlight-copy">
-        <span>いま最初に見る店舗</span>
+        <div className="store-spotlight-labels">
+          <span>いま最初に見る店舗</span>
+          {rankLabel ? <em className={`store-rank-label is-rank-${point.rank}`}>{rankLabel}</em> : null}
+        </div>
         <h3>{formatBarName(point.store.name)}</h3>
         <p>{point.verdict}。{todayFit}</p>
       </div>
@@ -2238,6 +2300,7 @@ function StoreExplorerCard({
 }) {
   const todayFit = todayCompatibilityLabel(analytics)
   const decisionMetrics = buildDecisionMetrics(point, genderRanking, source, eventCount)
+  const rankLabel = storeRankLabel(point.rank || rank)
   const decisionLabel =
     decision === 'candidate' ? '候補' : decision === 'favorite' ? 'お気に入り' : decision === 'hidden' ? '非表示' : '比較中'
 
@@ -2245,6 +2308,7 @@ function StoreExplorerCard({
     <article className={`store-explorer-card is-${point.tone} ${decision ? `decision-${decision}` : ''}`}>
       <div className="store-rank-line">
         <span className="store-rank-badge">#{rank}</span>
+        {rankLabel ? <span className={`store-rank-label is-rank-${point.rank || rank}`}>{rankLabel}</span> : null}
         <span className={`store-decision-badge ${decision ? `is-${decision}` : ''}`}>{decisionLabel}</span>
       </div>
       <div className="store-card-top">
@@ -2302,6 +2366,13 @@ function StoreExplorerCard({
       </details>
     </article>
   )
+}
+
+function storeRankLabel(rank?: number) {
+  if (rank === 1) return 'ヤバすぎて滅店'
+  if (rank === 2) return '爆アゲ店'
+  if (rank === 3) return '激アツ店'
+  return ''
 }
 
 function StoreDetailDrawer({
@@ -2525,17 +2596,31 @@ function MonthlyCalendarPreview({
   const defaultMonthKey = useMemo(() => selectDefaultCalendarMonth(monthOptions), [monthOptions])
   const [selectedMonthKey, setSelectedMonthKey] = useState(defaultMonthKey)
   const [eventFilter, setEventFilter] = useState<CalendarEventFilter>('all')
+  const [eventQuery, setEventQuery] = useState('')
   const activeMonthKey = monthOptions.some((month) => month.key === selectedMonthKey) ? selectedMonthKey : defaultMonthKey
   const activeMonth = monthOptions.find((month) => month.key === activeMonthKey)
-  const cells = useMemo(() => buildCalendarPreviewCells(events, stores, activeMonthKey, eventFilter), [activeMonthKey, eventFilter, events, stores])
+  const cells = useMemo(
+    () => buildCalendarPreviewCells(events, stores, activeMonthKey, eventFilter, eventQuery),
+    [activeMonthKey, eventFilter, eventQuery, events, stores],
+  )
   const eventCount = cells.reduce((sum, cell) => sum + cell.items.length, 0)
-  const monthStats = useMemo(() => buildCalendarMonthStats(events, activeMonthKey), [activeMonthKey, events])
+  const monthStats = useMemo(() => buildCalendarMonthStats(events, stores, activeMonthKey, eventQuery), [activeMonthKey, eventQuery, events, stores])
   const [selectedDay, setSelectedDay] = useState<CalendarPreviewCell | null>(null)
   useBodyScrollLock(Boolean(selectedDay))
+  const hasCalendarFilter = eventFilter !== 'all' || Boolean(eventQuery.trim())
 
   const openDrawerOnSmallScreen = (cell: CalendarPreviewCell) => {
     if (cell.isBlank || !cell.items.length) return
     if (window.matchMedia('(max-width: 760px)').matches) setSelectedDay(cell)
+  }
+
+  const toggleEventFilter = (filter: CalendarEventFilter) => {
+    setEventFilter((current) => (current === filter ? 'all' : filter))
+  }
+
+  const clearCalendarFilters = () => {
+    setEventFilter('all')
+    setEventQuery('')
   }
 
   return (
@@ -2548,23 +2633,51 @@ function MonthlyCalendarPreview({
         </div>
         <em>{eventCount}件</em>
       </div>
+      <label className="calendar-search-box">
+        <MagnifyingGlass size={17} weight="bold" />
+        <input
+          aria-label="月間イベントを検索"
+          autoComplete="off"
+          placeholder="店舗名・イベント名・気になるワードで検索"
+          value={eventQuery}
+          onChange={(event) => setEventQuery(event.target.value)}
+        />
+        {eventQuery ? (
+          <button aria-label="イベント検索を解除" type="button" onClick={() => setEventQuery('')}>
+            <X size={15} weight="bold" />
+          </button>
+        ) : null}
+      </label>
       <div className="calendar-event-tabs" aria-label="イベント表示切り替え">
         <button type="button" aria-pressed={eventFilter === 'all'} onClick={() => setEventFilter('all')}>
           すべて
           <em>{monthStats.all}</em>
         </button>
-        <button type="button" aria-pressed={eventFilter === 'day'} onClick={() => setEventFilter('day')}>
+        <button type="button" aria-pressed={eventFilter === 'day'} onClick={() => toggleEventFilter('day')}>
           朝イベ
           <em>{monthStats.day}</em>
         </button>
-        <button type="button" aria-pressed={eventFilter === 'night'} onClick={() => setEventFilter('night')}>
+        <button type="button" aria-pressed={eventFilter === 'night'} onClick={() => toggleEventFilter('night')}>
           夜イベ
           <em>{monthStats.night}</em>
         </button>
-        <button type="button" aria-pressed={eventFilter === 'highlight'} onClick={() => setEventFilter('highlight')}>
+        <button type="button" aria-pressed={eventFilter === 'highlight'} onClick={() => toggleEventFilter('highlight')}>
           注目
           <em>{monthStats.highlight}</em>
         </button>
+      </div>
+      <div className="calendar-filter-summary" aria-live="polite">
+        <span>
+          表示中: {calendarFilterLabel(eventFilter)}
+          {eventQuery.trim() ? ` / 検索「${eventQuery.trim()}」` : ''}
+        </span>
+        {hasCalendarFilter ? (
+          <button type="button" onClick={clearCalendarFilters}>
+            フィルタを外す
+          </button>
+        ) : (
+          <em>条件なし</em>
+        )}
       </div>
       <div className="calendar-highlight-strip" aria-label="注目イベント種別">
         <span>チェック対象</span>
@@ -2750,6 +2863,19 @@ function calendarEventText(event: EventInput) {
   return `${event.title} ${event.category} ${event.details ?? ''}`.normalize('NFKC').toLowerCase()
 }
 
+function calendarEventSearchText(event: EventInput, stores: StoreProfile[]) {
+  return normalizeLocalSearchText(
+    [
+      resolveStoreDisplayName(stores, event.storeId),
+      event.title,
+      event.category,
+      event.details ?? '',
+      event.startsAt,
+      event.session === 'day' ? '朝 昼 day' : '夜 night',
+    ].join(' '),
+  )
+}
+
 function getCalendarEventTags(event: EventInput): CalendarEventTag[] {
   const text = calendarEventText(event)
   const tags: CalendarEventTag[] = []
@@ -2773,10 +2899,17 @@ function eventMatchesCalendarFilter(event: EventInput, filter: CalendarEventFilt
   return getCalendarEventTags(event).length > 0
 }
 
-function buildCalendarMonthStats(events: EventInput[], monthKey: string) {
+function eventMatchesCalendarQuery(event: EventInput, stores: StoreProfile[], query: string) {
+  const normalizedQuery = normalizeLocalSearchText(query)
+  if (!normalizedQuery) return true
+  return calendarEventSearchText(event, stores).includes(normalizedQuery)
+}
+
+function buildCalendarMonthStats(events: EventInput[], stores: StoreProfile[], monthKey: string, query = '') {
   return events.reduce(
     (stats, event) => {
       if (eventMonthKey(event) !== monthKey) return stats
+      if (!eventMatchesCalendarQuery(event, stores, query)) return stats
       stats.all += 1
       if (event.session === 'day') stats.day += 1
       else stats.night += 1
@@ -2822,6 +2955,7 @@ function buildCalendarPreviewCells(
   stores: StoreProfile[],
   monthKey: string,
   filter: CalendarEventFilter = 'all',
+  query = '',
 ): CalendarPreviewCell[] {
   const [year, month] = monthKey.split('-').map(Number)
   const daysInMonth = daysInMonthInJapan(year, month)
@@ -2833,6 +2967,7 @@ function buildCalendarPreviewCells(
 
   for (const event of events) {
     if (!eventMatchesCalendarFilter(event, filter)) continue
+    if (!eventMatchesCalendarQuery(event, stores, query)) continue
     const day = resolveEventDay(event, year, month)
     if (!day) continue
     const storeName = resolveStoreDisplayName(stores, event.storeId)

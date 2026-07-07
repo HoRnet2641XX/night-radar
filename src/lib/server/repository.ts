@@ -1594,7 +1594,7 @@ function normalizeCronMaxCrawls(options: CronCrawlOptions) {
   if (Number.isFinite(value) && value > 0) return Math.max(1, Math.min(10, Math.floor(value)))
   if (options.sourceIds?.length) return Math.max(1, Math.min(10, options.sourceIds.length))
   if (options.batchSize) return 1
-  return 1
+  return 2
 }
 
 export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) {
