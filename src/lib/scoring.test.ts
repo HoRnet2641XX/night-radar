@@ -15,7 +15,9 @@ import {
   extractNormalizedBbsPostsFromText,
   extractWatchedAuthorEntries,
   extractWatchedAuthorText,
+  filterPostsForBusinessDay,
   filterPostsWithinHours,
+  filterSnapshotsForBusinessDay,
   normalizeWatchedSearchText,
   parseExactTerms,
   prioritizeScoredEventsForToday,
@@ -369,6 +371,82 @@ describe('searchExactBbsTerms', () => {
 })
 
 describe('BBS radar signals', () => {
+  it('filters posts to the current Japan business day', () => {
+    const records: PostRecord[] = [
+      {
+        id: 'previous-business-start',
+        storeId: stores[0].id,
+        source: 'scrape',
+        postedAt: '2026-07-01T21:10:00.000Z',
+        body: '営業日開始後の投稿',
+        keywords: [],
+      },
+      {
+        id: 'same-business-night',
+        storeId: stores[0].id,
+        source: 'scrape',
+        postedAt: '2026-07-02T01:00:00.000Z',
+        body: '深夜営業中の投稿',
+        keywords: [],
+      },
+      {
+        id: 'before-business-start',
+        storeId: stores[0].id,
+        source: 'scrape',
+        postedAt: '2026-07-01T20:50:00.000Z',
+        body: '営業日前の投稿',
+        keywords: [],
+      },
+      {
+        id: 'future-post',
+        storeId: stores[0].id,
+        source: 'scrape',
+        postedAt: '2026-07-02T03:30:00.000Z',
+        body: 'まだ取得時刻より未来の投稿',
+        keywords: [],
+      },
+    ]
+
+    const filtered = filterPostsForBusinessDay(records, '2026-07-02T02:00:00.000Z')
+
+    assert.deepEqual(
+      filtered.map((record) => record.id),
+      ['previous-business-start', 'same-business-night'],
+    )
+  })
+
+  it('filters BBS snapshots to the current Japan business day', () => {
+    const snapshots: BbsSnapshot[] = [
+      {
+        id: 'today-snapshot',
+        sourceId: 'source-1',
+        storeId: stores[0].id,
+        url: 'https://example.com/bbs',
+        extractedText: '',
+        metrics: { femaleOnly: 1, firstVisit: 0, comeback: 0, groupVisit: 0, emoji: 0, totalSignals: 1, textLength: 100 },
+        radarScore: 44,
+        capturedAt: '2026-07-01T21:05:00.000Z',
+      },
+      {
+        id: 'old-snapshot',
+        sourceId: 'source-1',
+        storeId: stores[0].id,
+        url: 'https://example.com/bbs',
+        extractedText: '',
+        metrics: { femaleOnly: 9, firstVisit: 0, comeback: 0, groupVisit: 0, emoji: 0, totalSignals: 9, textLength: 900 },
+        radarScore: 92,
+        capturedAt: '2026-07-01T20:55:00.000Z',
+      },
+    ]
+
+    const filtered = filterSnapshotsForBusinessDay(snapshots, '2026-07-02T02:00:00.000Z')
+
+    assert.deepEqual(
+      filtered.map((snapshot) => snapshot.id),
+      ['today-snapshot'],
+    )
+  })
+
   it('extracts customer-written BBS blocks from noisy public pages', () => {
     const text = [
       '禁止事項 BBSでの誹謗中傷や営業妨害は禁止です。当店イベントは女性無料です。',

@@ -135,6 +135,73 @@ export function filterPostsWithinHours(posts: PostRecord[], referenceAt: string 
   })
 }
 
+function japanDateParts(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false,
+    minute: '2-digit',
+    month: '2-digit',
+    second: '2-digit',
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+  }).formatToParts(date)
+  const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value ?? 0)
+
+  return {
+    year: value('year'),
+    month: value('month'),
+    day: value('day'),
+    hour: value('hour'),
+    minute: value('minute'),
+    second: value('second'),
+  }
+}
+
+function japanTimeToUtcTimestamp(year: number, month: number, day: number, hour = 0, minute = 0, second = 0) {
+  return Date.UTC(year, month - 1, day, hour - 9, minute, second)
+}
+
+export function businessDayRangeInJapan(referenceAt: string | number | Date) {
+  const referenceTime =
+    referenceAt instanceof Date ? referenceAt.getTime() : typeof referenceAt === 'number' ? referenceAt : new Date(referenceAt).getTime()
+  if (!Number.isFinite(referenceTime)) return null
+
+  const parts = japanDateParts(new Date(referenceTime))
+  let start = japanTimeToUtcTimestamp(parts.year, parts.month, parts.day, 6)
+  if (parts.hour < 6) start -= 24 * 60 * 60 * 1000
+
+  return {
+    start,
+    end: start + 24 * 60 * 60 * 1000,
+    referenceTime,
+  }
+}
+
+export function filterPostsForBusinessDay(posts: PostRecord[], referenceAt: string | number | Date) {
+  const range = businessDayRangeInJapan(referenceAt)
+  if (!range) return posts
+
+  const futureTolerance = Math.min(range.end, range.referenceTime + 10 * 60 * 1000)
+
+  return posts.filter((post) => {
+    const postedTime = new Date(post.postedAt).getTime()
+    return Number.isFinite(postedTime) && postedTime >= range.start && postedTime <= futureTolerance
+  })
+}
+
+export function filterSnapshotsForBusinessDay(snapshots: BbsSnapshot[], referenceAt: string | number | Date) {
+  const range = businessDayRangeInJapan(referenceAt)
+  if (!range) return snapshots
+
+  const futureTolerance = Math.min(range.end, range.referenceTime + 10 * 60 * 1000)
+
+  return snapshots.filter((snapshot) => {
+    const capturedTime = new Date(snapshot.capturedAt).getTime()
+    return Number.isFinite(capturedTime) && capturedTime >= range.start && capturedTime <= futureTolerance
+  })
+}
+
 export function normalizeWatchedSearchText(value: string) {
   return value.normalize('NFKC').replace(/\s+/g, '').toLowerCase()
 }

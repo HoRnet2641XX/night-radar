@@ -6,7 +6,9 @@ import {
   buildStoreBbsAnalytics,
   buildStoreRadarPoints,
   buildVisitForecasts,
+  filterPostsForBusinessDay,
   filterPostsWithinHours,
+  filterSnapshotsForBusinessDay,
   scoreEvents,
 } from './scoring'
 import { createSupabaseAdminClient } from './supabase/server'
@@ -364,10 +366,12 @@ function buildPublicState(input: {
 }): PublicDirectoryState {
   const posts = buildEffectiveBbsPostRecords(input.rawPosts, input.normalizedPosts)
   const scoredEvents = scoreEvents(input.events, input.stores, posts)
-  const radar = buildStoreRadarPoints(input.stores, posts, input.snapshots)
-  const analytics = buildStoreBbsAnalytics(input.stores, posts)
-  const forecasts = buildVisitForecasts(input.events, input.stores, posts, { windowDays: 7 })
   const generatedAt = new Date().toISOString()
+  const businessDayPosts = filterPostsForBusinessDay(posts, generatedAt)
+  const businessDaySnapshots = filterSnapshotsForBusinessDay(input.snapshots, generatedAt)
+  const radar = buildStoreRadarPoints(input.stores, businessDayPosts, businessDaySnapshots)
+  const analytics = buildStoreBbsAnalytics(input.stores, businessDayPosts)
+  const forecasts = buildVisitForecasts(input.events, input.stores, posts, { windowDays: 7 })
   const summaries = radar.map((point) =>
     buildPublicStoreSummary({
       point,
@@ -417,7 +421,7 @@ function buildPublicStoreSummary(input: {
     ...input.posts.map((post) => post.postedAt),
     ...input.normalizedPosts.map((post) => post.postedAt ?? post.observedAt),
   ])
-  const recentPosts = filterPostsWithinHours(input.posts, generatedAt, 24)
+  const recentPosts = filterPostsForBusinessDay(input.posts, generatedAt)
   const recentThreeHourCount = filterPostsWithinHours(input.posts, generatedAt, 3).length
   const recentNormalizedPosts = filterNormalizedPostsWithinHours(input.normalizedPosts, generatedAt, 24)
   const femalePostCount = recentNormalizedPosts.filter(isFemaleNormalizedPost).length

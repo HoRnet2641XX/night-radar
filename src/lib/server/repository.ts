@@ -6,7 +6,7 @@ import {
   buildEffectiveBbsPostRecords,
   buildSearchableBbsRecords,
   extractNormalizedBbsPostsFromText,
-  filterPostsWithinHours,
+  filterPostsForBusinessDay,
   scoreEvents,
   searchExactBbsTerms,
 } from '../scoring'
@@ -1166,7 +1166,7 @@ export async function saveAndSearchExactTerms(exactTerms: ExactTermState, fallba
 
   const state = await getDashboardState()
   const searchableRecords = buildSearchableBbsRecords(state.posts, state.bbsSnapshots)
-  const recentRecords = filterPostsWithinHours(searchableRecords, state.setupStatus.generatedAt, 24)
+  const recentRecords = filterPostsForBusinessDay(searchableRecords, state.setupStatus.generatedAt)
   const matches = searchExactBbsTerms(recentRecords, state.stores, groups)
   const persistableMatches = matches.filter((match) => !match.post.id.startsWith('snapshot-'))
   if (persistableMatches.length) {

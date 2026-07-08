@@ -10070,9 +10070,130 @@ button:disabled {
   }
 }
 
-/* Today ranking card clarity pass */
+/* Today ranking, install, and tactile UI pass */
+.mobile-app-shell button,
+.mobile-app-shell .decision-actions button,
+.mobile-app-shell .app-flow-steps button,
+.mobile-app-shell .store-filter-row button,
+.mobile-app-shell .store-decision-strip button,
+.mobile-app-shell .store-card-actions button,
+.mobile-app-shell .store-more-actions button,
+.mobile-app-shell .store-detail-actions button,
+.mobile-app-shell .watch-filter-actions button,
+.mobile-app-shell .bookmark-form button,
+.mobile-app-shell .match-filter-tabs button,
+.mobile-app-shell .calendar-event-tabs button,
+.mobile-app-shell .calendar-month-switcher button,
+.mobile-app-shell .calendar-search-box button,
+.mobile-app-shell .source-list button {
+  touch-action: manipulation;
+  transition:
+    background-color 170ms ease,
+    border-color 170ms ease,
+    box-shadow 170ms ease,
+    color 170ms ease,
+    opacity 170ms ease,
+    transform 170ms ease;
+}
+
+.mobile-app-shell button:not(.bottom-nav button):not(.brand-chip):not(:disabled) {
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.mobile-app-shell button:not(.bottom-nav button):not(.brand-chip):not(:disabled):hover {
+  border-color: oklch(var(--nr-signal-channel) / 0.44);
+  background-color: rgba(225, 240, 255, 0.075);
+  transform: translateY(-1px);
+}
+
+.mobile-app-shell button:not(.bottom-nav button):not(.brand-chip):not(:disabled):active {
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transform: translateY(1px) scale(0.99);
+}
+
+.mobile-app-shell button:focus-visible {
+  outline: 2px solid oklch(var(--nr-signal-channel) / 0.68);
+  outline-offset: 2px;
+}
+
+.install-reminder-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(154, 190, 225, 0.14);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(218, 83, 76, 0.11), transparent 44%),
+    rgba(5, 11, 20, 0.78);
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: 14px;
+}
+
+.install-reminder-card span {
+  color: var(--nr-amber);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.install-reminder-card strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--nr-text);
+  font-size: clamp(16px, 1.8vw, 20px);
+  font-weight: 950;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.install-reminder-card p,
+.install-reminder-card em {
+  display: block;
+  margin: 5px 0 0;
+  max-inline-size: 66ch;
+  color: var(--nr-muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 780;
+  line-height: 1.55;
+}
+
+.install-reminder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.install-reminder-actions button {
+  min-height: 40px;
+  border: 1px solid oklch(var(--nr-signal-channel) / 0.34);
+  border-radius: 13px;
+  background: var(--nr-active);
+  color: var(--nr-text);
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.install-reminder-actions .secondary-action {
+  border-color: rgba(154, 190, 225, 0.16);
+  background: rgba(7, 13, 24, 0.78);
+  color: var(--nr-text-soft);
+}
+
+.today-decision-card {
+  inline-size: 100%;
+}
+
 .today-decision-card .decision-store-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   align-items: stretch;
 }
 
@@ -10080,62 +10201,67 @@ button:disabled {
 .today-decision-card .decision-store-card.is-go,
 .today-decision-card .decision-store-card.is-maybe,
 .today-decision-card .decision-store-card.is-skip {
+  grid-template-columns: minmax(220px, 0.88fr) minmax(310px, 0.88fr) minmax(260px, 0.74fr);
   grid-row: auto;
   min-height: 0;
-  border-radius: 18px;
+  border-radius: 19px;
   padding: 14px;
 }
 
 .today-decision-card .decision-store-card.is-go {
-  border-color: oklch(var(--nr-signal-channel) / 0.36);
+  border-color: oklch(var(--nr-signal-channel) / 0.38);
   background:
-    linear-gradient(135deg, rgba(218, 83, 76, 0.14), transparent 18rem),
+    linear-gradient(135deg, rgba(218, 83, 76, 0.13), transparent 23rem),
     rgba(7, 13, 24, 0.9);
 }
 
 .today-decision-card .decision-store-head {
-  align-items: flex-start;
+  grid-column: 1 / -1;
+  align-items: center;
 }
 
 .today-decision-card .decision-store-head span {
-  display: grid;
-  inline-size: 32px;
-  block-size: 32px;
+  display: inline-grid;
+  inline-size: 36px;
+  block-size: 34px;
   place-items: center;
-  border: 1px solid oklch(var(--nr-signal-channel) / 0.28);
+  border: 1px solid oklch(var(--nr-signal-channel) / 0.32);
   border-radius: 12px;
-  background: rgba(218, 83, 76, 0.12);
+  background: rgba(218, 83, 76, 0.13);
   color: var(--nr-active);
   font-size: 12px;
 }
 
 .today-decision-card .decision-store-head em {
-  max-inline-size: 11em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-inline-size: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .today-decision-card .decision-store-main,
 .today-decision-card .decision-store-card.is-go .decision-store-main,
 .today-decision-card .decision-store-card:not(.is-go) .decision-store-main {
-  grid-template-columns: minmax(0, 1fr) 84px;
+  display: grid;
+  grid-column: 1;
+  grid-row: 2 / span 2;
+  grid-template-columns: minmax(0, 1fr) 72px;
   align-items: center;
-  min-height: 116px;
+  min-height: 122px;
   gap: 12px;
 }
 
 .today-decision-card .decision-store-main > div:first-child,
 .today-decision-card .decision-store-card:not(.is-go) .decision-store-main > div:first-child {
-  min-height: 116px;
+  min-height: 122px;
   border-radius: 16px;
-  padding: 16px;
+  padding: 17px;
 }
 
 .today-decision-card .decision-store-main strong,
 .today-decision-card .decision-store-card.is-go .decision-store-main strong,
 .today-decision-card .decision-store-card:not(.is-go) .decision-store-main strong {
-  font-size: clamp(21px, 1.9vw, 28px);
+  font-size: clamp(22px, 2.15vw, 30px);
   line-height: 1.08;
 }
 
@@ -10151,30 +10277,35 @@ button:disabled {
   display: grid;
   grid-template-columns: 1fr;
   place-items: center;
-  min-height: 116px;
+  min-height: 108px;
   border-radius: 16px;
-  padding: 10px;
+  padding: 9px;
 }
 
 .today-decision-card .decision-score,
 .today-decision-card .decision-store-card.is-go .decision-score,
 .today-decision-card .decision-store-card:not(.is-go) .decision-score {
-  inline-size: 68px;
-  block-size: 68px;
-  border-radius: 20px;
+  inline-size: 62px;
+  block-size: 62px;
+  border-radius: 18px;
 }
 
 .today-decision-card .decision-score::after,
 .today-decision-card .decision-store-card.is-go .decision-score::after,
 .today-decision-card .decision-store-card:not(.is-go) .decision-score::after {
-  inset: 20px;
-  border-radius: 12px;
+  inset: 19px;
+  border-radius: 11px;
 }
 
 .today-decision-card .decision-score-inner span,
 .today-decision-card .decision-store-card.is-go .decision-score-inner span,
 .today-decision-card .decision-store-card:not(.is-go) .decision-score-inner span {
-  font-size: 25px;
+  font-size: 21px;
+  letter-spacing: 0;
+}
+
+.today-decision-card .decision-score-inner small {
+  font-size: 8px;
 }
 
 .today-decision-card .decision-score-meters,
@@ -10187,14 +10318,17 @@ button:disabled {
 .today-decision-card .decision-store-card.is-go .decision-signal-grid,
 .today-decision-card .decision-store-card:not(.is-go) .decision-signal-grid {
   display: grid;
+  grid-column: 2;
+  grid-row: 2;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
+  gap: 8px;
+  align-self: stretch;
 }
 
 .today-decision-card .decision-signal-grid div {
-  min-height: 54px;
-  border-radius: 12px;
-  padding: 9px 10px;
+  min-height: 58px;
+  border-radius: 13px;
+  padding: 10px 11px;
 }
 
 .today-decision-card .decision-signal-grid div:nth-child(n + 4) {
@@ -10211,28 +10345,71 @@ button:disabled {
 
 .today-decision-card .decision-store-notice,
 .today-decision-card .decision-store-card:not(.is-go) .decision-store-notice {
-  display: -webkit-box;
+  display: block;
+  grid-column: 3;
+  grid-row: 2;
   overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  min-height: 42px;
-  border-radius: 14px;
-  padding: 10px 12px;
-  font-size: 11.5px;
-  line-height: 1.45;
+  min-height: 96px;
+  border-radius: 15px;
+  padding: 13px 14px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.gender-radar-pie {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+}
+
+.gender-radar-pie span {
+  font-size: 13px;
+}
+
+.decision-store-card .decision-score-inner span,
+.store-spotlight-score strong,
+.pulse-score strong {
+  letter-spacing: 0;
 }
 
 @media (max-width: 1180px) {
-  .today-decision-card .decision-store-grid {
-    grid-template-columns: 1fr;
+  .today-decision-card .decision-store-card,
+  .today-decision-card .decision-store-card.is-go,
+  .today-decision-card .decision-store-card.is-maybe,
+  .today-decision-card .decision-store-card.is-skip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .today-decision-card .decision-store-main,
+  .today-decision-card .decision-store-card.is-go .decision-store-main,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-store-main,
+  .today-decision-card .decision-signal-grid,
+  .today-decision-card .decision-store-card.is-go .decision-signal-grid,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-signal-grid,
+  .today-decision-card .decision-store-notice,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-store-notice {
+    grid-column: 1;
+    grid-row: auto;
   }
 }
 
 @media (max-width: 759px) {
+  .install-reminder-card {
+    grid-template-columns: 1fr;
+  }
+
+  .install-reminder-actions {
+    justify-content: stretch;
+  }
+
+  .install-reminder-actions button {
+    flex: 1 1 130px;
+  }
+
   .today-decision-card .decision-store-main,
   .today-decision-card .decision-store-card.is-go .decision-store-main,
   .today-decision-card .decision-store-card:not(.is-go) .decision-store-main {
-    grid-template-columns: minmax(0, 1fr) 76px;
+    grid-template-columns: minmax(0, 1fr) 66px;
     min-height: 0;
   }
 
@@ -10241,13 +10418,26 @@ button:disabled {
   .today-decision-card .decision-score-panel,
   .today-decision-card .decision-store-card.is-go .decision-score-panel,
   .today-decision-card .decision-store-card:not(.is-go) .decision-score-panel {
-    min-height: 96px;
+    min-height: 92px;
   }
 
   .today-decision-card .decision-signal-grid,
   .today-decision-card .decision-store-card.is-go .decision-signal-grid,
   .today-decision-card .decision-store-card:not(.is-go) .decision-signal-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .today-decision-card .decision-score,
+  .today-decision-card .decision-store-card.is-go .decision-score,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-score {
+    inline-size: 56px;
+    block-size: 56px;
+  }
+
+  .today-decision-card .decision-score-inner span,
+  .today-decision-card .decision-store-card.is-go .decision-score-inner span,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-score-inner span {
+    font-size: 18px;
   }
 }
 

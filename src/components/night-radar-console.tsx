@@ -38,7 +38,9 @@ import {
   defaultWatchedTemplateKeys,
   extractWatchedAuthorEntries,
   extractWatchedAuthorText,
+  filterPostsForBusinessDay,
   filterPostsWithinHours,
+  filterSnapshotsForBusinessDay,
   normalizeWatchedSearchText,
   parseExactTerms,
   prioritizeScoredEventsForToday,
@@ -80,6 +82,10 @@ type SourceHealth = { ok: number; stale: number; blocked: number; failed: number
 type MetricTone = 'good' | 'warn' | 'muted'
 type DecisionMetric = { label: string; value: string; tone?: MetricTone }
 type DecisionStoreKind = 'go' | 'maybe' | 'skip'
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+}
 type GenderPostRanking = {
   store: StoreProfile
   rank: number
@@ -120,6 +126,8 @@ const exactTermLabels = {
   popularSingleFemale: '人気単独女性',
   negativePerson: '不人気・苦手',
 } as const
+const installReminderStorageKey = 'night-radar-install-reminder-dismissed-at'
+const installReminderIntervalMs = 1000 * 60 * 60 * 24 * 7
 
 const bodyScrollLockState = {
   count: 0,
@@ -317,6 +325,9 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   })
   const [showFirstGuide, setShowFirstGuide] = useState(false)
   const [busy, setBusy] = useState('')
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+  const [showInstallReminder, setShowInstallReminder] = useState(false)
+  const [showInstallGuide, setShowInstallGuide] = useState(false)
 
   useEffect(() => {
     window.localStorage.setItem(storeDecisionStorageKey, JSON.stringify(storeDecisions))
@@ -333,14 +344,46 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     return () => window.clearTimeout(guideTimer)
   }, [firstGuideStorageKey, isSignedIn])
 
+  useEffect(() => {
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true
+    if (isStandalone) return
+
+    const dismissedAt = Number(window.localStorage.getItem(installReminderStorageKey) ?? 0)
+    const reminderTimer =
+      !dismissedAt || Date.now() - dismissedAt > installReminderIntervalMs
+        ? window.setTimeout(() => setShowInstallReminder(true), 0)
+        : undefined
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault()
+      setInstallPrompt(event as BeforeInstallPromptEvent)
+      setShowInstallReminder(true)
+    }
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    return () => {
+      if (reminderTimer) window.clearTimeout(reminderTimer)
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    }
+  }, [])
+
   const todayOrderedScoredEvents = useMemo(() => prioritizeScoredEventsForToday(scoredEvents), [scoredEvents])
   const summary = useMemo(() => summarizeSignals(scoredEvents), [scoredEvents])
-  const recentDisplayPosts = useMemo(
-    () => filterPostsWithinHours(posts, initialState.setupStatus.generatedAt, 24),
+  const businessDayPosts = useMemo(
+    () => filterPostsForBusinessDay(posts, initialState.setupStatus.generatedAt),
     [initialState.setupStatus.generatedAt, posts],
   )
-  const storeAnalytics = useMemo(() => buildStoreBbsAnalytics(stores, recentDisplayPosts), [recentDisplayPosts, stores])
-  const storeRadar = useMemo(() => buildStoreRadarPoints(stores, recentDisplayPosts, bbsSnapshots), [recentDisplayPosts, stores, bbsSnapshots])
+  const businessDaySnapshots = useMemo(
+    () => filterSnapshotsForBusinessDay(bbsSnapshots, initialState.setupStatus.generatedAt),
+    [bbsSnapshots, initialState.setupStatus.generatedAt],
+  )
+  const storeAnalytics = useMemo(() => buildStoreBbsAnalytics(stores, businessDayPosts), [businessDayPosts, stores])
+  const storeRadar = useMemo(
+    () => buildStoreRadarPoints(stores, businessDayPosts, businessDaySnapshots),
+    [businessDayPosts, businessDaySnapshots, stores],
+  )
   const storeAnalyticsById = useMemo(
     () => new Map(storeAnalytics.map((item) => [item.store.id, item])),
     [storeAnalytics],
@@ -365,8 +408,8 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     [initialState.setupStatus.generatedAt, searchableBbsRecords],
   )
   const genderPostRankings = useMemo(
-    () => buildGenderPostRankings(recentDisplayPosts, stores),
-    [recentDisplayPosts, stores],
+    () => buildGenderPostRankings(businessDayPosts, stores),
+    [businessDayPosts, stores],
   )
   const genderRankingByStoreId = useMemo(
     () => new Map(genderPostRankings.map((ranking) => [ranking.store.id, ranking])),
@@ -541,6 +584,31 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   function navigateByKey(target: NavKey) {
     const item = navItems.find((navItem) => navItem.key === target) ?? navItems[0]
     navigateTo(item)
+  }
+
+  function dismissInstallReminder() {
+    window.localStorage.setItem(installReminderStorageKey, String(Date.now()))
+    setShowInstallReminder(false)
+    setShowInstallGuide(false)
+  }
+
+  async function startInstallFlow() {
+    if (!installPrompt) {
+      setShowInstallGuide(true)
+      return
+    }
+
+    await installPrompt.prompt()
+    const choice = await installPrompt.userChoice
+    if (choice.outcome === 'accepted') {
+      window.localStorage.setItem(installReminderStorageKey, String(Date.now()))
+      setShowInstallReminder(false)
+      setShowInstallGuide(false)
+      setInstallPrompt(null)
+      return
+    }
+
+    dismissInstallReminder()
   }
 
   function closeFirstGuide() {
@@ -793,6 +861,15 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
 
         <ScreenContext item={activeNavItem} />
 
+        {showInstallReminder ? (
+          <InstallReminderCard
+            canInstall={Boolean(installPrompt)}
+            showGuide={showInstallGuide}
+            onDismiss={dismissInstallReminder}
+            onInstall={startInstallFlow}
+          />
+        ) : null}
+
         {showFirstGuide ? (
           <FirstRunGuide
             onClose={closeFirstGuide}
@@ -959,7 +1036,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
 
         {view === 'capture' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="探す" title="条件を絞って候補を決める" body="直近24時間の女性書き込み順を起点に、行く余地がある店舗だけを残します。" />
+            <ViewIntro eyebrow="探す" title="条件を絞って候補を決める" body="今日の営業分の女性書き込み順を起点に、行く余地がある店舗だけを残します。" />
 
             <StoreDiscoveryPanel
               allPoints={storeRadar}
@@ -1272,6 +1349,41 @@ function FirstRunGuide({
       <button className="first-run-close" type="button" onClick={onClose}>
         閉じる
       </button>
+    </section>
+  )
+}
+
+function InstallReminderCard({
+  canInstall,
+  showGuide,
+  onDismiss,
+  onInstall,
+}: {
+  canInstall: boolean
+  showGuide: boolean
+  onDismiss: () => void
+  onInstall: () => void
+}) {
+  return (
+    <section className="install-reminder-card" aria-label="スマホへの追加案内">
+      <div>
+        <span>スマホに追加</span>
+        <strong>Chromeのホーム画面からすぐ開けます。</strong>
+        <p>
+          {canInstall
+            ? '通知ではなく、アプリのようにワンタップで開くための導線です。'
+            : 'Chromeのメニューから「ホーム画面に追加」を選ぶと、アプリのように起動できます。'}
+        </p>
+        {showGuide ? <em>Chrome右上メニュー → ホーム画面に追加 → 追加 の順に進めてください。</em> : null}
+      </div>
+      <div className="install-reminder-actions">
+        <button type="button" onClick={onInstall}>
+          {canInstall ? 'スマホに追加' : '追加方法を見る'}
+        </button>
+        <button className="secondary-action" type="button" onClick={onDismiss}>
+          あとで
+        </button>
+      </div>
     </section>
   )
 }
@@ -1591,7 +1703,7 @@ function DecisionStoreCard({
           </dl>
           <dl className="decision-signal-grid" aria-label="観測値">
             <div className="is-main">
-              <dt>24h投稿</dt>
+              <dt>営業分投稿</dt>
               <dd>{attentionCount}<small>件</small></dd>
             </div>
             <div>
@@ -1787,7 +1899,7 @@ function buildStoreDecisionReason(
       ? `女性書き込み ${ranking.femaleSignals}件`
       : '女性反応は蓄積中'
   const eventText = todayEventCount ? `今日の予定 ${todayEventCount}件` : '今日の予定なし'
-  return `${eventText} / 24h投稿 ${attentionCount}件 / ${femaleText} / ${sourceReliabilityLabel(source)}`
+  return `${eventText} / 営業分投稿 ${attentionCount}件 / ${femaleText} / ${sourceReliabilityLabel(source)}`
 }
 
 function storeSkipScore(point: StoreRadarPoint, ranking?: GenderPostRanking, source?: BbsSource, eventCount = 0) {
@@ -1977,7 +2089,7 @@ function StoreInlineRadar({
           <dd>{hasGenderSignal ? `${maleRatio}%` : '--'}</dd>
         </div>
         <div>
-          <dt>24h投稿</dt>
+          <dt>営業分投稿</dt>
           <dd>{attentionCount || 0}</dd>
         </div>
       </dl>
@@ -2450,7 +2562,7 @@ function StoreDiscoveryPanel({
 
       <div className="store-filter-status" aria-live="polite">
         <span>
-          直近24時間 {points.length}/{totalCount}
+          営業分 {points.length}/{totalCount}
         </span>
         <strong>{sortLabel}</strong>
         <em>

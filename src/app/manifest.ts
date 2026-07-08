@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'Night Radar',
     short_name: 'N Radar',
     description: '今日の店舗候補を公開情報から見比べるレーダーアプリ。',
-    start_url: '/shops',
+    start_url: '/app',
     display: 'standalone',
     background_color: '#07111f',
     theme_color: '#07111f',
