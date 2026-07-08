@@ -8,12 +8,12 @@
   --text: #f5f8fb;
   --muted: #9caabc;
   --dim: #607083;
-  --cyan: #5ef0e8;
-  --cyan-soft: #0aaeb8;
-  --lime: #dfff4d;
-  --orange: #f36c51;
-  --purple: #b45cff;
-  --blue: #66a4ff;
+  --cyan: #8ad9df;
+  --cyan-soft: #2f9ca8;
+  --lime: #d8ff4a;
+  --orange: #df5e55;
+  --purple: #8a78e6;
+  --blue: #86a9c9;
   --cursor-x: 50vw;
   --cursor-y: 24vh;
   position: relative;
@@ -21,8 +21,8 @@
   min-height: 100dvh;
   overflow-x: hidden;
   background:
-    radial-gradient(circle at 19% 2%, rgb(19 50 72 / 0.48), transparent 28rem),
-    radial-gradient(circle at 83% 6%, rgb(78 94 121 / 0.22), transparent 28rem),
+    radial-gradient(circle at 19% 2%, rgb(18 42 58 / 0.38), transparent 28rem),
+    radial-gradient(circle at 83% 6%, rgb(78 94 121 / 0.16), transparent 28rem),
     linear-gradient(180deg, #02050d 0%, #020711 44%, #020913 100%);
   color: var(--text);
   color-scheme: dark;
@@ -38,21 +38,21 @@
 }
 
 .landing::before {
-  opacity: 0.72;
+  opacity: 0.52;
   background:
     radial-gradient(
       circle at var(--cursor-x) var(--cursor-y),
-      rgb(94 240 232 / 0.13),
+      rgb(138 217 223 / 0.1),
       transparent 21rem
     );
   mix-blend-mode: screen;
 }
 
 .landing::after {
-  opacity: 0.28;
+  opacity: 0.2;
   background:
-    linear-gradient(105deg, transparent 0 44%, rgb(94 240 232 / 0.08) 49%, transparent 54%),
-    linear-gradient(180deg, transparent 0 48%, rgb(223 255 77 / 0.045) 49%, transparent 50%);
+    linear-gradient(105deg, transparent 0 44%, rgb(138 217 223 / 0.06) 49%, transparent 54%),
+    linear-gradient(180deg, transparent 0 48%, rgb(216 255 74 / 0.035) 49%, transparent 50%);
   background-size: 190% 100%, 100% 210px;
   animation: pageScan 9s linear infinite;
 }
@@ -62,11 +62,11 @@
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  opacity: 0.34;
+  opacity: 0.24;
   background-image:
     linear-gradient(rgb(255 255 255 / 0.026) 1px, transparent 1px),
     linear-gradient(90deg, rgb(255 255 255 / 0.018) 1px, transparent 1px),
-    radial-gradient(circle at 50% 50%, rgb(94 240 232 / 0.045), transparent 42%);
+    radial-gradient(circle at 50% 50%, rgb(138 217 223 / 0.03), transparent 42%);
   background-size: 82px 82px, 82px 82px, 100% 100%;
   mask-image: linear-gradient(180deg, #000 0%, rgb(0 0 0 / 0.86) 58%, transparent 100%);
   animation: gridDrift 18s linear infinite;
@@ -78,7 +78,7 @@
   z-index: -1;
   overflow: hidden;
   pointer-events: none;
-  opacity: 0.72;
+  opacity: 0.5;
   mask-image: linear-gradient(180deg, transparent 0%, #000 18%, #000 78%, transparent 100%);
 }
 
@@ -89,10 +89,10 @@
   width: 64%;
   height: 136%;
   transform: skewX(-18deg) translateX(-12%);
-  opacity: 0.28;
+  opacity: 0.18;
   background:
-    linear-gradient(90deg, transparent 0%, rgb(94 240 232 / 0.16) 49%, transparent 100%),
-    linear-gradient(90deg, transparent 0%, rgb(223 255 77 / 0.08) 52%, transparent 100%);
+    linear-gradient(90deg, transparent 0%, rgb(138 217 223 / 0.12) 49%, transparent 100%),
+    linear-gradient(90deg, transparent 0%, rgb(216 255 74 / 0.06) 52%, transparent 100%);
   filter: blur(16px);
   animation: signalSweep 12s cubic-bezier(0.65, 0, 0.35, 1) infinite alternate;
 }
@@ -107,7 +107,7 @@
 
 .signalLines path {
   fill: none;
-  stroke: rgb(94 240 232 / 0.18);
+  stroke: rgb(138 217 223 / 0.13);
   stroke-dasharray: 9 30;
   stroke-linecap: round;
   stroke-width: 1.4;
@@ -115,12 +115,12 @@
 }
 
 .signalLines path:nth-child(2) {
-  stroke: rgb(223 255 77 / 0.13);
+  stroke: rgb(216 255 74 / 0.1);
   stroke-dasharray: 6 34;
 }
 
 .signalLines path:nth-child(3) {
-  stroke: rgb(102 164 255 / 0.12);
+  stroke: rgb(134 169 201 / 0.1);
   stroke-dasharray: 12 42;
 }
 
@@ -1133,8 +1133,8 @@
     radial-gradient(circle closest-side, #07101f 68%, transparent 70%),
     conic-gradient(
       from var(--score-angle),
-      var(--purple) 0 39%,
-      var(--cyan) 39% 67%,
+      var(--orange) 0 39%,
+      var(--lime) 39% 67%,
       rgb(75 92 115 / 0.42) 67% 100%
     );
   place-items: center;

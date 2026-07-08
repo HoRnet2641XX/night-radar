@@ -142,19 +142,30 @@ export function DirectoryHero({ state }: { state: PublicDirectoryState }) {
   const hotCount = state.summaries.filter((summary) => summary.point.score >= 74).length
   const openCount = state.summaries.filter((summary) => summary.isOpenNow).length
   const todayEventCount = state.summaries.reduce((sum, summary) => sum + summary.todayEventCount, 0)
-  const top = sortByRanking(state.summaries, 'today')[0]
+  const todayPicks = sortByRanking(state.summaries, 'today').slice(0, 3)
+  const [top] = todayPicks
+  const decisionLabels = ['今日行くなら', '迷うなら', '確認してから'] as const
 
   return (
     <section className={styles.heroPanel}>
       <div>
         <p className={styles.kicker}>今日行くべき店を決めるレーダー</p>
-        <h1>店舗を探す前に、今夜の動きを見る。</h1>
+        <h1>店探しを、今夜の結論から始める。</h1>
         <p>
-          BBS、イベント、更新時刻、女性の書き込みをまとめて、候補に残す店だけを比較します。
+          BBS、イベント、更新時刻、女性の書き込みを見比べて、地図を開く前に候補を3つまで絞ります。
         </p>
         <div className={styles.heroActions}>
-          <Link href="/shops">店舗を探す</Link>
+          <Link href="/shops?condition=hot">動いている店を見る</Link>
           <Link href="/ranking/today">今日のランキング</Link>
+        </div>
+        <div className={styles.heroDecisionCards} aria-label="今日の3択">
+          {todayPicks.map((summary, index) => (
+            <Link href={storeDetailPath(summary.store)} key={summary.store.id}>
+              <span>{decisionLabels[index]}</span>
+              <strong>{formatPublicStoreName(summary.store)}</strong>
+              <small>{summary.primaryReason}</small>
+            </Link>
+          ))}
         </div>
       </div>
       <aside className={styles.heroMeter} aria-label="今日のサマリー">
@@ -209,6 +220,47 @@ export function PublicSummaryStrip({ state }: { state: PublicDirectoryState }) {
   )
 }
 
+export function PublicDiscoveryRail() {
+  const items = [
+    {
+      href: '/map',
+      label: '地図から見る',
+      title: '近さだけで決めず、熱量と合わせて見る',
+      body: '移動しやすい候補を、今日の動きと一緒に確認します。',
+    },
+    {
+      href: '/features',
+      label: '条件で見る',
+      title: '営業中、イベント、女性反応で絞る',
+      body: '気分ではなく条件から候補を削れる入口です。',
+    },
+    {
+      href: '/areas',
+      label: 'エリアで見る',
+      title: '新宿、渋谷、東京圏から探す',
+      body: '行ける範囲を先に決めて、無駄な比較を減らします。',
+    },
+    {
+      href: '/guides',
+      label: '使い方',
+      title: '初回前に料金とルールを確認する',
+      body: '行く前チェックの見方を短く整理しています。',
+    },
+  ]
+
+  return (
+    <section className={styles.discoveryRail} aria-label="探し方の入口">
+      {items.map((item) => (
+        <Link href={item.href} key={item.href}>
+          <span>{item.label}</span>
+          <strong>{item.title}</strong>
+          <small>{item.body}</small>
+        </Link>
+      ))}
+    </section>
+  )
+}
+
 export function StoreFilterLinks({
   basePath,
   activeArea,
@@ -218,10 +270,21 @@ export function StoreFilterLinks({
   activeArea?: string
   activeCondition?: string
 }) {
+  const resetHref = basePath
+  const areaResetHref = `${basePath}${activeCondition ? `?condition=${activeCondition}` : ''}`
+  const conditionResetHref = `${basePath}${activeArea && activeArea !== 'all' ? `?area=${activeArea}` : ''}`
+
   return (
     <section className={styles.filterPanel} aria-label="店舗検索フィルタ">
+      <div className={styles.filterPanelHeader}>
+        <div>
+          <span>行き先を決める条件</span>
+          <strong>多く見せるより、候補を削るためのフィルターです。</strong>
+        </div>
+        <Link href={resetHref}>すべて外す</Link>
+      </div>
       <div>
-        <span>エリア</span>
+        <span>エリア {activeArea && activeArea !== 'all' ? <Link href={areaResetHref}>外す</Link> : null}</span>
         <div className={styles.chipRow}>
           {publicAreas.map((area) => (
             <Link
@@ -235,7 +298,7 @@ export function StoreFilterLinks({
         </div>
       </div>
       <div>
-        <span>条件</span>
+        <span>条件 {activeCondition ? <Link href={conditionResetHref}>外す</Link> : null}</span>
         <div className={styles.chipRow}>
           {publicConditions.map((condition) => (
             <Link
@@ -442,6 +505,8 @@ function DecisionListRow({ summary, rank }: { summary: PublicStoreSummary; rank:
 }
 
 export function PublicStoreCard({ summary, rank }: { summary: PublicStoreSummary; rank: number }) {
+  const upcomingEvent = summary.events[0]
+
   return (
     <article className={styles.storeCard}>
       <div className={styles.storeCardTop}>
@@ -481,14 +546,69 @@ export function PublicStoreCard({ summary, rank }: { summary: PublicStoreSummary
         <span>{summary.sessionLabel}</span>
         {summary.todayEventCount ? <span>本日予定 {summary.todayEventCount}件</span> : null}
       </div>
+      <div className={styles.preVisitLine} aria-label="行く前チェック">
+        <span>{summary.priceLabel}</span>
+        <span>{summary.stationLabel}</span>
+        <span>{summary.source?.lastStatus === 'ok' ? '取得良好' : summary.lastUpdatedLabel}</span>
+      </div>
+      {upcomingEvent ? (
+        <p className={styles.eventTeaser}>
+          <span>{upcomingEvent.session === 'day' ? '昼イベ' : '夜イベ'}</span>
+          {upcomingEvent.title}
+        </p>
+      ) : null}
       <PublicStoreRadar summary={summary} />
       <div className={styles.cardActions}>
         <Link href={storeDetailPath(summary.store)}>行く前確認</Link>
+        {summary.officialUrl ? (
+          <a href={summary.officialUrl} target="_blank" rel="noreferrer">
+            公式
+          </a>
+        ) : null}
+        {summary.bbsUrl ? (
+          <a href={summary.bbsUrl} target="_blank" rel="noreferrer">
+            BBS
+          </a>
+        ) : null}
         <a href={summary.mapUrl} target="_blank" rel="noreferrer">
           地図
         </a>
       </div>
     </article>
+  )
+}
+
+export function PublicDecisionGuide() {
+  const items = [
+    {
+      title: 'ランキングは人数そのものではありません',
+      body: '公開BBSの投稿、女性表記、更新鮮度、イベント情報を組み合わせた候補順です。最後は公式情報も確認してください。',
+    },
+    {
+      title: '地図だけで決めない',
+      body: '近さだけで選ぶと外れやすいので、直近更新と女性投稿の有無を先に見ます。',
+    },
+    {
+      title: '初回は料金とルールを先に見る',
+      body: '店舗詳細の「行く前確認」で、料金、営業時間、公式URL、BBS、地図をまとめて確認できます。',
+    },
+  ]
+
+  return (
+    <section className={styles.decisionGuide} aria-label="Night Radarの見方">
+      <div>
+        <p className={styles.kicker}>判断の流れ</p>
+        <h2>店を増やすのではなく、候補を削る。</h2>
+      </div>
+      <div>
+        {items.map((item) => (
+          <article key={item.title}>
+            <strong>{item.title}</strong>
+            <p>{item.body}</p>
+          </article>
+        ))}
+      </div>
+    </section>
   )
 }
 

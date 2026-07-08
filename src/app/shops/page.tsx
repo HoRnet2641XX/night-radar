@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import {
   BreadcrumbJsonLd,
   DirectoryHero,
+  PublicDecisionGuide,
+  PublicDiscoveryRail,
   PublicHomeJsonLd,
   PublicShell,
   PublicStoreGrid,
@@ -46,12 +48,14 @@ export default async function ShopsPage({ searchParams }: PageProps) {
       <StoreItemListJsonLd summaries={summaries} path="/shops" />
       {!q && area === 'all' && !condition ? <DirectoryHero state={state} /> : null}
       <PublicSummaryStrip state={state} />
+      {!q && area === 'all' && !condition ? <PublicDiscoveryRail /> : null}
       <section className="sr-only" aria-label="現在の検索">
         <h1>{title}</h1>
       </section>
       <StoreSearchForm defaultQuery={q} area={area === 'all' ? undefined : area} condition={condition} />
       <StoreFilterLinks activeArea={area} activeCondition={condition} basePath="/shops" />
       <PublicStoreGrid summaries={summaries} variant="decision" />
+      <PublicDecisionGuide />
     </PublicShell>
   )
 }

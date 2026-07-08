@@ -73,10 +73,13 @@ const areaSlugMap: Record<string, string> = {
 }
 
 const conditionLabels = {
+  hot: 'いま動きあり',
   open: '営業中',
   events: 'イベントあり',
   female: '女性率高め',
+  fresh: '更新が新しい',
   price: '料金確認済み',
+  beginner: '初回向け',
   day: '昼営業',
   night: '夜営業',
 } as const
@@ -630,10 +633,22 @@ export function filterPublicStores(
 }
 
 export function matchesCondition(summary: PublicStoreSummary, condition: ConditionKey) {
+  if (condition === 'hot') return summary.point.score >= 74 || summary.recentThreeHourCount > 0
   if (condition === 'open') return summary.isOpenNow
   if (condition === 'events') return summary.todayEventCount > 0 || summary.events.length > 0
   if (condition === 'female') return summary.femalePostCount > 0 || (summary.womenRatio ?? 0) >= 45
+  if (condition === 'fresh') return summary.recentThreeHourCount > 0 || /分前|1時間前|2時間前|3時間前/.test(summary.lastUpdatedLabel)
   if (condition === 'price') return summary.priceLabel !== '公式で確認'
+  if (condition === 'beginner') {
+    const haystack = [
+      summary.store.tags.join(' '),
+      summary.store.prStructure,
+      summary.store.strongEvents.join(' '),
+      summary.store.weakEvents.join(' '),
+      summary.priceLabel,
+    ].join(' ')
+    return /初回|初心者|はじめて|初めて|無料|入門|ビギナー/i.test(haystack)
+  }
   if (condition === 'day') return summary.store.hasDaytime
   if (condition === 'night') return summary.store.hasNight
   return true

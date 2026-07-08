@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   Broadcast,
@@ -35,7 +34,6 @@ import {
   buildStoreBbsAnalytics,
   buildStoreRadarPoints,
   buildSearchableBbsRecords,
-  buildVisitForecasts,
   buildWatchedWordHits,
   defaultWatchedTemplateKeys,
   extractWatchedAuthorEntries,
@@ -66,7 +64,6 @@ import type {
   StoreProfile,
   StoreBbsAnalytics,
   StoreRadarPoint,
-  VisitForecast,
   WatchedWordHit,
   WordBookmark,
 } from '@/lib/types'
@@ -104,17 +101,17 @@ type Props = {
 
 const navItems: Array<{ key: NavKey; view: ViewKey; label: string; icon: ReactNode; targetId?: string }> = [
   { key: 'today', view: 'analytics', label: '今日', icon: <Broadcast size={20} weight="bold" /> },
-  { key: 'search', view: 'automate', label: '名前', icon: <MagnifyingGlass size={20} weight="bold" /> },
-  { key: 'calendar', view: 'analytics', label: 'カレンダー', icon: <CalendarDots size={20} weight="bold" /> },
   { key: 'stores', view: 'capture', label: '探す', icon: <Storefront size={20} weight="bold" /> },
+  { key: 'search', view: 'automate', label: '監視', icon: <MagnifyingGlass size={20} weight="bold" /> },
+  { key: 'calendar', view: 'analytics', label: '予定', icon: <CalendarDots size={20} weight="bold" /> },
   { key: 'settings', view: 'account', label: '設定', icon: <ShieldCheck size={20} weight="bold" /> },
 ]
 
 const navScreenCopy: Record<NavKey, { title: string; body: string }> = {
   today: { title: '今日の結論', body: '今日行くなら、迷うなら、後回しにするなら。この3つだけを先に見ます。' },
-  search: { title: '名前確認', body: '気になる名前や呼び名だけを、直近24時間の投稿者名から確認します。' },
-  calendar: { title: '予定', body: '月間イベントを日付単位で確認します。詳細は開いた時だけ表示します。' },
   stores: { title: '探す', body: '店舗検索ではなく、今夜の行き先を条件で決める画面です。' },
+  search: { title: '監視', body: '気になる名前や呼び名だけを、直近24時間の投稿者名から確認します。' },
+  calendar: { title: '予定', body: '月間イベントを日付単位で確認します。詳細は開いた時だけ表示します。' },
   settings: { title: '設定', body: 'ログイン状態、店舗マスタ、公開情報の扱いを確認します。' },
 }
 
@@ -355,11 +352,8 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     })
     return map
   }, [bbsSources])
-  const eventCountByStoreId = useMemo(() => {
-    const map = new Map<string, number>()
-    calendarEvents.forEach((event) => map.set(event.storeId, (map.get(event.storeId) ?? 0) + 1))
-    return map
-  }, [calendarEvents])
+  const eventCountByStoreId = useMemo(() => buildEventCountByStore(calendarEvents), [calendarEvents])
+  const todayEventCountByStoreId = useMemo(() => buildEventCountByStore(calendarEvents, eventMatchesToday), [calendarEvents])
   const normalizedStoreIds = useMemo(() => new Set(bbsNormalizedPosts.map((post) => post.storeId)), [bbsNormalizedPosts])
   const searchableBbsSnapshots = useMemo(
     () => (normalizedStoreIds.size ? bbsSnapshots.filter((snapshot) => !normalizedStoreIds.has(snapshot.storeId)) : bbsSnapshots),
@@ -434,7 +428,6 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     () => buildCustomWatchedWordHits(recentWatchedBbsRecords, stores, watchSearchTerm, watchStoreId),
     [recentWatchedBbsRecords, stores, watchSearchTerm, watchStoreId],
   )
-  const visitForecasts = useMemo(() => buildVisitForecasts(events, stores, posts, { windowDays: 14 }), [events, stores, posts])
   const exactMatches = useMemo(
     () =>
       searchExactBbsTerms(recentWatchedBbsRecords, stores, [
@@ -471,25 +464,25 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     [activeExactMatches, exactMatchFilter],
   )
   const featuredEvent = todayOrderedScoredEvents[0] ?? summary.dayTop ?? summary.nightTop
+  const upcomingCalendarEventCount = useMemo(() => countCalendarEventsWithinDays(calendarEvents, 7), [calendarEvents])
   const visibleMatches = filteredExactMatches.slice(0, 16)
   const currentPlan = subscription.plan
   const currentLimits = planLimits[currentPlan]
   const activeWatchedHits = watchSearchTerm.trim() ? searchedWatchedWordHits : watchedWordHits
   const visibleWatchedHits = dedupeWatchedHitsByStore(activeWatchedHits).slice(0, 8)
-  const topForecasts = visitForecasts.slice(0, 3)
   const latestPost = posts[0]
   const hotStore = useMemo(
-    () => selectSpotlightStore(storeRadar, genderRankingByStoreId, bbsSourceByStoreId, eventCountByStoreId, initialState.setupStatus.generatedAt),
-    [bbsSourceByStoreId, eventCountByStoreId, genderRankingByStoreId, initialState.setupStatus.generatedAt, storeRadar],
+    () => selectSpotlightStore(storeRadar, genderRankingByStoreId, bbsSourceByStoreId, todayEventCountByStoreId, initialState.setupStatus.generatedAt),
+    [bbsSourceByStoreId, genderRankingByStoreId, initialState.setupStatus.generatedAt, storeRadar, todayEventCountByStoreId],
   )
   const watchStore = useMemo(
-    () => storeRadar.find((point) => point.store.id !== hotStore?.store.id && point.score >= 35) ?? storeRadar.find((point) => point.store.id !== hotStore?.store.id),
-    [hotStore?.store.id, storeRadar],
+    () => selectComparisonStore(storeRadar, hotStore, genderRankingByStoreId, bbsSourceByStoreId, todayEventCountByStoreId, initialState.setupStatus.generatedAt),
+    [bbsSourceByStoreId, genderRankingByStoreId, hotStore, initialState.setupStatus.generatedAt, storeRadar, todayEventCountByStoreId],
   )
   const sourceHealth = useMemo(() => buildSourceHealth(bbsSources), [bbsSources])
   const skipStore = useMemo(
-    () => selectSkipStore(storeRadar, hotStore, watchStore, genderRankingByStoreId, bbsSourceByStoreId, eventCountByStoreId),
-    [bbsSourceByStoreId, eventCountByStoreId, genderRankingByStoreId, hotStore, storeRadar, watchStore],
+    () => selectSkipStore(storeRadar, hotStore, watchStore, genderRankingByStoreId, bbsSourceByStoreId, todayEventCountByStoreId),
+    [bbsSourceByStoreId, genderRankingByStoreId, hotStore, storeRadar, todayEventCountByStoreId, watchStore],
   )
   const latestCaptureLabel = bbsSnapshots[0]?.capturedAt ? formatRadarCapturedAt(bbsSnapshots[0].capturedAt) : '取得待ち'
   const activeWords = wordCategories.filter((word) =>
@@ -893,33 +886,56 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
         {view === 'analytics' && (
           <section className={`view-stack${activeNav === 'calendar' ? ' is-calendar-view' : ''}`}>
             {activeNav === 'calendar' ? (
-              <ViewIntro
-                eyebrow="月間イベント"
-                title="朝イベ・夜イベ・注目日を分けて見る"
-                body="月1、ビンゴ、スタッフ誕生日など、盛り上がりやすい予定だけを切り替えて確認できます。"
-              />
+              <>
+                <ViewIntro
+                  eyebrow="予定"
+                  title="朝イベ・夜イベ・注目日を分けて見る"
+                  body="月1、ビンゴ、スタッフ誕生日など、盛り上がりやすい予定だけを切り替えて確認できます。"
+                />
+                <MonthlyCalendarPreview events={calendarEvents} focusMode stores={stores} />
+              </>
             ) : (
-              <TodayDecisionCard
-                eventCountByStoreId={eventCountByStoreId}
-                featuredEvent={featuredEvent}
-                genderRankingByStoreId={genderRankingByStoreId}
-                hotStore={hotStore}
-                latestCaptureLabel={latestCaptureLabel}
-                onOpenForecast={() => {
-                  setActiveNav('stores')
-                  setView('capture')
-                }}
-                onRunScoring={runScoring}
-                skipStore={skipStore}
-                sourceByStoreId={bbsSourceByStoreId}
-                sourceHealth={sourceHealth}
-                topForecast={topForecasts[0]}
-                watchStore={watchStore}
-                busy={busy}
-              />
+              <>
+                <TodayDecisionCard
+                  eventCountByStoreId={todayEventCountByStoreId}
+                  genderRankingByStoreId={genderRankingByStoreId}
+                  hotStore={hotStore}
+                  latestCaptureLabel={latestCaptureLabel}
+                  onOpenCalendar={() => {
+                    setActiveNav('calendar')
+                    setView('analytics')
+                  }}
+                  onOpenForecast={() => {
+                    setActiveNav('stores')
+                    setView('capture')
+                  }}
+                  onRunScoring={runScoring}
+                  skipStore={skipStore}
+                  sourceByStoreId={bbsSourceByStoreId}
+                  sourceHealth={sourceHealth}
+                  watchStore={watchStore}
+                  busy={busy}
+                />
+                <AppDecisionFlow
+                  eventCount={upcomingCalendarEventCount}
+                  eventScopeLabel="直近7日"
+                  savedCount={candidateStoreCount + favoriteStoreCount}
+                  watchedCount={wordBookmarks.length + enabledWatchedTemplates.length}
+                  onOpenCalendar={() => {
+                    setActiveNav('calendar')
+                    setView('analytics')
+                  }}
+                  onOpenStores={() => {
+                    setActiveNav('stores')
+                    setView('capture')
+                  }}
+                  onOpenWatch={() => {
+                    setActiveNav('search')
+                    setView('automate')
+                  }}
+                />
+              </>
             )}
-
-            <MonthlyCalendarPreview events={calendarEvents} focusMode={activeNav === 'calendar'} stores={stores} />
           </section>
         )}
 
@@ -970,7 +986,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
 
         {view === 'automate' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="名前確認" title="気になる名前だけ確認する" body="TOPや探すで候補を決めた後、直近24時間の投稿者名に出ているかだけを見ます。" />
+            <ViewIntro eyebrow="監視" title="気になる名前だけ確認する" body="TOPや探すで候補を決めた後、直近24時間の投稿者名に出ているかだけを見ます。" />
 
             <WatchedWordsPanel
               hits={visibleWatchedHits}
@@ -1274,8 +1290,6 @@ function TodayDecisionCard({
   hotStore,
   watchStore,
   skipStore,
-  featuredEvent,
-  topForecast,
   latestCaptureLabel,
   sourceHealth,
   sourceByStoreId,
@@ -1283,13 +1297,12 @@ function TodayDecisionCard({
   eventCountByStoreId,
   busy,
   onRunScoring,
+  onOpenCalendar,
   onOpenForecast,
 }: {
   hotStore?: StoreRadarPoint
   watchStore?: StoreRadarPoint
   skipStore?: StoreRadarPoint
-  featuredEvent?: ScoredEvent
-  topForecast?: VisitForecast
   latestCaptureLabel: string
   sourceHealth: SourceHealth
   sourceByStoreId: Map<string, BbsSource>
@@ -1297,14 +1310,12 @@ function TodayDecisionCard({
   eventCountByStoreId: Map<string, number>
   busy: string
   onRunScoring: () => void
+  onOpenCalendar: () => void
   onOpenForecast: () => void
 }) {
   const hotStoreRanking = hotStore ? genderRankingByStoreId.get(hotStore.store.id) : undefined
-  const hotStoreAttentionCount = getDisplayAttentionCount(hotStore, hotStoreRanking)
-  const primaryReason =
-    featuredEvent?.reasons[0] ??
-    topForecast?.reasons[0] ??
-    (hotStore ? `${hotStore.verdict}、24h投稿 ${hotStoreAttentionCount}件` : '掲示板の巡回後に判定が出ます。')
+  const hotStoreSource = hotStore ? sourceByStoreId.get(hotStore.store.id) : undefined
+  const hotStoreEventCount = hotStore ? eventCountByStoreId.get(hotStore.store.id) ?? 0 : 0
   const cards: Array<{
     kind: DecisionStoreKind
     label: string
@@ -1315,23 +1326,35 @@ function TodayDecisionCard({
     {
       kind: 'go',
       label: '今日行くならここ',
-      title: '本命',
+      title: '本命候補',
       point: hotStore,
-      reason: primaryReason,
+      reason: buildStoreDecisionReason(hotStore, hotStoreRanking, hotStoreSource, hotStoreEventCount),
     },
     {
       kind: 'maybe',
       label: '迷うならここ',
       title: '比較候補',
       point: watchStore,
-      reason: watchStore ? `${watchStore.verdict}。本命と比べて判断します。` : '比較候補を検出中です。',
+      reason: buildStoreDecisionReason(
+        watchStore,
+        watchStore ? genderRankingByStoreId.get(watchStore.store.id) : undefined,
+        watchStore ? sourceByStoreId.get(watchStore.store.id) : undefined,
+        watchStore ? eventCountByStoreId.get(watchStore.store.id) ?? 0 : 0,
+        '比較候補を検出中です。',
+      ),
     },
     {
       kind: 'skip',
       label: '今日は後回し',
       title: '見送り候補',
       point: skipStore,
-      reason: skipStore ? `${skipStore.verdict}。女性反応、予定、取得状態を見て後回し候補にしています。` : '十分な比較データがまだありません。',
+      reason: buildStoreDecisionReason(
+        skipStore,
+        skipStore ? genderRankingByStoreId.get(skipStore.store.id) : undefined,
+        skipStore ? sourceByStoreId.get(skipStore.store.id) : undefined,
+        skipStore ? eventCountByStoreId.get(skipStore.store.id) ?? 0 : 0,
+        '十分な比較データがまだありません。',
+      ),
     },
   ]
 
@@ -1381,12 +1404,93 @@ function TodayDecisionCard({
         <button type="button" onClick={onOpenForecast}>
           候補を探す
         </button>
-        <a href="#top-calendar">
+        <button type="button" onClick={onOpenCalendar}>
           予定を見る
-        </a>
+        </button>
       </div>
     </section>
   )
+}
+
+function AppDecisionFlow({
+  eventCount,
+  eventScopeLabel,
+  savedCount,
+  watchedCount,
+  onOpenCalendar,
+  onOpenStores,
+  onOpenWatch,
+}: {
+  eventCount: number
+  eventScopeLabel: string
+  savedCount: number
+  watchedCount: number
+  onOpenCalendar: () => void
+  onOpenStores: () => void
+  onOpenWatch: () => void
+}) {
+  return (
+    <section className="app-decision-flow" aria-label="次に見る場所">
+      <div className="app-decision-flow-head">
+        <span>次の一手</span>
+        <h2>候補を広げず、行く理由だけを確認</h2>
+        <p>ランキングを眺め続けるのではなく、候補を削ってから予定と名前だけ確認します。</p>
+      </div>
+      <div className="app-flow-steps">
+        <button type="button" onClick={onOpenStores}>
+          <span>1</span>
+          <strong>候補を残す</strong>
+          <small>女性反応・営業中・料金で3店以内にする</small>
+          <em>{savedCount}件保存</em>
+        </button>
+        <button type="button" onClick={onOpenCalendar}>
+          <span>2</span>
+          <strong>今日の予定を見る</strong>
+          <small>朝イベ・夜イベ・BINGO・誕生日だけ拾う</small>
+          <em>{eventScopeLabel} {eventCount}件</em>
+        </button>
+        <button type="button" onClick={onOpenWatch}>
+          <span>3</span>
+          <strong>名前を確認</strong>
+          <small>直近24時間の投稿者名だけを見る</small>
+          <em>{watchedCount}語</em>
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function countCalendarEventsWithinDays(events: EventInput[], days: number) {
+  const startKey = dateKeyInJapan()
+  const endKey = dateKeyInJapan(relativeDateInJapan(days - 1))
+
+  return events.filter((event) => {
+    const dateLabel = event.date.trim()
+    if (dateLabel === '今日' || dateLabel === '明日') return true
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateLabel)) return false
+    return dateLabel >= startKey && dateLabel <= endKey
+  }).length
+}
+
+function eventMatchesToday(event: EventInput) {
+  const todayKey = dateKeyInJapan()
+  const dateLabel = event.date.trim()
+  if (dateLabel === '今日') return true
+  if (dateLabel === '明日') return false
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateLabel)) return dateLabel === todayKey
+
+  const [year, month, day] = todayKey.split('-').map(Number)
+  const todayWeekday = weekdayLabelForJapanDate(year, month, day)
+  return eventWeekday(event) === todayWeekday
+}
+
+function buildEventCountByStore(events: EventInput[], predicate?: (event: EventInput) => boolean) {
+  const map = new Map<string, number>()
+  events.forEach((event) => {
+    if (predicate && !predicate(event)) return
+    map.set(event.storeId, (map.get(event.storeId) ?? 0) + 1)
+  })
+  return map
 }
 
 function DecisionStoreCard({
@@ -1408,8 +1512,29 @@ function DecisionStoreCard({
   source?: BbsSource
   title: string
 }) {
-  const metrics = point ? buildDecisionMetrics(point, ranking, source, eventCount) : []
   const score = point?.score ?? 0
+  const attentionCount = getDisplayAttentionCount(point, ranking)
+  const signalCounts = getDisplaySignalCounts(point, ranking)
+  const femaleRatio = ranking?.signalTotal
+    ? `${ranking.femaleRatio}%`
+    : attentionCount
+      ? `${Math.round((signalCounts.female / Math.max(1, attentionCount)) * 100)}%`
+      : '未判定'
+  const firstRatio = attentionCount ? `${Math.round((signalCounts.first / Math.max(1, attentionCount)) * 100)}%` : '未判定'
+  const groupRatio = attentionCount ? `${Math.round((signalCounts.group / Math.max(1, attentionCount)) * 100)}%` : '未判定'
+  const comebackRatio = attentionCount ? `${Math.round((signalCounts.comeback / Math.max(1, attentionCount)) * 100)}%` : '未判定'
+  const officialUrl = point ? resolveStorePrimaryUrl(point.store, source) : undefined
+  const mapUrl = point ? resolveStoreMapUrl(point.store) : undefined
+  const noticeLabel = eventCount ? `予定 ${eventCount}件` : '根拠'
+  const sourceLabel = sourceReliabilityLabel(source)
+  const eventStrength = Math.max(0, Math.min(100, eventCount * 34))
+  const attentionStrength = Math.max(0, Math.min(100, Math.round((attentionCount / 120) * 100)))
+  const signalMeters = [
+    { label: '女性反応', value: femaleRatio, percent: percentNumber(femaleRatio), tone: 'signal' },
+    { label: '投稿量', value: `${attentionCount}件`, percent: attentionStrength, tone: 'blue' },
+    { label: '予定', value: eventCount ? `${eventCount}件` : 'なし', percent: eventStrength, tone: 'amber' },
+    { label: '取得', value: sourceLabel, percent: sourceReliabilityPercent(source), tone: 'quiet' },
+  ]
 
   return (
     <article className={`decision-store-card is-${kind}`}>
@@ -1420,16 +1545,82 @@ function DecisionStoreCard({
       <div className="decision-store-main">
         <div>
           <strong>{point ? formatBarName(point.store.name) : '観測待ち'}</strong>
-          <p>{reason}</p>
+          <p>{point ? `${formatStoreArea(point.store.area)} / ${formatStoreBusinessHours(point.store)}` : reason}</p>
         </div>
-        <div className="decision-score" aria-label={`盛り上がり ${score}点`} style={{ '--score-progress': `${Math.max(0, Math.min(100, score))}%` } as CSSProperties}>
-          <div className="decision-score-inner">
-            <span>{score || '--'}</span>
-            <small>点</small>
+        <div className="decision-score-panel">
+          <div className="decision-score" aria-label={`盛り上がり ${score}点`} style={{ '--score-progress': `${Math.max(0, Math.min(100, score))}%` } as CSSProperties}>
+            <div className="decision-score-inner">
+              <span>{score || '--'}</span>
+              <small>点</small>
+            </div>
           </div>
+          <dl className="decision-score-meters" aria-label="判断材料">
+            {signalMeters.map((meter) => (
+              <div
+                className={`is-${meter.tone}`}
+                key={meter.label}
+                style={{ '--meter-progress': `${meter.percent}%` } as CSSProperties}
+              >
+                <dt>{meter.label}</dt>
+                <dd>{meter.value}</dd>
+                <i aria-hidden="true" />
+              </div>
+            ))}
+          </dl>
         </div>
       </div>
-      {point ? <DecisionMetricList metrics={metrics} /> : <p className="muted-note">BBS巡回後に候補を表示します。</p>}
+      {point ? (
+        <>
+          <dl className="decision-store-profile">
+            <div>
+              <dt>エリア</dt>
+              <dd>{formatStoreArea(point.store.area)}</dd>
+            </div>
+            <div>
+              <dt>最寄り</dt>
+              <dd>{point.store.nearestStation?.trim() || point.store.address?.trim() || '公式確認'}</dd>
+            </div>
+            <div>
+              <dt>営業</dt>
+              <dd>{formatStoreBusinessHours(point.store)}</dd>
+            </div>
+            <div>
+              <dt>料金</dt>
+              <dd>{point.store.priceNote?.trim() || '公式確認'}</dd>
+            </div>
+          </dl>
+          <dl className="decision-signal-grid" aria-label="観測値">
+            <div className="is-main">
+              <dt>24h投稿</dt>
+              <dd>{attentionCount}<small>件</small></dd>
+            </div>
+            <div>
+              <dt>女性率</dt>
+              <dd>{femaleRatio}</dd>
+            </div>
+            <div>
+              <dt>初回率</dt>
+              <dd>{firstRatio}</dd>
+            </div>
+            <div>
+              <dt>複数率</dt>
+              <dd>{groupRatio}</dd>
+            </div>
+            <div>
+              <dt>久しぶり</dt>
+              <dd>{comebackRatio}</dd>
+            </div>
+          </dl>
+          <p className="decision-store-notice"><span>{noticeLabel}</span>{reason}</p>
+          <div className="decision-store-links">
+            {officialUrl ? <a href={officialUrl} target="_blank" rel="noreferrer">公式</a> : <span>公式未登録</span>}
+            {source?.url ? <a href={source.url} target="_blank" rel="noreferrer">BBS</a> : <span>BBS未登録</span>}
+            {mapUrl ? <a href={mapUrl} target="_blank" rel="noreferrer">地図</a> : <span>地図未登録</span>}
+          </div>
+        </>
+      ) : (
+        <p className="muted-note">BBS巡回後に候補を表示します。</p>
+      )}
     </article>
   )
 }
@@ -1469,6 +1660,15 @@ function clampSignalCount(value: number, ceiling: number) {
   if (!value) return 0
   if (ceiling <= 0) return 0
   return Math.min(value, ceiling)
+}
+
+function compactStoreLabel(name: string) {
+  return formatBarName(name)
+    .replace(/^bar\s+/i, '')
+    .replace(/^BAR\s+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 11)
 }
 
 function getDisplayAttentionCount(point?: StoreRadarPoint, ranking?: GenderPostRanking) {
@@ -1550,6 +1750,17 @@ function sourceReliabilityLabel(source?: BbsSource) {
   return isSourceStale(source) ? '取得古い' : '取得成功'
 }
 
+function percentNumber(value: string) {
+  const parsed = Number(value.replace('%', ''))
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 0
+}
+
+function sourceReliabilityPercent(source?: BbsSource) {
+  if (!source?.lastStatus || source.lastStatus === 'pending') return 18
+  if (source.lastStatus !== 'ok') return 8
+  return isSourceStale(source) ? 42 : 100
+}
+
 function buildDecisionMetrics(point: StoreRadarPoint, ranking?: GenderPostRanking, source?: BbsSource, eventCount = 0): DecisionMetric[] {
   const femalePosts = ranking?.femaleSignals ?? 0
   return [
@@ -1561,12 +1772,31 @@ function buildDecisionMetrics(point: StoreRadarPoint, ranking?: GenderPostRankin
   ]
 }
 
+function buildStoreDecisionReason(
+  point?: StoreRadarPoint,
+  ranking?: GenderPostRanking,
+  source?: BbsSource,
+  todayEventCount = 0,
+  fallback = '掲示板の巡回後に判定が出ます。',
+) {
+  if (!point) return fallback
+  const attentionCount = getDisplayAttentionCount(point, ranking)
+  const femaleText = ranking?.signalTotal
+    ? `女性率 ${ranking.femaleRatio}%`
+    : ranking?.femaleSignals
+      ? `女性書き込み ${ranking.femaleSignals}件`
+      : '女性反応は蓄積中'
+  const eventText = todayEventCount ? `今日の予定 ${todayEventCount}件` : '今日の予定なし'
+  return `${eventText} / 24h投稿 ${attentionCount}件 / ${femaleText} / ${sourceReliabilityLabel(source)}`
+}
+
 function storeSkipScore(point: StoreRadarPoint, ranking?: GenderPostRanking, source?: BbsSource, eventCount = 0) {
   const femalePosts = ranking?.femaleSignals ?? 0
   const sourcePenalty = source?.lastStatus === 'ok' && !isSourceStale(source) ? 0 : 18
-  const eventPenalty = eventCount ? 0 : 8
+  const eventPenalty = eventCount ? 0 : 12
   const femalePenalty = femalePosts ? 0 : 16
-  return 100 - point.score + sourcePenalty + eventPenalty + femalePenalty
+  const sessionPenalty = isStoreAvailableForSession(point.store, 'current') ? 0 : 10
+  return 100 - point.score + sourcePenalty + eventPenalty + femalePenalty + sessionPenalty
 }
 
 function stableHash(value: string) {
@@ -1588,7 +1818,8 @@ function storeSpotlightWeight(point: StoreRadarPoint, ranking?: GenderPostRankin
   const freshnessHours = updatedAt ? Math.max(0, (Date.now() - updatedAt) / (1000 * 60 * 60)) : 48
   const freshnessScore = Math.max(0, 18 - Math.min(18, freshnessHours))
   const sourceScore = source?.lastStatus === 'ok' && !isSourceStale(source) ? 8 : 0
-  return point.score + Math.min(femalePosts, 10) * 2.4 + Math.min(eventCount, 4) * 4 + freshnessScore + sourceScore - originalIndex * 1.5
+  const sessionScore = isStoreAvailableForSession(point.store, 'current') ? 10 : -8
+  return point.score + Math.min(femalePosts, 10) * 2.6 + Math.min(eventCount, 3) * 7 + freshnessScore + sourceScore + sessionScore - originalIndex * 1.5
 }
 
 function selectSpotlightStore(
@@ -1619,6 +1850,18 @@ function selectSpotlightStore(
 
   const seed = stableHash(`${spotlightDateKey(generatedAt)}:${pool.map(({ point }) => `${point.store.id}:${point.lastCapturedAt ?? ''}`).join('|')}`)
   return pool[seed % pool.length]?.point ?? pool[0].point
+}
+
+function selectComparisonStore(
+  points: StoreRadarPoint[],
+  primary?: StoreRadarPoint,
+  rankings?: Map<string, GenderPostRanking>,
+  sources?: Map<string, BbsSource>,
+  eventCounts?: Map<string, number>,
+  generatedAt?: string,
+) {
+  const candidates = primary ? points.filter((point) => point.store.id !== primary.store.id) : points
+  return selectSpotlightStore(candidates, rankings, sources, eventCounts, generatedAt)
 }
 
 function selectSkipStore(
@@ -1724,9 +1967,20 @@ function StoreInlineRadar({
           <strong>{attentionCount || '--'}</strong>
         </span>
       </div>
-      <p>
-        {hasGenderSignal ? `女性 ${femaleRatio}% / 男性 ${maleRatio}%` : '男女ワードは蓄積中'}・24h投稿 {attentionCount || 0}
-      </p>
+      <dl className="store-inline-report" aria-label="店舗レポート">
+        <div>
+          <dt>女性</dt>
+          <dd>{hasGenderSignal ? `${femaleRatio}%` : '--'}</dd>
+        </div>
+        <div>
+          <dt>男性</dt>
+          <dd>{hasGenderSignal ? `${maleRatio}%` : '--'}</dd>
+        </div>
+        <div>
+          <dt>24h投稿</dt>
+          <dd>{attentionCount || 0}</dd>
+        </div>
+      </dl>
     </div>
   )
 }
@@ -1877,8 +2131,8 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
     const hasGenderSignal = Boolean(ranking?.signalTotal)
     const femaleRatio = hasGenderSignal ? ranking?.femaleRatio ?? 50 : 50
     const maleRatio = hasGenderSignal ? ranking?.maleRatio ?? 50 : 50
-    const x = Math.max(6, Math.min(94, femaleRatio))
-    const y = Math.max(7, Math.min(93, point.score))
+    const x = Math.max(10, Math.min(90, femaleRatio))
+    const y = Math.max(9, Math.min(91, point.score))
     const signalTotal = ranking?.signalTotal ?? 0
     const tone = !hasGenderSignal ? 'neutral' : femaleRatio >= 60 ? 'female' : maleRatio >= 60 ? 'male' : 'balanced'
     const size = Math.max(13, Math.min(24, 13 + Math.round(signalTotal / 2)))
@@ -1890,6 +2144,7 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
       maleRatio,
       signalTotal,
       tone,
+      shortLabel: compactStoreLabel(point.store.name),
       style: {
         insetInlineStart: `${x}%`,
         insetBlockEnd: `${y}%`,
@@ -1900,18 +2155,44 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
   const femaleLeaningCount = radarItems.filter((item) => item.tone === 'female').length
   const maleLeaningCount = radarItems.filter((item) => item.tone === 'male').length
   const balancedCount = radarItems.filter((item) => item.tone === 'balanced').length
+  const strongCandidateCount = radarItems.filter((item) => item.femaleRatio >= 55 && item.point.score >= 70).length
   const barItems = radarItems.slice(0, 8)
 
   return (
     <section className="gender-radar-card" aria-label="店舗別の盛り上がりと男女比率">
       <div className="gender-radar-head">
         <div>
-          <span>男女比レーダー</span>
-          <h2>盛り上がりと男女ワードの偏り</h2>
-          <p>縦は盛り上がり、横は女性ワード比率です。実人数ではなく、BBS本文に出てくる男女系ワードから見ています。</p>
+          <span>候補マップ</span>
+          <h2>右上ほど、今日の候補として強い</h2>
+          <p>縦は盛り上がり、横は女性系ワード比率です。散らばりを見るための参考値で、実人数ではありません。</p>
         </div>
         <strong>{leader ? formatBarName(leader.store.name) : '観測中'}</strong>
       </div>
+
+      <div className="gender-map-legend" aria-label="レーダーの見方">
+        <span>右上: 本命候補</span>
+        <span>左上: 活発だが男性寄り</span>
+        <span>右下: 女性寄りだが静か</span>
+      </div>
+
+      <dl className="gender-radar-report" aria-label="観測レポート">
+        <div>
+          <dt>観測店舗</dt>
+          <dd>{radarItems.length}<small>店</small></dd>
+        </div>
+        <div>
+          <dt>女性寄り</dt>
+          <dd>{femaleLeaningCount}<small>店</small></dd>
+        </div>
+        <div>
+          <dt>男性寄り</dt>
+          <dd>{maleLeaningCount}<small>店</small></dd>
+        </div>
+        <div>
+          <dt>本命圏</dt>
+          <dd>{strongCandidateCount}<small>店</small></dd>
+        </div>
+      </dl>
 
       <div className="gender-radar-layout">
         <div className="gender-radar-map" aria-label="盛り上がりと女性比率の分布">
@@ -1929,7 +2210,8 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
               style={item.style}
               title={`${formatBarName(item.point.store.name)} / ${item.point.score}点 / 女性${item.femaleRatio}% 男性${item.maleRatio}%`}
             >
-              {index + 1}
+              <b>{index + 1}</b>
+              {index < 7 ? <small>{item.shortLabel}</small> : null}
             </span>
           ))}
         </div>
@@ -1956,7 +2238,7 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
                 <div>
                   <strong>{formatBarName(item.point.store.name)}</strong>
                   <p>
-                    盛り上がり {item.point.score}点 / 女性 {item.femaleRatio}% / 男性 {item.maleRatio}%
+                    {item.point.score}点 / 女性 {item.femaleRatio}% / 投稿 {item.ranking?.observedCount ?? 0}件
                   </p>
                 </div>
                 <em>{item.ranking?.verdict ?? '判定語が少ない'}</em>
@@ -1980,13 +2262,16 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
           >
             <div className="gender-radar-pie" aria-label={`${formatBarName(item.point.store.name)} 女性比率 ${item.femaleRatio}%`}>
               <span>{item.femaleRatio}</span>
+              <small>女性</small>
             </div>
             <div className="gender-radar-column" aria-label={`${formatBarName(item.point.store.name)} 盛り上がり ${item.point.score}点`}>
               <i />
+              <span>{item.point.score}</span>
+              <small>盛り上がり</small>
             </div>
             <div className="gender-radar-bar-caption">
               <strong>{formatBarName(item.point.store.name)}</strong>
-              <span>{item.point.score}点</span>
+              <span>投稿 {item.ranking?.observedCount ?? 0}件 / 女性 {item.femaleRatio}%</span>
             </div>
           </article>
         ))}
@@ -2058,9 +2343,10 @@ function StoreDiscoveryPanel({
           <span>候補を探す</span>
           <h2>今夜の行き先を決める</h2>
           <p>検索ではなく、行ける条件を押して候補を減らします。判断は5指標だけです。</p>
-          <Link className="store-public-link" href="/shops">
-            公開店舗一覧を見る
-          </Link>
+          <div className="store-in-app-note">
+            <span>アプリ内完結</span>
+            <strong>保存した候補は条件を変えても残ります。</strong>
+          </div>
         </div>
         <dl>
           <div>

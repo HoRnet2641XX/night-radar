@@ -27,53 +27,53 @@ function appHref(path = '/') {
 }
 
 const stats = [
-  { label: '候補発見率', value: '2.1倍以上', note: '当日比較ベース', Icon: Gauge },
-  { label: 'カバー率', value: '85%超', note: '主要情報の平均', Icon: Stack },
-  { label: '情報更新', value: 'リアルタイム', note: '自動収集 & 解析', Icon: Lightning },
+  { label: '結論表示', value: '3候補', note: '本命・比較・後回し', Icon: Gauge },
+  { label: '見る範囲', value: 'BBS + 予定', note: '公開情報ベース', Icon: Stack },
+  { label: '取得状態', value: '可視化', note: '古い情報も判別', Icon: Lightning },
 ]
 
 const painCards = [
   {
-    title: '見落としが多い',
-    body: 'BBSやイベントを全部見るのは大変…',
+    title: '候補が増えすぎる',
+    body: '店ごとのBBSとイベントを見始めると、比較の軸がすぐに散らばります。',
     Icon: Eye,
   },
   {
-    title: '情報が古い・遅い',
-    body: '更新や投稿に気づくのに時間がかかる…',
+    title: '更新の新旧が分かりにくい',
+    body: '同じ投稿が何度も目に入り、今見るべき情報か判断しづらくなります。',
     Icon: Clock,
   },
   {
-    title: 'どこを見ればいいかわからない',
-    body: '検索しても答えが見つけづらい…',
+    title: '予定とBBSが分断される',
+    body: 'イベント、料金、営業時間、直近投稿を別々に確認する必要があります。',
     Icon: Question,
   },
   {
-    title: '判断に時間がかかる',
-    body: '材料がバラバラで比較しにくい…',
+    title: '最後の一押しがない',
+    body: '盛り上がりは見えても、今日行く理由まで整理されていません。',
     Icon: TrendUp,
   },
 ]
 
 const whiteTiles = [
   {
-    title: 'BBSトップ画面に常時配置',
-    body: '最初に見るべき情報をすぐにキャッチ',
+    title: '今日の結論から開く',
+    body: '本命・比較・後回しの3枠で、最初に見る店を固定',
     Icon: Eye,
   },
   {
     title: '店舗ごとの盛り上がりを比較',
-    body: '地域・店舗の温度差を可視化',
+    body: '女性反応、更新、予定、営業時間、料金帯を同じ軸で確認',
     Icon: ChartBar,
   },
   {
-    title: '検索条件は保存して使い回し可能',
-    body: 'お気に入り条件で即座にアクセス',
+    title: '気になる名前だけ監視',
+    body: '本文ではなく投稿者名を直近24時間で照合',
     Icon: BookmarkSimple,
   },
   {
-    title: 'スマホで即イベント詳細を確認',
-    body: '外出先でもすぐに確認',
+    title: '月間予定を行く前に確認',
+    body: '朝イベ、夜イベ、BINGO、誕生日を分けて見る',
     Icon: MagnifyingGlass,
   },
 ]
@@ -81,66 +81,66 @@ const whiteTiles = [
 const processItems = [
   {
     title: 'Hot比較',
-    body: '盛り上がりを比較し、優先順位を明確に。',
+    body: '直近の反応から、今日の候補を3店まで絞ります。',
     Icon: Fire,
     tone: 'heat',
   },
   {
     title: '月間イベント',
-    body: '公式イベントや傾向をカレンダーで把握。',
+    body: '朝・夜・注目タグを切り替えて予定を確認します。',
     Icon: CalendarDots,
     tone: 'month',
   },
   {
     title: '注目ワード監視',
-    body: '重要ワードの出現を通知でお知らせ。',
+    body: '気になる名前や保存ワードを直近投稿から拾います。',
     Icon: MagnifyingGlass,
     tone: 'watch',
   },
   {
     title: '観測ログ',
-    body: '過去のBBS情報を保存し、振り返りが可能。',
+    body: '取得状態を残し、古い情報と新しい情報を分けます。',
     Icon: FileText,
     tone: 'log',
   },
   {
-    title: '完全一致検索',
-    body: '人名・店名・時間などを完全一致で素早く検索。',
+    title: '行く前チェック',
+    body: '店舗URL、地図、料金、BBS、イベントを一画面にまとめます。',
     Icon: Crosshair,
     tone: 'search',
   },
 ]
 
-const flowLabels = ['公開情報を最速収集', '判断材料に変換する', '今日の候補を提示']
+const flowLabels = ['公開情報を取得', '5指標に整理', '今日の候補を提示']
 
 const flowDetails = [
   {
-    title: '公開情報を最速取得',
-    body: '公開BBSとイベントページを自動収集し、最新の情報を整えます。',
+    title: '公開情報を取得',
+    body: 'BBSとイベントページを巡回し、取得できた情報と古い情報を分けます。',
     Icon: Megaphone,
     tone: 'lime',
   },
   {
-    title: '判断材料に変換する',
-    body: '独自の指標で、イベント内を比較できる形に整理します。',
+    title: '5指標に整理',
+    body: '女性書き込み、更新、イベント、営業時間、料金帯だけを比較軸にします。',
     Icon: CalendarDots,
-    tone: 'purple',
+    tone: 'orange',
   },
   {
     title: '今日の候補を提示',
-    body: '独自のスコアに基づき、今日の注目店を表示します。',
+    body: '本命、比較、後回しの3枠で、最初に見るべき店を表示します。',
     Icon: BookmarkSimple,
-    tone: 'blue',
+    tone: 'lime',
   },
 ]
 
 const picks = [
-  { name: 'bar AA', value: '67%', tone: 'orange' },
-  { name: 'bar CA', value: '48%', tone: 'purple' },
-  { name: 'bar BB', value: '36%', tone: 'blue' },
+  { name: '本命候補', value: '90点', tone: 'orange' },
+  { name: '比較候補', value: '82点', tone: 'lime' },
+  { name: '後回し', value: '21点', tone: 'blue' },
 ]
 
-const checklist = ['公開情報ベースで運用', '店舗ごとの効果を蓄積', '広告分析 / アプリ連携と連動']
+const checklist = ['公開情報ベースで運用', '店舗ごとの反応を蓄積', '今日行く店の判断に直結']
 
 export function NightRadarLanding() {
   return (
@@ -171,7 +171,7 @@ export function NightRadarLanding() {
       <section className={styles.hero} aria-labelledby="hero-title" data-hero>
         <div className={styles.heroTexture} aria-hidden="true" data-hero-texture />
         <p className={styles.heroKicker} data-reveal="kicker">
-          公開情報を価値に変えるナイトレーダー
+          今日行く店を決めるための公開情報レーダー
         </p>
         <div className={styles.heroGrid}>
           <div className={styles.heroCopy}>
@@ -182,7 +182,7 @@ export function NightRadarLanding() {
               </span>
             </h1>
             <p className={styles.heroLead} data-reveal="lead">
-              公開BBS、店舗イベント、関連情報を一括収集。見逃れがちな公開ほど、素早く見つかる設計。
+              公開BBS、店舗イベント、直近投稿を整理し、候補・比較・見送りを一画面で確認できます。
             </p>
             <div className={styles.heroActions} data-reveal="hero-actions">
               <a className={styles.primaryButton} href={appHref('/signup?next=/app')}>
