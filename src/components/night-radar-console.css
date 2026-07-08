@@ -9808,6 +9808,268 @@ button:disabled {
   }
 }
 
+/* Radar legibility final pass */
+.view-stack:has(.today-decision-card) {
+  inline-size: 100%;
+}
+
+.view-stack:has(.today-decision-card) .app-decision-flow {
+  grid-column: 1 / -1;
+  inline-size: 100%;
+  max-inline-size: none;
+}
+
+.gender-radar-card {
+  gap: 16px;
+}
+
+.gender-radar-layout {
+  grid-template-columns: minmax(440px, 1.08fr) minmax(360px, 0.92fr);
+  align-items: stretch;
+}
+
+.gender-radar-map {
+  min-height: clamp(430px, 43vw, 560px);
+  padding: 26px;
+  overflow: hidden;
+}
+
+.gender-radar-dot,
+.gender-radar-dot:nth-of-type(2n),
+.gender-radar-dot:nth-of-type(3n) {
+  inline-size: 34px;
+  block-size: 34px;
+  min-inline-size: 34px;
+  max-inline-size: 34px;
+  min-block-size: 34px;
+  padding: 0;
+  border-radius: 12px;
+  transform: translate(
+    calc(-50% + var(--dot-offset-x, 0px)),
+    calc(50% + var(--dot-offset-y, 0px))
+  );
+}
+
+.gender-radar-dot b {
+  inline-size: 100%;
+  block-size: 100%;
+  min-inline-size: 0;
+  border-radius: inherit;
+  font-size: 12px;
+}
+
+.gender-radar-dot small {
+  display: none;
+}
+
+.gender-radar-dot::after {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 10;
+  display: block;
+  width: max-content;
+  max-width: 190px;
+  border: 1px solid rgba(154, 190, 225, 0.18);
+  border-radius: 12px;
+  background: rgba(8, 13, 23, 0.96);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.34);
+  color: oklch(95% 0.018 235);
+  content: attr(data-store-label);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+  opacity: 0;
+  padding: 8px 10px;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(4px);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+  white-space: normal;
+}
+
+.gender-radar-dot:hover,
+.gender-radar-dot:focus-visible {
+  z-index: 12;
+  transform: translate(
+    calc(-50% + var(--dot-offset-x, 0px)),
+    calc(50% + var(--dot-offset-y, 0px))
+  ) scale(1.06);
+}
+
+.gender-radar-dot:hover::after,
+.gender-radar-dot:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.gender-radar-side {
+  min-height: 0;
+}
+
+.gender-radar-list {
+  gap: 8px;
+}
+
+.gender-radar-list article {
+  grid-template-columns: 38px minmax(0, 1fr) minmax(116px, auto);
+  min-height: 62px;
+  padding: 10px;
+}
+
+.gender-radar-list article > span {
+  inline-size: 30px;
+  block-size: 30px;
+  border-radius: 10px;
+}
+
+.gender-radar-list p {
+  white-space: normal;
+}
+
+.gender-radar-bars {
+  grid-template-columns: repeat(2, minmax(340px, 1fr));
+  gap: 10px;
+  align-items: stretch;
+  padding: 14px;
+}
+
+.gender-radar-bar-item {
+  display: grid;
+  grid-template-columns: 36px minmax(148px, 0.64fr) minmax(220px, 1fr) minmax(120px, 0.42fr);
+  grid-template-rows: auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 90px;
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.gender-radar-bar-rank {
+  position: static;
+  inline-size: 32px;
+  block-size: 32px;
+  border-radius: 11px;
+}
+
+.gender-radar-bar-caption {
+  align-content: center;
+  gap: 4px;
+  padding-left: 0;
+  text-align: left;
+}
+
+.gender-radar-bar-caption strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.gender-radar-bar-caption span {
+  font-size: 12px;
+}
+
+.gender-radar-bar-visual {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding-left: 0;
+}
+
+.gender-radar-meterline {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gender-radar-meterline span {
+  color: oklch(74% 0.04 238 / 0.68);
+  font-size: 10.5px;
+  font-weight: 900;
+}
+
+.gender-radar-meterline i {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  block-size: 8px;
+  border-radius: 999px;
+  background: rgba(154, 190, 225, 0.13);
+}
+
+.gender-radar-meterline i::before {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--nr-active), oklch(86% 0.05 235));
+  content: '';
+}
+
+.gender-radar-meterline.is-score i::before {
+  inline-size: var(--bar-height);
+}
+
+.gender-radar-meterline.is-female i::before {
+  inline-size: var(--female-ratio);
+  background: linear-gradient(90deg, oklch(79% 0.09 235), oklch(84% 0.052 235));
+}
+
+.gender-radar-meterline strong {
+  color: oklch(95% 0.018 235);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  text-align: right;
+}
+
+.gender-radar-bar-metrics {
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.gender-radar-bar-metrics div {
+  border-radius: 10px;
+  padding: 7px 9px;
+}
+
+@media (max-width: 1180px) {
+  .gender-radar-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .gender-radar-bars {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 759px) {
+  .gender-radar-map {
+    min-height: 360px;
+  }
+
+  .gender-radar-list article {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .gender-radar-bar-item {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .gender-radar-bar-caption,
+  .gender-radar-bar-visual,
+  .gender-radar-bar-metrics {
+    grid-column: 2;
+  }
+
+  .gender-radar-meterline {
+    grid-template-columns: 64px minmax(0, 1fr) 42px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .backdrop-aurora,
   .backdrop-sweep,

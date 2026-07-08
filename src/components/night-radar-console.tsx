@@ -2124,9 +2124,19 @@ function buildGenderPostRankings(records: PostRecord[], stores: StoreProfile[]):
 
 function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; rankings: GenderPostRanking[] }) {
   const rankingByStoreId = new Map(rankings.map((ranking) => [ranking.store.id, ranking]))
-  const visiblePoints = points.slice(0, 12)
+  const visiblePoints = points.slice(0, 8)
   const leader = visiblePoints[0]
-  const radarItems = visiblePoints.map((point) => {
+  const offsetPattern = [
+    [0, 0],
+    [-10, 8],
+    [10, 9],
+    [-12, -8],
+    [12, -9],
+    [-4, 14],
+    [4, -14],
+    [0, 18],
+  ]
+  const radarItems = visiblePoints.map((point, index) => {
     const ranking = rankingByStoreId.get(point.store.id)
     const hasGenderSignal = Boolean(ranking?.signalTotal)
     const femaleRatio = hasGenderSignal ? ranking?.femaleRatio ?? 50 : 50
@@ -2136,6 +2146,7 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
     const signalTotal = ranking?.signalTotal ?? 0
     const tone = !hasGenderSignal ? 'neutral' : femaleRatio >= 60 ? 'female' : maleRatio >= 60 ? 'male' : 'balanced'
     const size = Math.max(13, Math.min(24, 13 + Math.round(signalTotal / 2)))
+    const [offsetX = 0, offsetY = 0] = offsetPattern[index % offsetPattern.length] ?? []
 
     return {
       point,
@@ -2149,6 +2160,8 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
         insetInlineStart: `${x}%`,
         insetBlockEnd: `${y}%`,
         '--dot-size': `${size}px`,
+        '--dot-offset-x': `${offsetX}px`,
+        '--dot-offset-y': `${offsetY}px`,
       } as CSSProperties,
     }
   })
@@ -2206,6 +2219,7 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
             <span
               aria-label={`${formatBarName(item.point.store.name)}、盛り上がり${item.point.score}点、女性比率${item.femaleRatio}%、男性比率${item.maleRatio}%`}
               className={`gender-radar-dot is-${item.tone}`}
+              data-store-label={formatBarName(item.point.store.name)}
               key={item.point.store.id}
               style={item.style}
               title={`${formatBarName(item.point.store.name)} / ${item.point.score}点 / 女性${item.femaleRatio}% 男性${item.maleRatio}%`}
@@ -2232,13 +2246,13 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
             </div>
           </dl>
           <div className="gender-radar-list">
-            {radarItems.slice(0, 7).map((item, index) => (
+            {radarItems.map((item, index) => (
               <article key={item.point.store.id}>
                 <span>{index + 1}</span>
                 <div>
                   <strong>{formatBarName(item.point.store.name)}</strong>
                   <p>
-                    {item.point.score}点 / 女性 {item.femaleRatio}% / 投稿 {item.ranking?.observedCount ?? 0}件
+                    盛り上がり {item.point.score}点 / 女性 {item.femaleRatio}% / 投稿 {item.ranking?.observedCount ?? 0}件
                   </p>
                 </div>
                 <em>{item.ranking?.verdict ?? '判定語が少ない'}</em>
@@ -2262,14 +2276,15 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
           >
             <div className="gender-radar-bar-rank">{index + 1}</div>
             <div className="gender-radar-bar-visual">
-              <div className="gender-radar-pie" aria-label={`${formatBarName(item.point.store.name)} 女性比率 ${item.femaleRatio}%`}>
-                <span>{item.femaleRatio}</span>
-                <small>女性</small>
-              </div>
-              <div className="gender-radar-column" aria-label={`${formatBarName(item.point.store.name)} 盛り上がり ${item.point.score}点`}>
+              <div className="gender-radar-meterline is-score" aria-label={`${formatBarName(item.point.store.name)} 盛り上がり ${item.point.score}点`}>
+                <span>盛り上がり</span>
                 <i />
-                <span>{item.point.score}</span>
-                <small>盛り上がり</small>
+                <strong>{item.point.score}</strong>
+              </div>
+              <div className="gender-radar-meterline is-female" aria-label={`${formatBarName(item.point.store.name)} 女性比率 ${item.femaleRatio}%`}>
+                <span>女性比率</span>
+                <i />
+                <strong>{item.femaleRatio}%</strong>
               </div>
             </div>
             <div className="gender-radar-bar-caption">
