@@ -10070,6 +10070,187 @@ button:disabled {
   }
 }
 
+/* Today ranking card clarity pass */
+.today-decision-card .decision-store-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.today-decision-card .decision-store-card,
+.today-decision-card .decision-store-card.is-go,
+.today-decision-card .decision-store-card.is-maybe,
+.today-decision-card .decision-store-card.is-skip {
+  grid-row: auto;
+  min-height: 0;
+  border-radius: 18px;
+  padding: 14px;
+}
+
+.today-decision-card .decision-store-card.is-go {
+  border-color: oklch(var(--nr-signal-channel) / 0.36);
+  background:
+    linear-gradient(135deg, rgba(218, 83, 76, 0.14), transparent 18rem),
+    rgba(7, 13, 24, 0.9);
+}
+
+.today-decision-card .decision-store-head {
+  align-items: flex-start;
+}
+
+.today-decision-card .decision-store-head span {
+  display: grid;
+  inline-size: 32px;
+  block-size: 32px;
+  place-items: center;
+  border: 1px solid oklch(var(--nr-signal-channel) / 0.28);
+  border-radius: 12px;
+  background: rgba(218, 83, 76, 0.12);
+  color: var(--nr-active);
+  font-size: 12px;
+}
+
+.today-decision-card .decision-store-head em {
+  max-inline-size: 11em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.today-decision-card .decision-store-main,
+.today-decision-card .decision-store-card.is-go .decision-store-main,
+.today-decision-card .decision-store-card:not(.is-go) .decision-store-main {
+  grid-template-columns: minmax(0, 1fr) 84px;
+  align-items: center;
+  min-height: 116px;
+  gap: 12px;
+}
+
+.today-decision-card .decision-store-main > div:first-child,
+.today-decision-card .decision-store-card:not(.is-go) .decision-store-main > div:first-child {
+  min-height: 116px;
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.today-decision-card .decision-store-main strong,
+.today-decision-card .decision-store-card.is-go .decision-store-main strong,
+.today-decision-card .decision-store-card:not(.is-go) .decision-store-main strong {
+  font-size: clamp(21px, 1.9vw, 28px);
+  line-height: 1.08;
+}
+
+.today-decision-card .decision-store-main p {
+  -webkit-line-clamp: 2;
+  margin-top: 7px;
+  font-size: 12px;
+}
+
+.today-decision-card .decision-score-panel,
+.today-decision-card .decision-store-card.is-go .decision-score-panel,
+.today-decision-card .decision-store-card:not(.is-go) .decision-score-panel {
+  display: grid;
+  grid-template-columns: 1fr;
+  place-items: center;
+  min-height: 116px;
+  border-radius: 16px;
+  padding: 10px;
+}
+
+.today-decision-card .decision-score,
+.today-decision-card .decision-store-card.is-go .decision-score,
+.today-decision-card .decision-store-card:not(.is-go) .decision-score {
+  inline-size: 68px;
+  block-size: 68px;
+  border-radius: 20px;
+}
+
+.today-decision-card .decision-score::after,
+.today-decision-card .decision-store-card.is-go .decision-score::after,
+.today-decision-card .decision-store-card:not(.is-go) .decision-score::after {
+  inset: 20px;
+  border-radius: 12px;
+}
+
+.today-decision-card .decision-score-inner span,
+.today-decision-card .decision-store-card.is-go .decision-score-inner span,
+.today-decision-card .decision-store-card:not(.is-go) .decision-score-inner span {
+  font-size: 25px;
+}
+
+.today-decision-card .decision-score-meters,
+.today-decision-card .decision-store-profile,
+.today-decision-card .decision-store-links {
+  display: none;
+}
+
+.today-decision-card .decision-signal-grid,
+.today-decision-card .decision-store-card.is-go .decision-signal-grid,
+.today-decision-card .decision-store-card:not(.is-go) .decision-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.today-decision-card .decision-signal-grid div {
+  min-height: 54px;
+  border-radius: 12px;
+  padding: 9px 10px;
+}
+
+.today-decision-card .decision-signal-grid div:nth-child(n + 4) {
+  display: none;
+}
+
+.today-decision-card .decision-signal-grid dt {
+  font-size: 10px;
+}
+
+.today-decision-card .decision-signal-grid dd {
+  font-size: 15px;
+}
+
+.today-decision-card .decision-store-notice,
+.today-decision-card .decision-store-card:not(.is-go) .decision-store-notice {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-height: 42px;
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1180px) {
+  .today-decision-card .decision-store-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 759px) {
+  .today-decision-card .decision-store-main,
+  .today-decision-card .decision-store-card.is-go .decision-store-main,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-store-main {
+    grid-template-columns: minmax(0, 1fr) 76px;
+    min-height: 0;
+  }
+
+  .today-decision-card .decision-store-main > div:first-child,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-store-main > div:first-child,
+  .today-decision-card .decision-score-panel,
+  .today-decision-card .decision-store-card.is-go .decision-score-panel,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-score-panel {
+    min-height: 96px;
+  }
+
+  .today-decision-card .decision-signal-grid,
+  .today-decision-card .decision-store-card.is-go .decision-signal-grid,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-signal-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .backdrop-aurora,
   .backdrop-sweep,
