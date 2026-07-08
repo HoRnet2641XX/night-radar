@@ -9578,6 +9578,236 @@ button:disabled {
   }
 }
 
+/* Ranking readability pass */
+.view-stack:has(.today-decision-card) .app-decision-flow {
+  grid-column: 1 / -1;
+}
+
+.app-decision-flow {
+  width: 100%;
+}
+
+.app-flow-steps button {
+  align-content: start;
+  justify-items: start;
+  text-align: left;
+}
+
+.app-flow-steps button strong {
+  color: oklch(96% 0.018 235);
+  font-size: clamp(17px, 1.6vw, 20px);
+  line-height: 1.18;
+  text-wrap: balance;
+}
+
+.app-flow-steps button small {
+  max-width: 24ch;
+  color: oklch(82% 0.038 238 / 0.76);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.gender-radar-map {
+  min-height: clamp(440px, 48vw, 580px);
+  padding: 22px;
+}
+
+.gender-radar-dot,
+.gender-radar-dot:nth-of-type(2n),
+.gender-radar-dot:nth-of-type(3n) {
+  min-width: 92px;
+  max-width: 142px;
+  min-height: 32px;
+  padding: 6px 9px 6px 6px;
+  border-radius: 15px;
+  transform: translate(-50%, 50%);
+}
+
+.gender-radar-dot small {
+  display: block;
+  max-width: 92px;
+  font-size: 10.5px;
+  letter-spacing: 0;
+}
+
+.gender-radar-dot b {
+  min-width: 24px;
+  height: 24px;
+}
+
+.gender-radar-list article {
+  grid-template-columns: 42px minmax(0, 1fr) minmax(112px, auto);
+  min-height: 74px;
+}
+
+.gender-radar-list article > span {
+  width: 30px;
+  height: 30px;
+  border-color: oklch(var(--nr-signal-channel) / 0.28);
+  color: var(--nr-active);
+  font-size: 13px;
+}
+
+.gender-radar-list strong {
+  font-size: 14px;
+}
+
+.gender-radar-list p {
+  margin-top: 3px;
+  color: oklch(78% 0.04 238 / 0.78);
+  font-size: 12px;
+}
+
+.gender-radar-bars {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.gender-radar-bar-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto auto;
+  gap: 10px;
+  min-height: 0;
+  border-radius: 20px;
+  padding: 14px;
+}
+
+.gender-radar-bar-rank {
+  position: absolute;
+  top: 13px;
+  left: 13px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid oklch(var(--nr-signal-channel) / 0.28);
+  border-radius: 11px;
+  background: rgba(218, 83, 76, 0.13);
+  color: var(--nr-active);
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.gender-radar-bar-visual {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding-left: 38px;
+}
+
+.gender-radar-pie {
+  grid-row: auto;
+  width: 62px;
+  height: 62px;
+}
+
+.gender-radar-column {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  min-height: 64px;
+  padding: 10px 12px;
+}
+
+.gender-radar-column i {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  align-self: center;
+  width: var(--bar-height);
+  max-width: 100%;
+  height: 13px;
+  min-height: 13px;
+  border-radius: 999px;
+}
+
+.gender-radar-column span {
+  margin-top: 8px;
+  font-size: 20px;
+}
+
+.gender-radar-bar-caption {
+  padding-left: 38px;
+}
+
+.gender-radar-bar-caption strong {
+  font-size: 14px;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.gender-radar-bar-caption span {
+  color: oklch(78% 0.04 238 / 0.72);
+  font-size: 12px;
+}
+
+.gender-radar-bar-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.gender-radar-bar-metrics div {
+  display: grid;
+  gap: 2px;
+  border: 1px solid rgba(154, 190, 225, 0.11);
+  border-radius: 12px;
+  background: rgba(225, 240, 255, 0.04);
+  padding: 8px 10px;
+}
+
+.gender-radar-bar-metrics dt,
+.gender-radar-bar-metrics dd {
+  margin: 0;
+}
+
+.gender-radar-bar-metrics dt {
+  color: oklch(72% 0.04 238 / 0.64);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.gender-radar-bar-metrics dd {
+  color: oklch(95% 0.018 235);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 950;
+}
+
+@media (max-width: 759px) {
+  .gender-radar-map {
+    min-height: 390px;
+    padding: 16px;
+  }
+
+  .gender-radar-dot,
+  .gender-radar-dot:nth-of-type(2n),
+  .gender-radar-dot:nth-of-type(3n) {
+    min-width: 32px;
+    max-width: 32px;
+    padding: 4px;
+  }
+
+  .gender-radar-dot small {
+    display: none;
+  }
+
+  .gender-radar-list article {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .gender-radar-bar-visual,
+  .gender-radar-bar-caption {
+    padding-left: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .backdrop-aurora,
   .backdrop-sweep,

@@ -484,6 +484,23 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     () => selectSkipStore(storeRadar, hotStore, watchStore, genderRankingByStoreId, bbsSourceByStoreId, todayEventCountByStoreId),
     [bbsSourceByStoreId, genderRankingByStoreId, hotStore, storeRadar, todayEventCountByStoreId, watchStore],
   )
+  const todayTopStores = useMemo(
+    () =>
+      storeRadar
+        .filter((point) => storeDecisions[point.store.id] !== 'hidden')
+        .toSorted((a, b) => {
+          const bRanking = genderRankingByStoreId.get(b.store.id)
+          const aRanking = genderRankingByStoreId.get(a.store.id)
+          const bFemalePosts = bRanking?.femaleSignals ?? 0
+          const aFemalePosts = aRanking?.femaleSignals ?? 0
+          const bEventCount = todayEventCountByStoreId.get(b.store.id) ?? 0
+          const aEventCount = todayEventCountByStoreId.get(a.store.id) ?? 0
+
+          return bFemalePosts - aFemalePosts || b.score - a.score || bEventCount - aEventCount || b.share - a.share
+        })
+        .slice(0, 3),
+    [genderRankingByStoreId, storeDecisions, storeRadar, todayEventCountByStoreId],
+  )
   const latestCaptureLabel = bbsSnapshots[0]?.capturedAt ? formatRadarCapturedAt(bbsSnapshots[0].capturedAt) : '取得待ち'
   const activeWords = wordCategories.filter((word) =>
     posts.some((post) => word.examples.some((example) => post.body.includes(example))),
@@ -913,6 +930,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
                   skipStore={skipStore}
                   sourceByStoreId={bbsSourceByStoreId}
                   sourceHealth={sourceHealth}
+                  topStores={todayTopStores}
                   watchStore={watchStore}
                   busy={busy}
                 />
@@ -1295,6 +1313,7 @@ function TodayDecisionCard({
   sourceByStoreId,
   genderRankingByStoreId,
   eventCountByStoreId,
+  topStores,
   busy,
   onRunScoring,
   onOpenCalendar,
@@ -1308,60 +1327,41 @@ function TodayDecisionCard({
   sourceByStoreId: Map<string, BbsSource>
   genderRankingByStoreId: Map<string, GenderPostRanking>
   eventCountByStoreId: Map<string, number>
+  topStores: StoreRadarPoint[]
   busy: string
   onRunScoring: () => void
   onOpenCalendar: () => void
   onOpenForecast: () => void
 }) {
-  const hotStoreRanking = hotStore ? genderRankingByStoreId.get(hotStore.store.id) : undefined
-  const hotStoreSource = hotStore ? sourceByStoreId.get(hotStore.store.id) : undefined
-  const hotStoreEventCount = hotStore ? eventCountByStoreId.get(hotStore.store.id) ?? 0 : 0
+  const fallbackStores = [hotStore, watchStore, skipStore].filter((point): point is StoreRadarPoint => Boolean(point))
+  const rankedStores = (topStores.length ? topStores : fallbackStores)
+    .filter((point, index, array) => array.findIndex((candidate) => candidate.store.id === point.store.id) === index)
+    .slice(0, 3)
+  const rankLabels = ['ヤバすぎて滅店', '爆アゲ店', '激アツ店']
   const cards: Array<{
     kind: DecisionStoreKind
     label: string
     title: string
     point?: StoreRadarPoint
     reason: string
-  }> = [
-    {
-      kind: 'go',
-      label: '今日行くならここ',
-      title: '本命候補',
-      point: hotStore,
-      reason: buildStoreDecisionReason(hotStore, hotStoreRanking, hotStoreSource, hotStoreEventCount),
-    },
-    {
-      kind: 'maybe',
-      label: '迷うならここ',
-      title: '比較候補',
-      point: watchStore,
-      reason: buildStoreDecisionReason(
-        watchStore,
-        watchStore ? genderRankingByStoreId.get(watchStore.store.id) : undefined,
-        watchStore ? sourceByStoreId.get(watchStore.store.id) : undefined,
-        watchStore ? eventCountByStoreId.get(watchStore.store.id) ?? 0 : 0,
-        '比較候補を検出中です。',
-      ),
-    },
-    {
-      kind: 'skip',
-      label: '今日は後回し',
-      title: '見送り候補',
-      point: skipStore,
-      reason: buildStoreDecisionReason(
-        skipStore,
-        skipStore ? genderRankingByStoreId.get(skipStore.store.id) : undefined,
-        skipStore ? sourceByStoreId.get(skipStore.store.id) : undefined,
-        skipStore ? eventCountByStoreId.get(skipStore.store.id) ?? 0 : 0,
-        '十分な比較データがまだありません。',
-      ),
-    },
-  ]
+  }> = rankedStores.map((point, index) => {
+    const ranking = genderRankingByStoreId.get(point.store.id)
+    const source = sourceByStoreId.get(point.store.id)
+    const eventCount = eventCountByStoreId.get(point.store.id) ?? 0
+
+    return {
+      kind: (index === 0 ? 'go' : 'maybe') as DecisionStoreKind,
+      label: `${index + 1}位`,
+      title: rankLabels[index] ?? '候補',
+      point,
+      reason: buildStoreDecisionReason(point, ranking, source, eventCount, 'BBS反応を取得中です。'),
+    }
+  })
 
   return (
     <section className="today-decision-card" aria-label="今日の結論">
       <div className="decision-kicker">
-        <span>今日の結論</span>
+        <span>今日の上位3店</span>
         <em>{latestCaptureLabel}</em>
       </div>
 
@@ -1369,7 +1369,7 @@ function TodayDecisionCard({
         {cards.map((card) => (
           <DecisionStoreCard
             eventCount={card.point ? eventCountByStoreId.get(card.point.store.id) ?? 0 : 0}
-            key={card.kind}
+            key={`${card.label}-${card.point?.store.id ?? 'pending'}`}
             kind={card.kind}
             label={card.label}
             point={card.point}
@@ -2124,15 +2124,15 @@ function buildGenderPostRankings(records: PostRecord[], stores: StoreProfile[]):
 
 function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; rankings: GenderPostRanking[] }) {
   const rankingByStoreId = new Map(rankings.map((ranking) => [ranking.store.id, ranking]))
-  const visiblePoints = points.slice(0, 18)
+  const visiblePoints = points.slice(0, 12)
   const leader = visiblePoints[0]
   const radarItems = visiblePoints.map((point) => {
     const ranking = rankingByStoreId.get(point.store.id)
     const hasGenderSignal = Boolean(ranking?.signalTotal)
     const femaleRatio = hasGenderSignal ? ranking?.femaleRatio ?? 50 : 50
     const maleRatio = hasGenderSignal ? ranking?.maleRatio ?? 50 : 50
-    const x = Math.max(10, Math.min(90, femaleRatio))
-    const y = Math.max(9, Math.min(91, point.score))
+    const x = Math.max(14, Math.min(84, femaleRatio))
+    const y = Math.max(12, Math.min(88, point.score))
     const signalTotal = ranking?.signalTotal ?? 0
     const tone = !hasGenderSignal ? 'neutral' : femaleRatio >= 60 ? 'female' : maleRatio >= 60 ? 'male' : 'balanced'
     const size = Math.max(13, Math.min(24, 13 + Math.round(signalTotal / 2)))
@@ -2211,7 +2211,7 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
               title={`${formatBarName(item.point.store.name)} / ${item.point.score}点 / 女性${item.femaleRatio}% 男性${item.maleRatio}%`}
             >
               <b>{index + 1}</b>
-              {index < 7 ? <small>{item.shortLabel}</small> : null}
+              <small>{item.shortLabel}</small>
             </span>
           ))}
         </div>
@@ -2249,7 +2249,7 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
       </div>
 
       <div className="gender-radar-bars" aria-label="店舗別の円グラフと縦グラフ">
-        {barItems.map((item) => (
+        {barItems.map((item, index) => (
           <article
             className={`gender-radar-bar-item is-${item.tone}`}
             key={item.point.store.id}
@@ -2260,19 +2260,32 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
               } as CSSProperties
             }
           >
-            <div className="gender-radar-pie" aria-label={`${formatBarName(item.point.store.name)} 女性比率 ${item.femaleRatio}%`}>
-              <span>{item.femaleRatio}</span>
-              <small>女性</small>
-            </div>
-            <div className="gender-radar-column" aria-label={`${formatBarName(item.point.store.name)} 盛り上がり ${item.point.score}点`}>
-              <i />
-              <span>{item.point.score}</span>
-              <small>盛り上がり</small>
+            <div className="gender-radar-bar-rank">{index + 1}</div>
+            <div className="gender-radar-bar-visual">
+              <div className="gender-radar-pie" aria-label={`${formatBarName(item.point.store.name)} 女性比率 ${item.femaleRatio}%`}>
+                <span>{item.femaleRatio}</span>
+                <small>女性</small>
+              </div>
+              <div className="gender-radar-column" aria-label={`${formatBarName(item.point.store.name)} 盛り上がり ${item.point.score}点`}>
+                <i />
+                <span>{item.point.score}</span>
+                <small>盛り上がり</small>
+              </div>
             </div>
             <div className="gender-radar-bar-caption">
               <strong>{formatBarName(item.point.store.name)}</strong>
-              <span>投稿 {item.ranking?.observedCount ?? 0}件 / 女性 {item.femaleRatio}%</span>
+              <span>投稿 {item.ranking?.observedCount ?? 0}件</span>
             </div>
+            <dl className="gender-radar-bar-metrics">
+              <div>
+                <dt>女性</dt>
+                <dd>{item.femaleRatio}%</dd>
+              </div>
+              <div>
+                <dt>点数</dt>
+                <dd>{item.point.score}</dd>
+              </div>
+            </dl>
           </article>
         ))}
       </div>
