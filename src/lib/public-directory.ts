@@ -492,8 +492,8 @@ function buildPublicStoreSummary(input: {
           ? '比較に残す'
           : '観測中'
   const primaryReason =
-    femalePostCount > 0
-      ? `女性書き込み ${femalePostCount}件`
+    recentPosts.length > 0
+      ? `当日顧客投稿 ${recentPosts.length}件`
       : todayEventCount > 0
       ? '本日のイベントあり'
       : recentThreeHourCount > 0

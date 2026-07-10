@@ -461,8 +461,8 @@ function DecisionMiniCard({ summary, rank }: { summary: PublicStoreSummary; rank
       </div>
       <dl>
         <div>
-          <dt>女性投稿</dt>
-          <dd>{summary.femalePostCount}件</dd>
+          <dt>当日投稿</dt>
+          <dd>{summary.recentPostCount}件</dd>
         </div>
         <div>
           <dt>更新</dt>
@@ -487,8 +487,8 @@ function DecisionListRow({ summary, rank }: { summary: PublicStoreSummary; rank:
       <PublicStoreRadar summary={summary} variant="row" />
       <dl>
         <div>
-          <dt>温度</dt>
-          <dd>{summary.point.score}</dd>
+          <dt>当日投稿</dt>
+          <dd>{summary.recentPostCount}件</dd>
         </div>
         <div>
           <dt>女性投稿</dt>
@@ -525,8 +525,8 @@ export function PublicStoreCard({ summary, rank }: { summary: PublicStoreSummary
       <p className={styles.reasonText}>{summary.primaryReason}</p>
       <dl className={styles.storeFacts}>
         <div>
-          <dt>女性投稿</dt>
-          <dd>{summary.femalePostCount}件</dd>
+          <dt>当日投稿</dt>
+          <dd>{summary.recentPostCount}件</dd>
         </div>
         <div>
           <dt>直近3時間</dt>
@@ -651,12 +651,12 @@ export function RankingView({ kind, state }: { kind: RankingKind; state: PublicD
           </div>
           <dl>
             <div>
-              <dt>スコア</dt>
-              <dd>{leader.point.score}</dd>
+              <dt>当日投稿</dt>
+              <dd>{leader.recentPostCount}件</dd>
             </div>
             <div>
-              <dt>女性投稿</dt>
-              <dd>{leader.femalePostCount}件</dd>
+              <dt>直近3時間</dt>
+              <dd>{leader.recentThreeHourCount}件</dd>
             </div>
             <div>
               <dt>女性率</dt>
@@ -855,7 +855,7 @@ function PublicStoreRadar({
         </span>
         <span>
           <i data-kind="day" />
-          <em>24h</em>
+          <em>営業分</em>
           <strong>{dayCount}</strong>
         </span>
         <span>
