@@ -149,6 +149,40 @@ test('adapter maps current business-window data without reservation placeholders
   assert.equal(result.events[0].tag, 'BINGO')
 })
 
+test('adapter ranks by all current business-window posts before female count', () => {
+  const activeStore: StoreProfile = { ...store, id: 'store-2', name: 'BAR TOTAL' }
+  const activePosts: BbsNormalizedPost[] = [0, 1, 2].map((index) => ({
+    id: `total-${index}`,
+    storeId: activeStore.id,
+    authorName: `投稿者${index}`,
+    authorGender: '男性',
+    postedAt: `2026-07-10T11:${10 + index * 10}:00.000Z`,
+    observedAt: '2026-07-10T11:45:00.000Z',
+    body: '今夜伺います。',
+    bodyHash: `total-hash-${index}`,
+    contentKey: `total-key-${index}`,
+  }))
+  const allNormalized = [...normalizedPosts, ...activePosts]
+  const result = adaptDashboardToBars({
+    ...state,
+    stores: [store, activeStore],
+    posts: normalizedBbsPostsToPostRecords(allNormalized),
+    bbsNormalizedPosts: allNormalized,
+    bbsSources: [
+      ...state.bbsSources,
+      {
+        ...state.bbsSources[0],
+        id: 'source-2',
+        storeId: activeStore.id,
+      },
+    ],
+  })
+
+  assert.equal(result.bars[0].id, activeStore.id)
+  assert.equal(result.bars[0].postCount, 3)
+  assert.equal(result.bars[1].femaleCount, 1)
+})
+
 test('adapter excludes posts whose original writing time could not be parsed', () => {
   const withoutPostedAt: BbsNormalizedPost = {
     id: 'time-unknown',

@@ -8,6 +8,7 @@ import {
   buildSearchableBbsRecords,
   extractNormalizedBbsPostsFromText,
   filterPostsForStoreBusinessWindows,
+  isLikelyCustomerNormalizedPost,
   scoreEvents,
   searchExactBbsTerms,
 } from '../scoring'
@@ -857,7 +858,10 @@ async function saveNormalizedBbsPostsFromText(
   const posts = extractNormalizedBbsPostsFromText(extractedText, observedAt)
   if (!posts.length) return []
 
-  const rows = posts.map((post) => toBbsNormalizedPostRow({ source, observedAt, post }))
+  const rows = posts
+    .filter((post) => isLikelyCustomerNormalizedPost({ ...post, storeId: source.storeId }))
+    .map((post) => toBbsNormalizedPostRow({ source, observedAt, post }))
+  if (!rows.length) return []
   const { data, error } = await supabase
     .from('bbs_normalized_posts')
     .upsert(rows, { onConflict: 'store_id,content_key' })

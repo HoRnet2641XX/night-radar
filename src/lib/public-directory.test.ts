@@ -40,19 +40,31 @@ function storeSummary(input: {
   } as PublicStoreSummary
 }
 
-test('today ranking prioritizes female post count before score', () => {
+test('today ranking prioritizes all customer posts regardless of gender', () => {
   const ranked = sortByRanking(
     [
-      storeSummary({ id: 'high-score', score: 100, femalePostCount: 1, recentPostCount: 5 }),
-      storeSummary({ id: 'female-active', score: 55, femalePostCount: 4, recentPostCount: 4 }),
+      storeSummary({ id: 'all-posts-active', score: 55, femalePostCount: 1, recentPostCount: 8 }),
+      storeSummary({ id: 'female-active', score: 100, femalePostCount: 4, recentPostCount: 4 }),
     ],
     'today',
+  )
+
+  assert.equal(ranked[0].store.id, 'all-posts-active')
+})
+
+test('female ranking keeps female post count as its primary metric', () => {
+  const ranked = sortByRanking(
+    [
+      storeSummary({ id: 'all-posts-active', score: 55, femalePostCount: 1, recentPostCount: 8 }),
+      storeSummary({ id: 'female-active', score: 60, femalePostCount: 4, recentPostCount: 4 }),
+    ],
+    'female',
   )
 
   assert.equal(ranked[0].store.id, 'female-active')
 })
 
-test('event ranking keeps event availability first, then female post count', () => {
+test('event ranking keeps event availability before daily post count', () => {
   const ranked = sortByRanking(
     [
       storeSummary({ id: 'event-store', score: 60, femalePostCount: 1, todayEventCount: 1, eventCount: 1 }),

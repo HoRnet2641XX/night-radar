@@ -43,6 +43,7 @@ const postSelectColumns = 'id,store_id,source,source_url,posted_at,body,keywords
 const sourceSelectColumns =
   'id,store_id,label,url,parser_type,active,crawl_interval_minutes,last_fetched_at,last_status,last_message,created_at'
 const snapshotLightSelectColumns = 'id,source_id,store_id,url,metrics,radar_score,captured_at'
+const snapshotContextSelectColumns = 'id,store_id,url,extracted_text,captured_at'
 const normalizedPostSelectColumns =
   'id,source_id,store_id,source_url,article_no,author_name,author_gender,posted_at,observed_at,body,body_hash,content_key'
 
@@ -139,11 +140,11 @@ export type PublicDirectoryState = {
 export const publicAreas = Object.entries(areaSlugMap).map(([slug, label]) => ({ slug, label }))
 export const publicConditions = Object.entries(conditionLabels).map(([key, label]) => ({ key: key as ConditionKey, label }))
 export const publicRankingKinds: Array<{ key: RankingKind; label: string; description: string }> = [
-  { key: 'today', label: '今日', description: '女性の書き込み数、投稿鮮度、イベントから今日の候補を並べます。' },
-  { key: 'weekend', label: '週末', description: '週末イベントを優先しつつ、女性の書き込みが多い店舗を上にします。' },
+  { key: 'today', label: '今日', description: '当日の営業分で確認できた顧客投稿の総数が多い順に並べます。' },
+  { key: 'weekend', label: '週末', description: '週末イベントを優先しつつ、当日の顧客投稿が多い店舗を上にします。' },
   { key: 'female', label: '女性書込', description: '直近の性別表記から女性の書き込みが多い順に見ます。' },
-  { key: 'events', label: 'イベントあり', description: '本日または直近イベントがある店舗の中で、女性の書き込みが多い順に見ます。' },
-  { key: 'open', label: '営業中', description: '営業時間が判定できる店舗の中で、女性の書き込みが多い順に見ます。' },
+  { key: 'events', label: 'イベントあり', description: '本日または直近イベントがある店舗の中で、当日の顧客投稿が多い順に見ます。' },
+  { key: 'open', label: '営業中', description: '営業時間が判定できる店舗の中で、当日の顧客投稿が多い順に見ます。' },
 ]
 
 function stringField(row: DbRow, key: string, fallback = '') {
@@ -277,6 +278,18 @@ function toBbsNormalizedPost(row: DbRow): BbsNormalizedPost {
   }
 }
 
+function toBusinessContextPost(row: DbRow): PostRecord {
+  return {
+    id: `public-context-${stringField(row, 'id')}`,
+    storeId: stringField(row, 'store_id'),
+    source: 'scrape',
+    sourceUrl: optionalStringField(row, 'url'),
+    postedAt: stringField(row, 'captured_at'),
+    body: stringField(row, 'extracted_text'),
+    keywords: [],
+  }
+}
+
 function demoPublicState(): PublicDirectoryState {
   return buildPublicState({
     stores: demoStores,
@@ -285,6 +298,7 @@ function demoPublicState(): PublicDirectoryState {
     sources: [],
     snapshots: [],
     normalizedPosts: [],
+    businessContextPosts: [],
   })
 }
 
@@ -300,7 +314,7 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
 
   const storeIds = (storeResult.data ?? []).map((row) => String(row.id)).filter(Boolean)
   const recentPostThreshold = isoHoursAgo(recentPostWindowHours)
-  const [eventResult, postResult, sourceResult, snapshotResult, normalizedPostResult] = await Promise.all([
+  const [eventResult, postResult, sourceResult, snapshotResult, snapshotContextResult, normalizedPostResult] = await Promise.all([
     storeIds.length
       ? supabase
           .from('events')
@@ -329,6 +343,15 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
           .limit(320)
       : Promise.resolve({ data: [], error: null }),
     storeIds.length
+      ? supabase
+          .from('bbs_snapshots')
+          .select(snapshotContextSelectColumns)
+          .in('store_id', storeIds)
+          .neq('extracted_text', '')
+          .order('captured_at', { ascending: false })
+          .limit(120)
+      : Promise.resolve({ data: [], error: null }),
+    storeIds.length
       ? collectPagedRows<DbRow, NonNullable<DbListResult['error']>>(async (from, to) =>
           (await supabase
             .from('bbs_normalized_posts')
@@ -344,9 +367,18 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
   const normalizedPostError =
     normalizedPostResult.error && !isMissingRelationError(normalizedPostResult.error) ? normalizedPostResult.error : null
 
-  if (eventResult.error || postResult.error || sourceResult.error || snapshotResult.error || normalizedPostError) {
+  if (eventResult.error || postResult.error || sourceResult.error || snapshotResult.error || snapshotContextResult.error || normalizedPostError) {
     return demoPublicState()
   }
+
+  const seenContextStores = new Set<string>()
+  const businessContextPosts = (snapshotContextResult.data ?? [])
+    .map(toBusinessContextPost)
+    .filter((post) => {
+      if (!post.body.trim() || seenContextStores.has(post.storeId)) return false
+      seenContextStores.add(post.storeId)
+      return true
+    })
 
   return buildPublicState({
     stores: (storeResult.data ?? []).map(toStore),
@@ -355,6 +387,7 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
     sources: (sourceResult.data ?? []).map(toBbsSource),
     snapshots: (snapshotResult.data ?? []).map(toBbsSnapshot),
     normalizedPosts: normalizedPostResult.error ? [] : (normalizedPostResult.data ?? []).map(toBbsNormalizedPost),
+    businessContextPosts,
   })
 }
 
@@ -367,12 +400,14 @@ function buildPublicState(input: {
   sources: BbsSource[]
   snapshots: BbsSnapshot[]
   normalizedPosts: BbsNormalizedPost[]
+  businessContextPosts: PostRecord[]
 }): PublicDirectoryState {
   const posts = buildEffectiveBbsPostRecords(input.rawPosts, input.normalizedPosts)
   const scoredEvents = scoreEvents(input.events, input.stores, posts)
   const generatedAt = new Date().toISOString()
-  const businessDayPosts = filterPostsForStoreBusinessWindows(posts, input.stores, generatedAt, input.snapshots)
-  const businessDaySnapshots = filterSnapshotsForStoreBusinessWindows(input.snapshots, input.stores, generatedAt, posts)
+  const businessContextPosts = [...posts, ...input.businessContextPosts]
+  const businessDayPosts = filterPostsForStoreBusinessWindows(posts, input.stores, generatedAt, input.snapshots, businessContextPosts)
+  const businessDaySnapshots = filterSnapshotsForStoreBusinessWindows(input.snapshots, input.stores, generatedAt, businessContextPosts)
   const radar = buildStoreRadarPoints(input.stores, businessDayPosts, businessDaySnapshots)
   const analytics = buildStoreBbsAnalytics(input.stores, businessDayPosts)
   const forecasts = buildVisitForecasts(input.events, input.stores, posts, { windowDays: 7 })
@@ -382,6 +417,8 @@ function buildPublicState(input: {
       analytics: analytics.find((item) => item.store.id === point.store.id),
       events: input.events.filter((event) => event.storeId === point.store.id),
       posts: posts.filter((post) => post.storeId === point.store.id),
+      businessPosts: businessDayPosts.filter((post) => post.storeId === point.store.id),
+      businessContextPosts: businessContextPosts.filter((post) => post.storeId === point.store.id),
       snapshots: input.snapshots.filter((snapshot) => snapshot.storeId === point.store.id),
       normalizedPosts: input.normalizedPosts.filter((post) => post.storeId === point.store.id),
       source: input.sources.find((source) => source.storeId === point.store.id),
@@ -410,6 +447,8 @@ function buildPublicStoreSummary(input: {
   analytics?: StoreBbsAnalytics
   events: EventInput[]
   posts: PostRecord[]
+  businessPosts: PostRecord[]
+  businessContextPosts: PostRecord[]
   snapshots: BbsSnapshot[]
   normalizedPosts: BbsNormalizedPost[]
   source?: BbsSource
@@ -419,13 +458,16 @@ function buildPublicStoreSummary(input: {
   const areaLabel = inferStoreArea(point.store)
   const bbsUrl = source?.url
   const officialUrl = point.store.officialUrl || rootUrlFromSource(bbsUrl)
-  const lastUpdatedAt = latestDate([
-    point.lastCapturedAt,
-    source?.lastFetchedAt,
-    ...input.posts.map((post) => post.postedAt),
-    ...input.normalizedPosts.map((post) => post.postedAt ?? post.observedAt),
-  ])
-  const recentPosts = filterPostsForStoreBusinessWindows(input.posts, [point.store], generatedAt, input.snapshots)
+  const lastUpdatedAt = latestDate(
+    [
+      point.lastCapturedAt,
+      source?.lastFetchedAt,
+      ...input.posts.map((post) => post.postedAt),
+      ...input.normalizedPosts.map((post) => post.postedAt ?? post.observedAt),
+    ],
+    generatedAt,
+  )
+  const recentPosts = input.businessPosts
   const activity = buildStoreActivityMetrics({
     storeId: point.store.id,
     businessPosts: recentPosts,
@@ -438,8 +480,7 @@ function buildPublicStoreSummary(input: {
   const weekendEventCount = input.events.filter((event) => /金曜|土曜|日曜/.test(event.weekday)).length
   const womenRatio = activity.womenRatio
   const isOpenNow = isStoreWithinBusinessHours(point.store, generatedAt, [
-    ...input.snapshots.map((snapshot) => snapshot.extractedText),
-    ...input.posts.map((post) => post.body),
+    ...input.businessContextPosts.map((post) => post.body),
   ])
   const priceLabel = point.store.priceNote?.trim() || '公式で確認'
   const temperatureLabel =
@@ -492,10 +533,11 @@ function buildPublicStoreSummary(input: {
   }
 }
 
-function latestDate(values: Array<string | undefined>) {
+function latestDate(values: Array<string | undefined>, referenceAt: string) {
+  const futureTolerance = new Date(referenceAt).getTime() + 10 * 60_000
   const sorted = values
     .map((value) => (value ? new Date(value).getTime() : Number.NaN))
-    .filter(Number.isFinite)
+    .filter((value) => Number.isFinite(value) && value <= futureTolerance)
     .toSorted((a, b) => b - a)
   return sorted[0] ? new Date(sorted[0]).toISOString() : undefined
 }
@@ -627,12 +669,22 @@ export function matchesCondition(summary: PublicStoreSummary, condition: Conditi
 export function sortByRanking(summaries: PublicStoreSummary[], ranking: RankingKind) {
   return [...summaries].toSorted((a, b) => {
     if (ranking === 'events') {
-      return b.todayEventCount - a.todayEventCount || b.events.length - a.events.length || compareFemalePostActivity(a, b)
+      return b.todayEventCount - a.todayEventCount || b.events.length - a.events.length || compareDailyPostActivity(a, b)
     }
-    if (ranking === 'open') return Number(b.isOpenNow) - Number(a.isOpenNow) || compareFemalePostActivity(a, b)
-    if (ranking === 'weekend') return b.weekendEventCount - a.weekendEventCount || compareFemalePostActivity(a, b)
-    return compareFemalePostActivity(a, b)
+    if (ranking === 'open') return Number(b.isOpenNow) - Number(a.isOpenNow) || compareDailyPostActivity(a, b)
+    if (ranking === 'weekend') return b.weekendEventCount - a.weekendEventCount || compareDailyPostActivity(a, b)
+    if (ranking === 'female') return compareFemalePostActivity(a, b)
+    return compareDailyPostActivity(a, b)
   })
+}
+
+function compareDailyPostActivity(a: PublicStoreSummary, b: PublicStoreSummary) {
+  return (
+    b.recentPostCount - a.recentPostCount ||
+    b.recentThreeHourCount - a.recentThreeHourCount ||
+    b.femalePostCount - a.femalePostCount ||
+    b.point.score - a.point.score
+  )
 }
 
 function compareFemalePostActivity(a: PublicStoreSummary, b: PublicStoreSummary) {

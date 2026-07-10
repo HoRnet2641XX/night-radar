@@ -353,14 +353,16 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
   const bars = points
     .map((point) => toBar(point, posts, state.bbsNormalizedPosts, businessContextPosts, sourceEvents, state.bbsSources, todayKey, generatedAt))
     .toSorted((left, right) => {
-      const femaleDelta = right.femaleCount - left.femaleCount
-      if (femaleDelta) return femaleDelta
-      const recentDelta = right.recentThreeHourCount - left.recentThreeHourCount
-      if (recentDelta) return recentDelta
-      const confidenceDelta = right.dataConfidence - left.dataConfidence
-      if (confidenceDelta) return confidenceDelta
       const postDelta = right.postCount - left.postCount
       if (postDelta) return postDelta
+      const recentDelta = right.recentThreeHourCount - left.recentThreeHourCount
+      if (recentDelta) return recentDelta
+      const femaleDelta = right.femaleCount - left.femaleCount
+      if (femaleDelta) return femaleDelta
+      const confidenceDelta = right.dataConfidence - left.dataConfidence
+      if (confidenceDelta) return confidenceDelta
+      const scoreDelta = right.score - left.score
+      if (scoreDelta) return scoreDelta
       return left.name.localeCompare(right.name, 'ja')
     })
   const events = sourceEvents

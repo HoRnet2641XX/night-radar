@@ -655,7 +655,11 @@ function createWatchedAuthorEntry(name: string, gender: string, body = ''): Watc
   if (cleanedName.length > 36) return null
 
   const normalizedGender = normalizeWatchedGender(gender)
-  const cleanedBody = body.replace(/^削除\s*/, '').replace(/\s+/g, ' ').trim()
+  const cleanedBody = body
+    .replace(/^削除\s*/, '')
+    .replace(/\s*(?:投稿日|投稿日時?|書き込み日時?)[:：]?\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
   const authorText = [cleanedName, normalizedGender === '記載なし' ? '' : normalizedGender].filter(Boolean).join(' ')
 
   return {
@@ -850,23 +854,29 @@ function parseBbsPostedAt(value: string, observedAt: string) {
   const observedDate = new Date(observedAt)
   const normalized = normalizeBbsDateText(value)
   const safeObservedDate = Number.isNaN(observedDate.getTime()) ? new Date() : observedDate
+  const validatedTimestamp = (date: Date) => {
+    const timestamp = date.getTime()
+    if (!Number.isFinite(timestamp)) return undefined
+    if (timestamp > safeObservedDate.getTime() + 10 * 60_000) return undefined
+    return date.toISOString()
+  }
 
   const dayHourMinute = normalized.match(/(\d+)\s*日(?:、|,)?\s*(\d+)\s*時間(?:、|,)?\s*(\d+)\s*分前/)
   const hourMinute = normalized.match(/(\d+)\s*時間(?:、|,)?\s*(\d+)\s*分前/)
   const minuteOnly = normalized.match(/(\d+)\s*分前/)
   if (dayHourMinute) {
-    return new Date(
+    return validatedTimestamp(new Date(
       safeObservedDate.getTime() -
         (Number(dayHourMinute[1]) * 24 * 60 + Number(dayHourMinute[2]) * 60 + Number(dayHourMinute[3])) * 60_000,
-    ).toISOString()
+    ))
   }
   if (hourMinute) {
-    return new Date(
+    return validatedTimestamp(new Date(
       safeObservedDate.getTime() - (Number(hourMinute[1]) * 60 + Number(hourMinute[2])) * 60_000,
-    ).toISOString()
+    ))
   }
-  if (minuteOnly) return new Date(safeObservedDate.getTime() - Number(minuteOnly[1]) * 60_000).toISOString()
-  if (/たった今|数秒前/.test(normalized)) return safeObservedDate.toISOString()
+  if (minuteOnly) return validatedTimestamp(new Date(safeObservedDate.getTime() - Number(minuteOnly[1]) * 60_000))
+  if (/たった今|数秒前/.test(normalized)) return validatedTimestamp(safeObservedDate)
 
   const monthFirstMatch = normalized.match(
     /(\d{1,2})月\s*(\d{1,2}),?\s*(20\d{2})\s*(\d{1,2}):(\d{1,2})\s*(AM|PM)/i,
@@ -881,7 +891,7 @@ function parseBbsPostedAt(value: string, observedAt: string) {
     if (meridiem === 'PM' && hour < 12) hour += 12
     if (meridiem === 'AM' && hour === 12) hour = 0
     const date = new Date(Date.UTC(year, month - 1, day, hour - 9, minute, 0))
-    return Number.isNaN(date.getTime()) ? undefined : date.toISOString()
+    return validatedTimestamp(date)
   }
 
   const fallbackYear = Number(
@@ -914,8 +924,7 @@ function parseBbsPostedAt(value: string, observedAt: string) {
   ) return undefined
 
   const date = new Date(Date.UTC(year, month - 1, day, hour - 9, minute, 0))
-  if (Number.isNaN(date.getTime())) return undefined
-  return date.toISOString()
+  return validatedTimestamp(date)
 }
 
 function cleanNormalizedBbsPostBody(block: string, entry: WatchedAuthorEntry | null, articleNo?: string) {
@@ -951,19 +960,24 @@ function cleanNormalizedBbsPostBody(block: string, entry: WatchedAuthorEntry | n
 function extractCanonicalAuthorEntry(block: string): WatchedAuthorEntry | null {
   const rawAuthor = block.match(/^投稿者[:：]\s*(.+)$/m)?.[1]?.trim()
   if (!rawAuthor) return null
-
-  const parenthesizedGender = rawAuthor.match(new RegExp(`^(.+?)\\s*[（(]\\s*(${watchedGenderToken})(?:\\d+)?\\s*[）)]$`, 'i'))
-  const trailingGender = parenthesizedGender
-    ? null
-    : rawAuthor.match(new RegExp(`^(.+?)\\s+(${watchedGenderToken})(?:\\d+)?$`, 'i'))
-  const name = (parenthesizedGender?.[1] ?? trailingGender?.[1] ?? rawAuthor).replace(/\s+/g, ' ').trim()
-  const gender = normalizeWatchedGender(parenthesizedGender?.[2] ?? trailingGender?.[2] ?? '')
+  const genderMatch = rawAuthor.match(new RegExp(`^(.{1,80}?)\\s*[（(]\\s*(${watchedGenderToken})\\s*[）)]\\s*(.*)$`, 'i'))
+  const contentStart = genderMatch
+    ? -1
+    : rawAuthor.search(
+        /\s(?=初めて|はじめて|久しぶり|今日|本日|明日|朝|昼|夜|行き|行く|伺|お邪魔|予定|よろしく|誰か|どなた|女性です|男性です|単男です|単女です|[0-9０-９]{1,2}\s*(?:時|:))/,
+      )
+  const name = cleanAuthorNameText(genderMatch?.[1] ?? (contentStart >= 0 ? rawAuthor.slice(0, contentStart) : rawAuthor))
+  const gender = normalizeWatchedGender(genderMatch?.[2] ?? '')
+  const body = (genderMatch?.[3] ?? (contentStart >= 0 ? rawAuthor.slice(contentStart) : ''))
+    .replace(/\s*(?:投稿日|投稿日時?|書き込み日時?)[:：]?\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
   if (!name || name.length > 80) return null
 
   return {
     name,
     gender,
-    body: '',
+    body,
     authorText: [name, gender === '記載なし' ? '' : gender].filter(Boolean).join(' '),
   }
 }
@@ -1034,22 +1048,71 @@ export function extractNormalizedBbsPostsFromText(value: string, observedAt: str
   return posts
 }
 
+const automatedStoreReplyPattern =
+  /(書き込みありがとうございます|予告メッセージありがとうございます|ご来店をスタッフ一同楽しみに|thank you for posting your visit notice|look forward to welcoming)/i
+const storeAuthoredContentPattern =
+  /(本日.{0,40}(?:昼|夜).{0,12}部|営業時間|営業開始|営業終了|イベント(?:開催|情報|のお知らせ)|当店からのお知らせ|ようこそ.{0,40}へ)/i
+const explicitStoreAttributionPattern =
+  /(?:^|投稿者[:：]\s*)(?:retreat\s*bar|campo\s*bar|b-?dash|voluptuous|agreeable|arabesque|bar\s*440|bar\s*canelo|bar\s*face|bar\s*rusk|bar\s*spear|colors\s*bar|honey\s*trap)/i
+const genericStoreAuthorPattern = /^(staff|スタッフ|管理人|管理者|運営|公式|店長|オーナー|マスター|受付|事務局)$/i
+const storeAuthorAliases: Record<string, RegExp> = {
+  agreeable: /^agreeable$/i,
+  arabesque: /^arabesque$/i,
+  'b-dash': /^b-?dash$/i,
+  bar440: /^(?:bar)?440$/i,
+  'bar-canelo': /^(?:bar)?canelo$/i,
+  'bar-face': /^(?:bar)?face$/i,
+  'bar-rusk': /^(?:bar)?rusk$/i,
+  'bar-spear': /^(?:bar)?spear$/i,
+  'campo-bar': /^(?:campo(?:bar)?|barcampo)$/i,
+  'club-scarlet-tokyo': /^(?:club)?scarlet(?:tokyo)?$/i,
+  'colors-bar': /^(?:colors(?:bar)?|barcolors)$/i,
+  'communicationbar-sango': /^(?:communicationbar)?珊瑚$/i,
+  'filt-shibuya': /^filt(?:shibuya)?$/i,
+  'honey-trap': /^(?:bar)?honeytrap$/i,
+  neo: /^neo$/i,
+  'retreat-bar': /^(?:retreat(?:bar)?|barretreat)$/i,
+  voluptuous: /^voluptuous$/i,
+}
+
+function normalizedAuthorForStaffCheck(value: string) {
+  return value
+    .normalize('NFKC')
+    .replace(/\s*(?:さん|様)\s*$/u, '')
+    .replace(/[^\p{Letter}\p{Number}-]/gu, '')
+    .toLowerCase()
+}
+
+export function isLikelyCustomerNormalizedPost(
+  post: Pick<BbsNormalizedPost, 'storeId' | 'authorName' | 'body'>,
+) {
+  const author = normalizedAuthorForStaffCheck(post.authorName)
+  const matchesStoreAuthor = Boolean(author && storeAuthorAliases[post.storeId]?.test(author))
+  if (author && genericStoreAuthorPattern.test(author)) return false
+  if (automatedStoreReplyPattern.test(post.body) && (matchesStoreAuthor || explicitStoreAttributionPattern.test(post.body))) return false
+  if (matchesStoreAuthor && storeAuthoredContentPattern.test(post.body)) return false
+  return true
+}
+
 export function normalizedBbsPostsToPostRecords(posts: BbsNormalizedPost[]): PostRecord[] {
-  return posts.map((post) => ({
-    id: `normalized-${post.id}`,
-    storeId: post.storeId,
-    source: 'scrape',
-    sourceUrl: post.sourceUrl,
-    postedAt: post.postedAt ?? post.observedAt,
-    body: [
-      post.articleNo ? `記事番号: ${post.articleNo}` : '',
-      post.authorName !== '記載なし' ? `投稿者: ${post.authorName}${post.authorGender !== '記載なし' ? `（${post.authorGender}）` : ''}` : '',
-      post.body,
-    ]
-      .filter(Boolean)
-      .join(' '),
-    keywords: [],
-  }))
+  return posts
+    .filter((post): post is BbsNormalizedPost & { postedAt: string } => Boolean(post.postedAt))
+    .filter(isLikelyCustomerNormalizedPost)
+    .map((post) => ({
+      id: `normalized-${post.id}`,
+      storeId: post.storeId,
+      source: 'scrape',
+      sourceUrl: post.sourceUrl,
+      postedAt: post.postedAt,
+      body: [
+        post.articleNo ? `記事番号: ${post.articleNo}` : '',
+        post.authorName !== '記載なし' ? `投稿者: ${post.authorName}${post.authorGender !== '記載なし' ? `（${post.authorGender}）` : ''}` : '',
+        post.body,
+      ]
+        .filter(Boolean)
+        .join(' '),
+      keywords: [],
+    }))
 }
 
 export function buildEffectiveBbsPostRecords(posts: PostRecord[], normalizedPosts: BbsNormalizedPost[] = []) {

@@ -700,6 +700,40 @@ describe('BBS radar signals', () => {
     assert.equal(normalizedPosts[1].authorName, 'Kei')
   })
 
+  it('separates inline gender and message text from the author field', () => {
+    const [post] = extractNormalizedBbsPostsFromText(
+      [
+        '[[NR_POST]]',
+        '投稿者： たま (女性) 夜ちょこっと行きます 投稿日：',
+        'Re: 本日の営業スレッド',
+        '投稿日： 2026/07/10(Fri) 16:31:20',
+        '記事番号： 59712',
+        '[[/NR_POST]]',
+      ].join('\n'),
+      '2026-07-10T07:35:00.000Z',
+    )
+
+    assert.equal(post.authorName, 'たま')
+    assert.equal(post.authorGender, '女性')
+    assert.equal(post.body, '夜ちょこっと行きます')
+    assert.equal(post.postedAt, '2026-07-10T07:31:00.000Z')
+  })
+
+  it('does not accept a future visit date as the original posting time', () => {
+    const [post] = extractNormalizedBbsPostsFromText(
+      [
+        '[[NR_POST]]',
+        '投稿者： せんせい',
+        '17日の夜に伺う予定です。',
+        '投稿日： 2026/07/17 00:00',
+        '[[/NR_POST]]',
+      ].join('\n'),
+      '2026-07-10T07:35:00.000Z',
+    )
+
+    assert.equal(post.postedAt, undefined)
+  })
+
   it('uses normalized BBS posts instead of full scrape records when available', () => {
     const normalizedPosts: BbsNormalizedPost[] = [
       {
@@ -735,6 +769,47 @@ describe('BBS radar signals', () => {
     assert.equal(effective[0].id, 'normalized-np-1')
     assert.match(effective[0].body, /投稿者: acco（女性）/)
     assert.doesNotMatch(effective[0].body, /店長/)
+  })
+
+  it('excludes time-unknown and store-authored rows from effective ranking posts', () => {
+    const rows: BbsNormalizedPost[] = [
+      {
+        id: 'customer',
+        storeId: 'b-dash',
+        authorName: '来店者',
+        authorGender: '男性',
+        postedAt: '2026-07-10T04:15:00.000Z',
+        observedAt: '2026-07-10T04:20:00.000Z',
+        body: 'これから伺います。',
+        bodyHash: 'customer',
+        contentKey: 'customer',
+      },
+      {
+        id: 'store',
+        storeId: 'b-dash',
+        authorName: 'B-DASH',
+        authorGender: '記載なし',
+        postedAt: '2026-07-10T04:16:00.000Z',
+        observedAt: '2026-07-10T04:20:00.000Z',
+        body: '本日の昼の部のお知らせです。',
+        bodyHash: 'store',
+        contentKey: 'store',
+      },
+      {
+        id: 'time-unknown',
+        storeId: 'b-dash',
+        authorName: '時刻不明',
+        authorGender: '女性',
+        observedAt: '2026-07-10T04:20:00.000Z',
+        body: '過去の投稿かもしれません。',
+        bodyHash: 'time-unknown',
+        contentKey: 'time-unknown',
+      },
+    ]
+
+    const effective = buildEffectiveBbsPostRecords([], rows)
+
+    assert.deepEqual(effective.map((post) => post.id), ['normalized-customer'])
   })
 
   it('does not count the same normalized row twice when paged results overlap', () => {

@@ -581,8 +581,8 @@ export function PublicStoreCard({ summary, rank }: { summary: PublicStoreSummary
 export function PublicDecisionGuide() {
   const items = [
     {
-      title: 'ランキングは人数そのものではありません',
-      body: '公開BBSの投稿、女性表記、更新鮮度、イベント情報を組み合わせた候補順です。最後は公式情報も確認してください。',
+      title: 'ランキングは当日の顧客投稿数です',
+      body: '日本時間の当日営業分で確認できた顧客投稿を、男女・性別未記載を含めて集計します。同数の場合のみ直近3時間の投稿数を比較します。',
     },
     {
       title: '地図だけで決めない',

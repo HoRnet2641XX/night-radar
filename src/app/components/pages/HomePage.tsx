@@ -88,7 +88,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
             onClick={() => BARS[0] && onOpen(BARS[0].id)}
             disabled={!BARS.length}
           >
-            女性書き込み1位の店舗を見る <ArrowUpRight size={14} />
+            当日投稿1位の店舗を見る <ArrowUpRight size={14} />
           </button>
         </motion.div>
       </motion.div>

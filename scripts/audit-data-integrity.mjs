@@ -162,7 +162,12 @@ async function main() {
       genderCoverage: metrics.genderCoverage,
       businessWindows: windows.map((window) => `${window.label} ${window.startHour}:${String(window.startMinute).padStart(2, '0')}-${window.endHour}:${String(window.endMinute).padStart(2, '0')} (${window.source})`),
     }
-  }).sort((left, right) => right.femalePosts - left.femalePosts || right.businessPosts - left.businessPosts)
+  }).sort(
+    (left, right) =>
+      right.businessPosts - left.businessPosts ||
+      right.recentThreeHours - left.recentThreeHours ||
+      right.femalePosts - left.femalePosts,
+  )
 
   const sourceAudit = sourceRows.map((source) => {
     const latestRun = latestRunBySource.get(source.id)
