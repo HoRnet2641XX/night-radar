@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { NightRadarConsole } from '@/components/night-radar-console'
+import { NightRadarRedesign } from '@/components/night-radar-redesign'
 import officialEventsData from '@/lib/official-events.generated.json'
 import { getDashboardState } from '@/lib/server/repository'
 import { getCurrentUser } from '@/lib/supabase/server'
@@ -23,14 +23,20 @@ function mergeOfficialEvents(events: EventInput[]) {
   return [...merged.values()].filter((event) => /^\d{4}-\d{2}-\d{2}$/.test(event.date))
 }
 
-export default async function AppPage() {
+export default async function AppPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ preview?: string }>
+}) {
+  const params = await searchParams
   const user = await getCurrentUser()
-  if (!user) redirect('/login?next=/app')
+  const isDevelopmentPreview = process.env.NODE_ENV === 'development' && params.preview === '1'
+  if (!user && !isDevelopmentPreview) redirect('/login?next=/app')
 
   const state = await getDashboardState()
 
   return (
-    <NightRadarConsole
+    <NightRadarRedesign
       calendarEvents={mergeOfficialEvents(state.events)}
       initialState={state}
     />

@@ -30,7 +30,6 @@ const storeDefaults = [
   { id: 'land-land', name: 'land land' },
   { id: 'filt-shibuya', name: 'FILT SHIBUYA' },
   { id: 'communicationbar-sango', name: 'Communicationbar 珊瑚' },
-  { id: 'off-white', name: 'Off White' },
 ]
 
 function pad(value) {

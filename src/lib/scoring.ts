@@ -33,6 +33,12 @@ const firstVisitPattern = /(初めて|はじめて|初参加|初来店)/g
 const comebackPattern = /((\d+|[０-９]+|[一二三四五六七八九十百]+)\s*(年|ヶ月|か月|カ月|月|週間|日)\s*ぶり|久しぶり|以来)/g
 const groupVisitPattern = /((\d+|[０-９]+|[二三四五六七八九十]+)\s*人組|二人組|三人組|複数人|友達と|ペア)/g
 const emojiPattern = /(\p{Extended_Pictographic}|[\u{1F300}-\u{1FAFF}]|[（(][^（）()]{0,10}[;；:：=xX＾^・ω∀Д▽△_<>><][^（）()]{0,10}[）)])/gu
+const femaleAuthorGenderPattern = /(女性|単女|単独女性|女|♀)/i
+const maleAuthorGenderPattern = /(男性|単男|単独男性|男|♂)/i
+const femalePostAuthorPattern = /(?:投稿者|名前|Name)[:：]?[^\n]{0,36}[（(](?:女性|単女|単独女性|女|♀)[）)]/i
+const malePostAuthorPattern = /(?:投稿者|名前|Name)[:：]?[^\n]{0,36}[（(](?:男性|単男|単独男性|男|♂)[）)]/i
+const firstVisitRecordPattern = /(初めて|はじめて|初参加|初来店)/i
+const groupVisitRecordPattern = /((\d+|[０-９]+|[二三四五六七八九十]+)\s*人(?:組|で)?|二人|三人|複数人|グループ|友達と|連れ|カップル|ペア)/i
 
 export type WatchedTemplateKey = 'female' | 'first' | 'comeback' | 'group' | 'emoji'
 
@@ -135,6 +141,104 @@ export function filterPostsWithinHours(posts: PostRecord[], referenceAt: string 
   })
 }
 
+export type StoreActivityMetrics = {
+  recentPostCount: number
+  recentThreeHourCount: number
+  recentThreeHourFemaleCount: number
+  femalePostCount: number
+  malePostCount: number
+  genderSampleCount: number
+  womenRatio: number | null
+  firstVisitCount: number
+  groupVisitCount: number
+  attentionPostCount: number
+  uniqueAuthorCount: number
+  repeatAuthorRatio: number | null
+  normalizedCoverage: number
+  timestampCoverage: number
+  authorCoverage: number
+  genderCoverage: number
+}
+
+function normalizeAuthorName(value: string) {
+  const normalized = value.normalize('NFKC').replace(/\s+/g, '').toLowerCase()
+  return normalized && normalized !== '記載なし' ? normalized : ''
+}
+
+function postGenderCounts(posts: PostRecord[], normalizedPosts: BbsNormalizedPost[]) {
+  if (normalizedPosts.length) {
+    return {
+      female: normalizedPosts.filter((post) => femaleAuthorGenderPattern.test(post.authorGender)).length,
+      male: normalizedPosts.filter((post) => maleAuthorGenderPattern.test(post.authorGender)).length,
+    }
+  }
+
+  return {
+    female: posts.filter((post) => femalePostAuthorPattern.test(post.body)).length,
+    male: posts.filter((post) => malePostAuthorPattern.test(post.body)).length,
+  }
+}
+
+export function buildStoreActivityMetrics(input: {
+  storeId: string
+  businessPosts: PostRecord[]
+  normalizedPosts?: BbsNormalizedPost[]
+  referenceAt: string | number | Date
+}): StoreActivityMetrics {
+  const businessPosts = input.businessPosts.filter((post) => post.storeId === input.storeId)
+  const businessPostIds = new Set(businessPosts.map((post) => post.id))
+  const allNormalizedPosts = (input.normalizedPosts ?? []).filter((post) => post.storeId === input.storeId)
+  const businessNormalizedPosts = allNormalizedPosts.filter((post) => businessPostIds.has(`normalized-${post.id}`))
+  const recentThreeHourPosts = filterPostsWithinHours(businessPosts, input.referenceAt, 3)
+  const recentThreeHourIds = new Set(recentThreeHourPosts.map((post) => post.id))
+  const recentThreeHourNormalizedPosts = businessNormalizedPosts.filter((post) => recentThreeHourIds.has(`normalized-${post.id}`))
+  const normalizedByEffectivePostId = new Map(businessNormalizedPosts.map((post) => [`normalized-${post.id}`, post]))
+  const gender = postGenderCounts(businessPosts, businessNormalizedPosts)
+  const recentGender = postGenderCounts(recentThreeHourPosts, recentThreeHourNormalizedPosts)
+  const genderSampleCount = gender.female + gender.male
+  const authorNames = businessNormalizedPosts.map((post) => normalizeAuthorName(post.authorName)).filter(Boolean)
+  const uniqueAuthors = [...new Set(authorNames)]
+  const authorCoverage = businessPosts.length ? clamp((authorNames.length / businessPosts.length) * 100) : 0
+  const genderCoverage = businessPosts.length ? clamp((genderSampleCount / businessPosts.length) * 100) : 0
+  const timestampCoverage = allNormalizedPosts.length
+    ? clamp((allNormalizedPosts.filter((post) => Boolean(post.postedAt)).length / allNormalizedPosts.length) * 100)
+    : 0
+  const allAuthorCounts = new Map<string, number>()
+
+  allNormalizedPosts.forEach((post) => {
+    const name = normalizeAuthorName(post.authorName)
+    if (!name) return
+    allAuthorCounts.set(name, (allAuthorCounts.get(name) ?? 0) + 1)
+  })
+
+  const repeatedAuthors = uniqueAuthors.filter((name) => (allAuthorCounts.get(name) ?? 0) >= 2).length
+
+  return {
+    recentPostCount: businessPosts.length,
+    recentThreeHourCount: recentThreeHourPosts.length,
+    recentThreeHourFemaleCount: recentGender.female,
+    femalePostCount: gender.female,
+    malePostCount: gender.male,
+    genderSampleCount,
+    womenRatio: genderSampleCount >= 3 && genderCoverage >= 20 ? clamp((gender.female / genderSampleCount) * 100) : null,
+    firstVisitCount: businessPosts.filter((post) => firstVisitRecordPattern.test(post.body)).length,
+    groupVisitCount: businessPosts.filter((post) => groupVisitRecordPattern.test(post.body)).length,
+    attentionPostCount: businessPosts.filter((post) => {
+      const normalizedPost = normalizedByEffectivePostId.get(post.id)
+      const isFemale = normalizedPost
+        ? femaleAuthorGenderPattern.test(normalizedPost.authorGender)
+        : femalePostAuthorPattern.test(post.body)
+      return isFemale || firstVisitRecordPattern.test(post.body) || groupVisitRecordPattern.test(post.body)
+    }).length,
+    uniqueAuthorCount: uniqueAuthors.length,
+    repeatAuthorRatio: uniqueAuthors.length ? clamp((repeatedAuthors / uniqueAuthors.length) * 100) : null,
+    normalizedCoverage: businessPosts.length ? clamp((businessNormalizedPosts.length / businessPosts.length) * 100) : 0,
+    timestampCoverage,
+    authorCoverage,
+    genderCoverage,
+  }
+}
+
 function japanDateParts(date: Date) {
   const parts = new Intl.DateTimeFormat('en-US', {
     day: '2-digit',
@@ -162,10 +266,271 @@ function japanTimeToUtcTimestamp(year: number, month: number, day: number, hour 
   return Date.UTC(year, month - 1, day, hour - 9, minute, second)
 }
 
-export function businessDayRangeInJapan(referenceAt: string | number | Date) {
+type BusinessWindowSource = 'bbs' | 'profile' | 'fallback'
+
+type BusinessTimeRange = {
+  label: string
+  startHour: number
+  startMinute: number
+  endHour: number
+  endMinute: number
+  source: BusinessWindowSource
+}
+
+type StoreBusinessWindow = BusinessTimeRange & {
+  start: number
+  end: number
+}
+
+function referenceTimestamp(referenceAt: string | number | Date) {
   const referenceTime =
     referenceAt instanceof Date ? referenceAt.getTime() : typeof referenceAt === 'number' ? referenceAt : new Date(referenceAt).getTime()
-  if (!Number.isFinite(referenceTime)) return null
+  return Number.isFinite(referenceTime) ? referenceTime : null
+}
+
+function parseClockText(value: string, fallbackHour: number) {
+  const normalized = value.normalize('NFKC')
+  const match = normalized.match(/([0-3]?\d)\s*(?::|時)\s*([0-5]\d)?/)
+  if (!match) return { hour: fallbackHour, minute: 0 }
+
+  return {
+    hour: Number(match[1]),
+    minute: Number(match[2] ?? 0),
+  }
+}
+
+function sessionLabelFromText(prefix: string, startHour: number, endHour: number) {
+  if (/朝活|朝|早朝/i.test(prefix)) return '朝活'
+  if (/昼部|昼の部|昼|day/i.test(prefix)) return '昼部'
+  if (/夜部|夜の部|夜|night/i.test(prefix)) return '夜部'
+  if (startHour >= 18 || endHour <= 6 || endHour >= 24) return '夜部'
+  if (startHour <= 11) return '朝活'
+  return '昼部'
+}
+
+function timeRangeKey(range: BusinessTimeRange) {
+  return `${range.label}:${range.startHour}:${range.startMinute}-${range.endHour}:${range.endMinute}`
+}
+
+function pushUniqueRange(ranges: BusinessTimeRange[], range: BusinessTimeRange) {
+  const normalizedStart = range.startHour * 60 + range.startMinute
+  const normalizedEnd = range.endHour * 60 + range.endMinute
+  const duration = normalizedEnd > normalizedStart ? normalizedEnd - normalizedStart : normalizedEnd + 24 * 60 - normalizedStart
+  if (duration < 60 || duration > 18 * 60) return
+
+  const existingIndex = ranges.findIndex((item) => timeRangeKey(item) === timeRangeKey(range))
+  if (existingIndex === -1) {
+    ranges.push(range)
+    return
+  }
+
+  if (ranges[existingIndex].source !== 'bbs' && range.source === 'bbs') ranges[existingIndex] = range
+}
+
+function extractBusinessTimeRangesFromText(text: string): BusinessTimeRange[] {
+  const normalized = text.normalize('NFKC').replace(/[〜～]/g, '-')
+  const ranges: BusinessTimeRange[] = []
+  const businessContextPattern = /(朝活|昼部|夜部|昼の部|夜の部|昼営業|夜営業|営業時間|営業|開店|閉店|オープン|クローズ|open|close)/i
+  const pattern =
+    /(?:(朝活|昼部|夜部|昼の部|夜の部|昼営業|夜営業|昼|夜|朝|営業時間|営業)[^\d\n\r。]{0,24})?([0-3]?\d)\s*(?::|時)\s*([0-5]\d)?\s*(?:-|~|から|より|→|ー|―|－)\s*(?:翌)?([0-3]?\d)\s*(?::|時)\s*([0-5]\d)?/g
+
+  for (const match of normalized.matchAll(pattern)) {
+    const prefix = match[1] ?? ''
+    const matchIndex = match.index ?? 0
+    const context = normalized.slice(Math.max(0, matchIndex - 32), Math.min(normalized.length, matchIndex + match[0].length + 32))
+    if (!prefix && !businessContextPattern.test(context)) continue
+    const startHour = Number(match[2])
+    const startMinute = Number(match[3] ?? 0)
+    const endHour = Number(match[4])
+    const endMinute = Number(match[5] ?? 0)
+    if (!Number.isFinite(startHour) || !Number.isFinite(endHour)) continue
+    if (startHour > 30 || endHour > 30) continue
+
+    pushUniqueRange(ranges, {
+      label: sessionLabelFromText(prefix, startHour, endHour),
+      startHour,
+      startMinute,
+      endHour,
+      endMinute,
+      source: 'bbs',
+    })
+  }
+
+  return ranges
+}
+
+function businessTimeRangesFromStore(store: StoreProfile): BusinessTimeRange[] {
+  const ranges: BusinessTimeRange[] = []
+
+  if (store.hasDaytime) {
+    const start = parseClockText(store.openingHourDay, 13)
+    pushUniqueRange(ranges, {
+      label: start.hour <= 11 ? '朝活' : '昼部',
+      startHour: start.hour,
+      startMinute: start.minute,
+      endHour: 19,
+      endMinute: 0,
+      source: 'profile',
+    })
+  }
+
+  if (store.hasNight) {
+    const start = parseClockText(store.openingHourNight, 19)
+    pushUniqueRange(ranges, {
+      label: '夜部',
+      startHour: start.hour,
+      startMinute: start.minute,
+      endHour: 5,
+      endMinute: 0,
+      source: 'profile',
+    })
+  }
+
+  if (!ranges.length) {
+    pushUniqueRange(ranges, {
+      label: '夜部',
+      startHour: 19,
+      startMinute: 0,
+      endHour: 5,
+      endMinute: 0,
+      source: 'fallback',
+    })
+  }
+
+  return ranges
+}
+
+function storeBusinessRanges(store: StoreProfile, contextTexts: string[] = []) {
+  const ranges: BusinessTimeRange[] = []
+  contextTexts.slice(0, 24).forEach((text) => {
+    extractBusinessTimeRangesFromText(text).forEach((range) => pushUniqueRange(ranges, range))
+  })
+  businessTimeRangesFromStore(store).forEach((range) => pushUniqueRange(ranges, range))
+  return ranges
+}
+
+function addDaysToJapanParts(parts: ReturnType<typeof japanDateParts>, days: number) {
+  const shifted = new Date(japanTimeToUtcTimestamp(parts.year, parts.month, parts.day + days, 12))
+  return japanDateParts(shifted)
+}
+
+function windowFromRange(parts: ReturnType<typeof japanDateParts>, range: BusinessTimeRange): StoreBusinessWindow {
+  const start = japanTimeToUtcTimestamp(parts.year, parts.month, parts.day, range.startHour, range.startMinute)
+  let end = japanTimeToUtcTimestamp(parts.year, parts.month, parts.day, range.endHour, range.endMinute)
+  if (end <= start) end += 24 * 60 * 60 * 1000
+  return { ...range, start, end }
+}
+
+export function inferStoreBusinessWindows(
+  store: StoreProfile,
+  referenceAt: string | number | Date,
+  contextTexts: string[] = [],
+): StoreBusinessWindow[] {
+  const referenceTime = referenceTimestamp(referenceAt)
+  if (referenceTime === null) return []
+
+  const baseParts = japanDateParts(new Date(referenceTime))
+  const ranges = storeBusinessRanges(store, contextTexts)
+  const windows = [-1, 0, 1]
+    .flatMap((offset) => ranges.map((range) => windowFromRange(addDaysToJapanParts(baseParts, offset), range)))
+    .sort((left, right) => left.start - right.start)
+  const futureTolerance = referenceTime + 10 * 60 * 1000
+  const activeWindows = windows.filter((window) => window.start <= futureTolerance && referenceTime <= window.end)
+  if (activeWindows.length) return activeWindows
+
+  const startedWindows = windows.filter((window) => window.start <= futureTolerance)
+  if (startedWindows.length) {
+    const latestStart = Math.max(...startedWindows.map((window) => window.start))
+    return startedWindows.filter((window) => window.start === latestStart)
+  }
+
+  const nextWindow = windows.find((window) => window.start > referenceTime)
+  return nextWindow ? [nextWindow] : windows.slice(-1)
+}
+
+export function isStoreWithinBusinessHours(
+  store: StoreProfile,
+  referenceAt: string | number | Date,
+  contextTexts: string[] = [],
+) {
+  const referenceTime = referenceTimestamp(referenceAt)
+  if (referenceTime === null) return false
+  return inferStoreBusinessWindows(store, referenceAt, contextTexts).some(
+    (window) => window.start <= referenceTime && referenceTime <= window.end,
+  )
+}
+
+function contextTextsForStore(storeId: string, posts: PostRecord[], snapshots: BbsSnapshot[]) {
+  const postTexts = posts
+    .filter((post) => post.storeId === storeId)
+    .sort((left, right) => new Date(right.postedAt).getTime() - new Date(left.postedAt).getTime())
+    .slice(0, 12)
+    .map((post) => post.body)
+  const snapshotTexts = snapshots
+    .filter((snapshot) => snapshot.storeId === storeId)
+    .sort((left, right) => new Date(right.capturedAt).getTime() - new Date(left.capturedAt).getTime())
+    .slice(0, 6)
+    .map((snapshot) => snapshot.extractedText)
+
+  return [...snapshotTexts, ...postTexts]
+}
+
+function isWithinAnyBusinessWindow(time: number, windows: StoreBusinessWindow[]) {
+  return Number.isFinite(time) && windows.some((window) => time >= window.start && time <= window.end)
+}
+
+export function filterPostsForStoreBusinessWindows(
+  posts: PostRecord[],
+  stores: StoreProfile[],
+  referenceAt: string | number | Date,
+  snapshots: BbsSnapshot[] = [],
+  contextPosts: PostRecord[] = posts,
+) {
+  const referenceTime = referenceTimestamp(referenceAt)
+  if (referenceTime === null) return posts
+  const futureTolerance = referenceTime + 10 * 60 * 1000
+  const storeById = new Map(stores.map((store) => [store.id, store]))
+  const windowsByStore = new Map<string, StoreBusinessWindow[]>()
+
+  return posts.filter((post) => {
+    const store = storeById.get(post.storeId)
+    if (!store) return false
+    const postedTime = new Date(post.postedAt).getTime()
+    if (!Number.isFinite(postedTime) || postedTime > futureTolerance) return false
+    if (!windowsByStore.has(store.id)) {
+      windowsByStore.set(store.id, inferStoreBusinessWindows(store, referenceAt, contextTextsForStore(store.id, contextPosts, snapshots)))
+    }
+    return isWithinAnyBusinessWindow(postedTime, windowsByStore.get(store.id) ?? [])
+  })
+}
+
+export function filterSnapshotsForStoreBusinessWindows(
+  snapshots: BbsSnapshot[],
+  stores: StoreProfile[],
+  referenceAt: string | number | Date,
+  contextPosts: PostRecord[] = [],
+) {
+  const referenceTime = referenceTimestamp(referenceAt)
+  if (referenceTime === null) return snapshots
+  const futureTolerance = referenceTime + 10 * 60 * 1000
+  const storeById = new Map(stores.map((store) => [store.id, store]))
+  const windowsByStore = new Map<string, StoreBusinessWindow[]>()
+
+  return snapshots.filter((snapshot) => {
+    const store = storeById.get(snapshot.storeId)
+    if (!store) return false
+    const capturedTime = new Date(snapshot.capturedAt).getTime()
+    if (!Number.isFinite(capturedTime) || capturedTime > futureTolerance) return false
+    if (!windowsByStore.has(store.id)) {
+      windowsByStore.set(store.id, inferStoreBusinessWindows(store, referenceAt, contextTextsForStore(store.id, contextPosts, snapshots)))
+    }
+    return isWithinAnyBusinessWindow(capturedTime, windowsByStore.get(store.id) ?? [])
+  })
+}
+
+export function businessDayRangeInJapan(referenceAt: string | number | Date) {
+  const referenceTime = referenceTimestamp(referenceAt)
+  if (referenceTime === null) return null
 
   const parts = japanDateParts(new Date(referenceTime))
   let start = japanTimeToUtcTimestamp(parts.year, parts.month, parts.day, 6)
@@ -404,7 +769,7 @@ const customerIntentPattern =
   /(行きます|行く|行こう|伺い|お邪魔|います|居ます|予定|誰か|どなた|一緒|初めて|はじめて|久しぶり|よろしく|楽しみ|乾杯|飲み|会え|話し|遊び|参加|人組|友達と|単男|単女|女性です|男性です|女です|男です|初心者|初参加|初来店)/i
 const storeSpeakerPattern = /^(投稿者[:：]\s*)?(当店|店舗|店|スタッフ|管理|運営|公式|SystemS|システム|お店|店長|オーナー|マスター|キャスト|受付|事務局)/i
 const storeNoticePattern =
-  /(禁止事項|免責事項|当掲示板|当店|料金|入場料|登録手数料|営業時間|営業開始|営業終了|イベント|キャンペーン|お知らせ|告知|無料|割引|問い合わせ|ご質問|セキュリティ|トラブル|利用規約|アクセスブロック|責任|掲載|スタッフ|店内|システム|入会金|年会費|規約|ご来店予告|本日の来店予告)/i
+  /(禁止事項|免責事項|当掲示板|掲示板のご利用|ルールを守って|投稿の前に|管理者の判断|ご遠慮|当店|料金|入場料|登録手数料|営業時間|営業開始|営業終了|イベント|キャンペーン|お知らせ|告知|無料|割引|問い合わせ|ご質問|セキュリティ|トラブル|利用規約|アクセスブロック|責任|掲載|スタッフ|店内|システム|入会金|年会費|規約|ご来店予告|本日の来店予告)/i
 const storeSchedulePattern =
   /(【\s*(昼|夜)\s*の\s*部\s*】|(昼|夜)\s*の\s*部|[0-9０-９]{1,2}\s*(時|:)\s*(〜|~|-|から)\s*[0-9０-９]{1,2}\s*(時|:)|営業時間|営業開始|営業終了)/i
 const storeCommercialPattern =
@@ -428,6 +793,7 @@ function splitBbsBlocks(value: string) {
 
 function isLikelyStoreAnnouncementBlock(block: string) {
   if (storeSpeakerPattern.test(block)) return true
+  if (/掲示板投稿の前|管理者の判断.{0,80}削除|ルールを守って掲示板/i.test(block)) return true
 
   const hasSchedule = storeSchedulePattern.test(block)
   const hasCommercialCopy = storeCommercialPattern.test(block)
@@ -464,30 +830,88 @@ export type ExtractedBbsNormalizedPost = Pick<
 >
 
 function parseBbsArticleNo(value: string) {
-  return value.match(/(?:記事番号[:：]?\s*|No[.\s]*)(\d{3,})/i)?.[1]
+  return value.match(/(?:記事番号|記事ID)[:：]?\s*([A-Za-z0-9_-]{1,})|No[.\s]*(\d{1,})/i)?.slice(1).find(Boolean)
 }
 
 const bbsPostMetaOnlyPattern = /(?:記事番号[:：]?\s*\d{3,}|No[.\s]*\d{3,}|投稿日時?|投稿日|書き込み日時?|20\d{2}[年/-]\d{1,2}[月/-]\d{1,2}|\d{1,2}[月/-]\d{1,2})/i
 const bbsExplicitAuthorPattern = /(投稿者[:：]\s*(?!当店|店舗|店|スタッフ|管理|運営|公式|SystemS|システム)|名前[:：]|Name[:：])/i
 
+const canonicalBbsPostPattern = /\[\[NR_POST\]\]([\s\S]*?)\[\[\/NR_POST\]\]/g
+const absoluteBbsDateSource =
+  '(20\\d{2})(?:年|[./-])\\s*(\\d{1,2})(?:月|[./-])\\s*(\\d{1,2})日?(?:\\([^)]+\\))?\\s*(\\d{1,2})(?:[:：時]\\s*(\\d{1,2}))(?::(\\d{1,2}))?\\s*(AM|PM)?'
+const shortBbsDateSource =
+  '(\\d{1,2})(?:月|[./-])\\s*(\\d{1,2})日?(?:\\([^)]+\\))?\\s*(\\d{1,2})(?:[:：時]\\s*(\\d{1,2}))(?::(\\d{1,2}))?\\s*(AM|PM)?'
+
+function normalizeBbsDateText(value: string) {
+  return value.replace(/[０-９]/g, (char) => String(char.charCodeAt(0) - 0xff10))
+}
+
 function parseBbsPostedAt(value: string, observedAt: string) {
   const observedDate = new Date(observedAt)
-  const fallbackYear = Number.isNaN(observedDate.getTime()) ? new Date().getFullYear() : observedDate.getFullYear()
-  const fullDateMatch = value.match(
-    /(20\d{2})[年/-]\s*(\d{1,2})[月/-]\s*(\d{1,2})日?(?:\([^)]+\))?\s*(\d{1,2})?(?:[:：時]\s*(\d{1,2}))?/,
+  const normalized = normalizeBbsDateText(value)
+  const safeObservedDate = Number.isNaN(observedDate.getTime()) ? new Date() : observedDate
+
+  const dayHourMinute = normalized.match(/(\d+)\s*日(?:、|,)?\s*(\d+)\s*時間(?:、|,)?\s*(\d+)\s*分前/)
+  const hourMinute = normalized.match(/(\d+)\s*時間(?:、|,)?\s*(\d+)\s*分前/)
+  const minuteOnly = normalized.match(/(\d+)\s*分前/)
+  if (dayHourMinute) {
+    return new Date(
+      safeObservedDate.getTime() -
+        (Number(dayHourMinute[1]) * 24 * 60 + Number(dayHourMinute[2]) * 60 + Number(dayHourMinute[3])) * 60_000,
+    ).toISOString()
+  }
+  if (hourMinute) {
+    return new Date(
+      safeObservedDate.getTime() - (Number(hourMinute[1]) * 60 + Number(hourMinute[2])) * 60_000,
+    ).toISOString()
+  }
+  if (minuteOnly) return new Date(safeObservedDate.getTime() - Number(minuteOnly[1]) * 60_000).toISOString()
+  if (/たった今|数秒前/.test(normalized)) return safeObservedDate.toISOString()
+
+  const monthFirstMatch = normalized.match(
+    /(\d{1,2})月\s*(\d{1,2}),?\s*(20\d{2})\s*(\d{1,2}):(\d{1,2})\s*(AM|PM)/i,
   )
-  const shortDateMatch =
-    fullDateMatch ??
-    value.match(/(\d{1,2})[月/-]\s*(\d{1,2})日?(?:\([^)]+\))?\s*(\d{1,2})?(?:[:：時]\s*(\d{1,2}))?/)
+  if (monthFirstMatch) {
+    const month = Number(monthFirstMatch[1])
+    const day = Number(monthFirstMatch[2])
+    const year = Number(monthFirstMatch[3])
+    let hour = Number(monthFirstMatch[4])
+    const minute = Number(monthFirstMatch[5])
+    const meridiem = String(monthFirstMatch[6]).toUpperCase()
+    if (meridiem === 'PM' && hour < 12) hour += 12
+    if (meridiem === 'AM' && hour === 12) hour = 0
+    const date = new Date(Date.UTC(year, month - 1, day, hour - 9, minute, 0))
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString()
+  }
+
+  const fallbackYear = Number(
+    new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Tokyo', year: 'numeric' }).format(safeObservedDate),
+  )
+  const fullDateMatch = normalized.match(new RegExp(absoluteBbsDateSource, 'i'))
+  const shortDateMatch = fullDateMatch ?? normalized.match(new RegExp(shortBbsDateSource, 'i'))
   if (!shortDateMatch) return undefined
 
-  const hasYear = shortDateMatch.length >= 6 && /^20\d{2}$/.test(shortDateMatch[1] ?? '')
+  const hasYear = /^20\d{2}$/.test(shortDateMatch[1] ?? '')
   const year = hasYear ? Number(shortDateMatch[1]) : fallbackYear
   const month = Number(shortDateMatch[hasYear ? 2 : 1])
   const day = Number(shortDateMatch[hasYear ? 3 : 2])
-  const hour = Number(shortDateMatch[hasYear ? 4 : 3] ?? 0)
-  const minute = Number(shortDateMatch[hasYear ? 5 : 4] ?? 0)
-  if (![year, month, day, hour, minute].every(Number.isFinite)) return undefined
+  let hour = Number(shortDateMatch[hasYear ? 4 : 3])
+  const minute = Number(shortDateMatch[hasYear ? 5 : 4])
+  const meridiem = String(shortDateMatch[hasYear ? 7 : 6] ?? '').toUpperCase()
+  if (meridiem === 'PM' && hour < 12) hour += 12
+  if (meridiem === 'AM' && hour === 12) hour = 0
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  if (
+    ![year, month, day, hour, minute].every(Number.isFinite) ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59
+  ) return undefined
 
   const date = new Date(Date.UTC(year, month - 1, day, hour - 9, minute, 0))
   if (Number.isNaN(date.getTime())) return undefined
@@ -500,15 +924,19 @@ function cleanNormalizedBbsPostBody(block: string, entry: WatchedAuthorEntry | n
   let body = entry?.body?.trim() || block
 
   body = body
-    .replace(/(?:記事番号[:：]?\s*|No[.\s]*)\d{3,}\)?/gi, ' ')
-    .replace(/(?:投稿日時?|投稿日|書き込み日時?)[:：]?\s*20\d{2}[年/-]\s*\d{1,2}[月/-]\s*\d{1,2}日?(?:\([^)]+\))?\s*\d{0,2}(?:[:：時]\s*\d{0,2})?/g, ' ')
-    .replace(/(?:投稿日時?|投稿日|書き込み日時?)[:：]?\s*\d{1,2}[月/-]\s*\d{1,2}日?(?:\([^)]+\))?\s*\d{0,2}(?:[:：時]\s*\d{0,2})?/g, ' ')
+    .replace(/\[\[\/?NR_POST\]\]/g, ' ')
+    .replace(/(?:記事番号|記事ID)[:：]?\s*[A-Za-z0-9_-]{1,}\)?/gi, ' ')
+    .replace(/No[.\s]*\d{1,}\)?/gi, ' ')
+    .replace(/(?:投稿日時?|投稿日|書き込み日時?)[:：]?\s*20\d{2}[年/-]\s*\d{1,2}[月/-]\s*\d{1,2}日?(?:\([^)]+\))?\s*\d{0,2}(?:[:：時]\s*\d{0,2})?(?::\d{1,2})?/g, ' ')
+    .replace(/(?:投稿日時?|投稿日|書き込み日時?)[:：]?\s*\d{1,2}[月/-]\s*\d{1,2}日?(?:\([^)]+\))?\s*\d{0,2}(?:[:：時]\s*\d{0,2})?(?::\d{1,2})?/g, ' ')
     .replace(/^投稿者[:：]\s*/i, ' ')
     .replace(/^名前[:：]\s*/i, ' ')
     .replace(/^Name[:：]\s*/i, ' ')
     .replace(/^Re[:：]?\s*/i, ' ')
     .replace(/^返信[:：]?\s*/i, ' ')
     .replace(/^削除\s*/, ' ')
+
+  body = body.trim()
 
   if (authorName) body = body.replace(new RegExp(`^${authorName}\\s*`, 'i'), ' ')
   if (authorName && genderToken) {
@@ -520,26 +948,69 @@ function cleanNormalizedBbsPostBody(block: string, entry: WatchedAuthorEntry | n
   return body.replace(/\s+/g, ' ').trim()
 }
 
+function extractCanonicalAuthorEntry(block: string): WatchedAuthorEntry | null {
+  const rawAuthor = block.match(/^投稿者[:：]\s*(.+)$/m)?.[1]?.trim()
+  if (!rawAuthor) return null
+
+  const parenthesizedGender = rawAuthor.match(new RegExp(`^(.+?)\\s*[（(]\\s*(${watchedGenderToken})(?:\\d+)?\\s*[）)]$`, 'i'))
+  const trailingGender = parenthesizedGender
+    ? null
+    : rawAuthor.match(new RegExp(`^(.+?)\\s+(${watchedGenderToken})(?:\\d+)?$`, 'i'))
+  const name = (parenthesizedGender?.[1] ?? trailingGender?.[1] ?? rawAuthor).replace(/\s+/g, ' ').trim()
+  const gender = normalizeWatchedGender(parenthesizedGender?.[2] ?? trailingGender?.[2] ?? '')
+  if (!name || name.length > 80) return null
+
+  return {
+    name,
+    gender,
+    body: '',
+    authorText: [name, gender === '記載なし' ? '' : gender].filter(Boolean).join(' '),
+  }
+}
+
 export function extractNormalizedBbsPostsFromText(value: string, observedAt: string): ExtractedBbsNormalizedPost[] {
+  const canonicalBlocks = [...value.matchAll(canonicalBbsPostPattern)].map((match) => match[1]?.trim()).filter(Boolean) as string[]
+  const trailingMetadataPattern = new RegExp(
+    `(?:投稿者|名前|Name)[:：]\\s*([\\s\\S]{2,2200}?)\\s+(?:投稿日|投稿日時?|書き込み日時?)[:：]?\\s*(${absoluteBbsDateSource})(?:\\s+記事番号[:：]?\\s*(\\d{3,}))?`,
+    'gi',
+  )
+  const structuredBlocks = canonicalBlocks.length
+    ? canonicalBlocks
+    : [...value.matchAll(trailingMetadataPattern)].map((match) => {
+        const articleNo = match.at(-1)
+        return [
+          `投稿者： ${match[1] ?? ''}`,
+          `投稿日： ${match[2] ?? ''}`,
+          articleNo ? `記事番号： ${articleNo}` : '',
+        ].filter(Boolean).join(' ')
+      })
+
   const blocks: string[] = []
   let pendingMeta = ''
-  splitBbsBlocks(value).forEach((block) => {
-    const isMetaOnly = bbsPostMetaOnlyPattern.test(block) && !bbsExplicitAuthorPattern.test(block) && !customerIntentPattern.test(block)
-    if (isMetaOnly) {
-      pendingMeta = [pendingMeta, block].filter(Boolean).join(' ')
-      return
-    }
+  if (structuredBlocks.length) {
+    structuredBlocks.forEach((block) => {
+      if (isLikelyCustomerBbsBlock(block)) blocks.push(block)
+    })
+  }
+  if (!blocks.length) {
+    splitBbsBlocks(value).forEach((block) => {
+      const isMetaOnly = bbsPostMetaOnlyPattern.test(block) && !bbsExplicitAuthorPattern.test(block) && !customerIntentPattern.test(block)
+      if (isMetaOnly) {
+        pendingMeta = [pendingMeta, block].filter(Boolean).join(' ')
+        return
+      }
 
-    const combined = [pendingMeta, block].filter(Boolean).join(' ').trim()
-    pendingMeta = ''
-    if (isLikelyCustomerBbsBlock(combined)) blocks.push(combined)
-  })
+      const combined = [pendingMeta, block].filter(Boolean).join(' ').trim()
+      pendingMeta = ''
+      if (isLikelyCustomerBbsBlock(combined)) blocks.push(combined)
+    })
+  }
   const seen = new Set<string>()
   const posts: ExtractedBbsNormalizedPost[] = []
 
   blocks.forEach((block) => {
     const articleNo = parseBbsArticleNo(block)
-    const entry = extractWatchedAuthorEntries(block)[0] ?? null
+    const entry = extractCanonicalAuthorEntry(block) ?? extractWatchedAuthorEntries(block)[0] ?? null
     const authorName = entry?.name?.trim() || '記載なし'
     const authorGender = entry?.gender || '記載なし'
     const body = cleanNormalizedBbsPostBody(block, entry, articleNo)
@@ -584,7 +1055,8 @@ export function normalizedBbsPostsToPostRecords(posts: BbsNormalizedPost[]): Pos
 export function buildEffectiveBbsPostRecords(posts: PostRecord[], normalizedPosts: BbsNormalizedPost[] = []) {
   if (!normalizedPosts.length) return posts
   const manualPosts = posts.filter((post) => post.source !== 'scrape')
-  return [...normalizedBbsPostsToPostRecords(normalizedPosts), ...manualPosts].toSorted(
+  const uniqueNormalizedPosts = [...new Map(normalizedPosts.map((post) => [post.id, post])).values()]
+  return [...normalizedBbsPostsToPostRecords(uniqueNormalizedPosts), ...manualPosts].toSorted(
     (a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime(),
   )
 }

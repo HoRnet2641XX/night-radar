@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { BbsNormalizedPost, BbsSnapshot, BbsSnapshotMetrics, EventInput, PostRecord, ScoredEvent } from './types'
+import type { BbsNormalizedPost, BbsSnapshot, BbsSnapshotMetrics, EventInput, PostRecord, ScoredEvent, StoreProfile } from './types'
 import { events, posts, stores } from './demo-data'
 import { formatEventDateLabel, weekdayLabelForJapanDate } from './date'
 import {
@@ -16,8 +16,10 @@ import {
   extractWatchedAuthorEntries,
   extractWatchedAuthorText,
   filterPostsForBusinessDay,
+  filterPostsForStoreBusinessWindows,
   filterPostsWithinHours,
   filterSnapshotsForBusinessDay,
+  filterSnapshotsForStoreBusinessWindows,
   normalizeWatchedSearchText,
   parseExactTerms,
   prioritizeScoredEventsForToday,
@@ -447,6 +449,174 @@ describe('BBS radar signals', () => {
     )
   })
 
+  it('filters posts by the active store session instead of a fixed day boundary', () => {
+    const store: StoreProfile = {
+      ...stores[0],
+      id: 'active-session-store',
+      hasDaytime: true,
+      hasNight: true,
+      openingHourDay: '13:00',
+      openingHourNight: '19:00',
+    }
+    const records: PostRecord[] = [
+      {
+        id: 'day-post',
+        storeId: store.id,
+        source: 'scrape',
+        postedAt: '2026-07-02T07:00:00.000Z',
+        body: '昼部の投稿',
+        keywords: [],
+      },
+      {
+        id: 'night-post',
+        storeId: store.id,
+        source: 'scrape',
+        postedAt: '2026-07-02T11:00:00.000Z',
+        body: '夜部の投稿',
+        keywords: [],
+      },
+      {
+        id: 'future-night-post',
+        storeId: store.id,
+        source: 'scrape',
+        postedAt: '2026-07-02T14:00:00.000Z',
+        body: 'まだ未来の夜部投稿',
+        keywords: [],
+      },
+    ]
+
+    const filtered = filterPostsForStoreBusinessWindows(records, [store], '2026-07-02T13:00:00.000Z')
+
+    assert.deepEqual(
+      filtered.map((record) => record.id),
+      ['night-post'],
+    )
+  })
+
+  it('keeps the previous-date night session when the reference time is after midnight in Japan', () => {
+    const store: StoreProfile = {
+      ...stores[0],
+      id: 'cross-midnight-store',
+      hasDaytime: false,
+      hasNight: true,
+      openingHourDay: '',
+      openingHourNight: '19:00',
+    }
+    const records: PostRecord[] = [
+      {
+        id: 'before-night',
+        storeId: store.id,
+        source: 'scrape',
+        postedAt: '2026-07-01T07:00:00.000Z',
+        body: '夜部前の投稿',
+        keywords: [],
+      },
+      {
+        id: 'previous-night',
+        storeId: store.id,
+        source: 'scrape',
+        postedAt: '2026-07-01T15:00:00.000Z',
+        body: '深夜帯の投稿',
+        keywords: [],
+      },
+    ]
+
+    const filtered = filterPostsForStoreBusinessWindows(records, [store], '2026-07-01T17:00:00.000Z')
+
+    assert.deepEqual(
+      filtered.map((record) => record.id),
+      ['previous-night'],
+    )
+  })
+
+  it('prefers irregular BBS schedule text such as morning sessions over the store defaults', () => {
+    const store: StoreProfile = {
+      ...stores[0],
+      id: 'morning-session-store',
+      hasDaytime: true,
+      hasNight: false,
+      openingHourDay: '13:00',
+      openingHourNight: '',
+    }
+    const records: PostRecord[] = [
+      {
+        id: 'before-morning',
+        storeId: store.id,
+        source: 'scrape',
+        postedAt: '2026-07-02T00:45:00.000Z',
+        body: '朝活前の投稿',
+        keywords: [],
+      },
+      {
+        id: 'morning-post',
+        storeId: store.id,
+        source: 'scrape',
+        postedAt: '2026-07-02T01:15:00.000Z',
+        body: '朝活に向かいます',
+        keywords: [],
+      },
+    ]
+    const snapshots: BbsSnapshot[] = [
+      {
+        id: 'morning-schedule',
+        storeId: store.id,
+        url: 'https://example.com/bbs',
+        extractedText: '本日の朝活は10:00-19:00で開催します。夜部はありません。',
+        metrics: { femaleOnly: 0, firstVisit: 0, comeback: 0, groupVisit: 0, emoji: 0, totalSignals: 0, textLength: 24 },
+        radarScore: 50,
+        capturedAt: '2026-07-02T01:10:00.000Z',
+      },
+    ]
+
+    const filteredPosts = filterPostsForStoreBusinessWindows(records, [store], '2026-07-02T02:00:00.000Z', snapshots)
+    const filteredSnapshots = filterSnapshotsForStoreBusinessWindows(snapshots, [store], '2026-07-02T02:00:00.000Z', records)
+
+    assert.deepEqual(
+      filteredPosts.map((record) => record.id),
+      ['morning-post'],
+    )
+    assert.deepEqual(
+      filteredSnapshots.map((snapshot) => snapshot.id),
+      ['morning-schedule'],
+    )
+  })
+
+  it('does not treat an event time range as store business hours', () => {
+    const store: StoreProfile = {
+      ...stores[0],
+      id: 'night-only-store',
+      hasDaytime: false,
+      hasNight: true,
+      openingHourDay: '',
+      openingHourNight: '19:00',
+    }
+    const records: PostRecord[] = [
+      {
+        id: 'event-time-post',
+        storeId: store.id,
+        source: 'scrape',
+        postedAt: '2026-07-02T06:00:00.000Z',
+        body: '午後の投稿',
+        keywords: [],
+      },
+    ]
+    const snapshots: BbsSnapshot[] = [
+      {
+        id: 'event-time-snapshot',
+        storeId: store.id,
+        url: 'https://example.com/bbs',
+        extractedText: '抽選イベントは14:00-16:00で開催します。',
+        metrics: { femaleOnly: 0, firstVisit: 0, comeback: 0, groupVisit: 0, emoji: 0, totalSignals: 0, textLength: 24 },
+        radarScore: 50,
+        capturedAt: '2026-07-02T06:10:00.000Z',
+      },
+    ]
+
+    const filtered = filterPostsForStoreBusinessWindows(records, [store], '2026-07-02T06:30:00.000Z', snapshots)
+
+    assert.deepEqual(filtered, [])
+  })
+
   it('extracts customer-written BBS blocks from noisy public pages', () => {
     const text = [
       '禁止事項 BBSでの誹謗中傷や営業妨害は禁止です。当店イベントは女性無料です。',
@@ -565,6 +735,28 @@ describe('BBS radar signals', () => {
     assert.equal(effective[0].id, 'normalized-np-1')
     assert.match(effective[0].body, /投稿者: acco（女性）/)
     assert.doesNotMatch(effective[0].body, /店長/)
+  })
+
+  it('does not count the same normalized row twice when paged results overlap', () => {
+    const post: BbsNormalizedPost = {
+      id: 'np-overlap',
+      sourceId: 'source-1',
+      storeId: stores[0].id,
+      sourceUrl: 'https://example.com/bbs',
+      articleNo: '60001',
+      authorName: 'テスト投稿者',
+      authorGender: '女性',
+      postedAt: '2026-07-02T04:15:00.000Z',
+      observedAt: '2026-07-02T04:20:00.000Z',
+      body: '本日伺います。',
+      bodyHash: 'hash-overlap',
+      contentKey: 'article:60001',
+    }
+
+    const effective = buildEffectiveBbsPostRecords([], [post, post])
+
+    assert.equal(effective.length, 1)
+    assert.equal(effective[0].id, 'normalized-np-overlap')
   })
 
   it('detects watched female-focused signals', () => {

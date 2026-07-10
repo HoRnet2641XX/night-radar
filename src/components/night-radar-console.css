@@ -10479,3 +10479,728 @@ button:disabled {
     transition: none;
   }
 }
+
+/* Handoff rebuild: readable decision-first dashboard */
+.mobile-app-shell .view-stack:has(.today-decision-card) {
+  align-items: stretch;
+  inline-size: 100%;
+  max-inline-size: none;
+}
+
+.today-decision-card {
+  container-type: inline-size;
+  display: grid;
+  inline-size: 100%;
+  gap: 15px;
+  border: 1px solid oklch(var(--nr-signal-channel) / 0.25);
+  border-radius: 24px;
+  background:
+    linear-gradient(90deg, rgba(218, 83, 76, 0.105), transparent 42%),
+    linear-gradient(180deg, rgba(225, 240, 255, 0.035), transparent 48%),
+    rgba(5, 10, 19, 0.9);
+  box-shadow:
+    0 24px 56px rgba(0, 0, 0, 0.33),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: clamp(16px, 2.2cqw, 24px);
+}
+
+.today-decision-card .decision-kicker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.today-decision-card .decision-kicker span {
+  color: var(--nr-amber);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.today-decision-card .decision-kicker em {
+  border: 1px solid rgba(154, 190, 225, 0.14);
+  border-radius: 999px;
+  background: rgba(6, 13, 24, 0.78);
+  color: var(--nr-text-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  padding: 7px 10px;
+}
+
+.today-decision-card .decision-store-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.today-decision-card .decision-store-card,
+.today-decision-card .decision-store-card.is-go,
+.today-decision-card .decision-store-card.is-maybe,
+.today-decision-card .decision-store-card.is-skip {
+  display: grid;
+  grid-template-areas:
+    "rank main signals links"
+    "rank main notice links";
+  grid-template-columns: 132px minmax(310px, 0.78fr) minmax(390px, 1fr) minmax(154px, 0.34fr);
+  gap: 12px 14px;
+  align-items: stretch;
+  min-height: 182px;
+  border: 1px solid rgba(154, 190, 225, 0.15);
+  border-radius: 22px;
+  background:
+    linear-gradient(90deg, rgba(225, 240, 255, 0.028), transparent 60%),
+    rgba(7, 13, 24, 0.92);
+  padding: 14px;
+}
+
+.today-decision-card .decision-store-card.is-go {
+  border-color: oklch(var(--nr-signal-channel) / 0.36);
+  background:
+    linear-gradient(90deg, rgba(218, 83, 76, 0.13), transparent 36%),
+    rgba(8, 13, 23, 0.94);
+}
+
+.today-decision-card .decision-store-head {
+  grid-area: rank;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid rgba(154, 190, 225, 0.12);
+  border-radius: 18px;
+  background: rgba(3, 8, 16, 0.74);
+  padding: 14px 10px;
+  text-align: center;
+}
+
+.today-decision-card .decision-store-head span {
+  display: grid;
+  inline-size: 48px;
+  block-size: 48px;
+  place-items: center;
+  border: 1px solid oklch(var(--nr-signal-channel) / 0.42);
+  border-radius: 16px;
+  background: rgba(218, 83, 76, 0.16);
+  color: var(--nr-active);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.today-decision-card .decision-store-head em {
+  overflow: visible;
+  max-inline-size: 100%;
+  color: var(--nr-text);
+  font-size: clamp(15px, 8cqw, 20px);
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1.22;
+  text-wrap: balance;
+  white-space: normal;
+}
+
+.today-decision-card .decision-store-main,
+.today-decision-card .decision-store-card.is-go .decision-store-main,
+.today-decision-card .decision-store-card:not(.is-go) .decision-store-main {
+  grid-area: main;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 82px;
+  align-items: center;
+  gap: 13px;
+  min-height: 154px;
+}
+
+.today-decision-card .decision-store-main > div:first-child,
+.today-decision-card .decision-store-card:not(.is-go) .decision-store-main > div:first-child {
+  display: grid;
+  align-content: center;
+  min-height: 154px;
+  border: 1px solid rgba(154, 190, 225, 0.12);
+  border-radius: 18px;
+  background: rgba(5, 10, 18, 0.72);
+  padding: 18px;
+}
+
+.today-decision-card .decision-store-main strong,
+.today-decision-card .decision-store-card.is-go .decision-store-main strong,
+.today-decision-card .decision-store-card:not(.is-go) .decision-store-main strong {
+  overflow: visible;
+  color: var(--nr-text);
+  font-size: clamp(24px, 10cqw, 34px);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1.06;
+  text-overflow: clip;
+  text-wrap: balance;
+  white-space: normal;
+}
+
+.today-decision-card .decision-store-main p {
+  display: block;
+  overflow: visible;
+  margin: 8px 0 0;
+  color: var(--nr-muted);
+  font-size: 12px;
+  font-weight: 820;
+  line-height: 1.45;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.today-decision-card .decision-score-panel,
+.today-decision-card .decision-store-card.is-go .decision-score-panel,
+.today-decision-card .decision-store-card:not(.is-go) .decision-score-panel {
+  display: grid;
+  place-items: center;
+  min-height: 154px;
+  border: 1px solid rgba(154, 190, 225, 0.12);
+  border-radius: 18px;
+  background: rgba(4, 9, 17, 0.78);
+  padding: 10px;
+}
+
+.today-decision-card .decision-score,
+.today-decision-card .decision-store-card.is-go .decision-score,
+.today-decision-card .decision-store-card:not(.is-go) .decision-score,
+.decision-store-card .decision-score {
+  inline-size: 70px;
+  block-size: 70px;
+  border-radius: 22px;
+  background:
+    conic-gradient(var(--nr-active) var(--score-progress), rgba(154, 190, 225, 0.16) 0),
+    rgba(5, 10, 19, 0.78);
+  box-shadow: 0 0 0 1px rgba(154, 190, 225, 0.1);
+}
+
+.today-decision-card .decision-score::after,
+.today-decision-card .decision-store-card.is-go .decision-score::after,
+.today-decision-card .decision-store-card:not(.is-go) .decision-score::after {
+  inset: 20px;
+  border-radius: 13px;
+  background: rgba(5, 10, 19, 0.92);
+}
+
+.today-decision-card .decision-score-inner span,
+.today-decision-card .decision-store-card.is-go .decision-score-inner span,
+.today-decision-card .decision-store-card:not(.is-go) .decision-score-inner span,
+.decision-store-card .decision-score-inner span {
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.today-decision-card .decision-score-inner small {
+  font-size: 9px;
+  font-weight: 950;
+}
+
+.today-decision-card .decision-score-meters,
+.today-decision-card .decision-store-profile {
+  display: none;
+}
+
+.today-decision-card .decision-signal-grid,
+.today-decision-card .decision-store-card.is-go .decision-signal-grid,
+.today-decision-card .decision-store-card:not(.is-go) .decision-signal-grid {
+  grid-area: signals;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  align-self: stretch;
+}
+
+.today-decision-card .decision-signal-grid div,
+.today-decision-card .decision-signal-grid div:nth-child(n + 4) {
+  display: grid;
+  align-content: center;
+  min-height: 70px;
+  border: 1px solid rgba(154, 190, 225, 0.13);
+  border-radius: 15px;
+  background: rgba(6, 13, 24, 0.78);
+  padding: 10px;
+}
+
+.today-decision-card .decision-signal-grid .is-main {
+  border-color: oklch(var(--nr-signal-channel) / 0.28);
+  background: rgba(218, 83, 76, 0.1);
+}
+
+.today-decision-card .decision-signal-grid dt {
+  overflow: hidden;
+  color: var(--nr-faint);
+  font-size: 10px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.today-decision-card .decision-signal-grid dd {
+  margin: 4px 0 0;
+  color: var(--nr-text);
+  font-family: var(--font-mono);
+  font-size: clamp(15px, 4.2cqw, 21px);
+  font-weight: 950;
+  line-height: 1.05;
+}
+
+.today-decision-card .decision-store-notice,
+.today-decision-card .decision-store-card:not(.is-go) .decision-store-notice {
+  grid-area: notice;
+  display: block;
+  min-height: 72px;
+  border: 1px solid oklch(var(--nr-signal-channel) / 0.16);
+  border-radius: 16px;
+  background: rgba(218, 83, 76, 0.065);
+  color: var(--nr-text-soft);
+  font-size: 12px;
+  font-weight: 820;
+  line-height: 1.6;
+  padding: 13px 14px;
+}
+
+.today-decision-card .decision-store-notice span {
+  color: var(--nr-amber);
+  font-weight: 950;
+}
+
+.today-decision-card .decision-store-links {
+  grid-area: links;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: stretch;
+  gap: 8px;
+}
+
+.today-decision-card .decision-store-card:not(.is-go) .decision-store-links {
+  display: grid;
+}
+
+.today-decision-card .decision-store-links a,
+.today-decision-card .decision-store-links span {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  border: 1px solid rgba(154, 190, 225, 0.16);
+  border-radius: 14px;
+  background: rgba(6, 13, 24, 0.86);
+  color: var(--nr-text);
+  font-size: 12px;
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.today-decision-card .decision-store-links span {
+  color: var(--nr-faint);
+  opacity: 0.72;
+}
+
+.today-decision-card .decision-definition-strip,
+.today-decision-card .data-reliability-strip {
+  border-radius: 16px;
+}
+
+.gender-radar-card {
+  container-type: inline-size;
+  display: grid;
+  gap: 16px;
+  border: 1px solid rgba(154, 190, 225, 0.16);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(218, 83, 76, 0.07), transparent 32%),
+    rgba(5, 10, 19, 0.9);
+  padding: clamp(15px, 2cqw, 22px);
+}
+
+.gender-radar-head h2 {
+  font-size: clamp(22px, 4.4cqw, 34px);
+  line-height: 1.08;
+}
+
+.gender-radar-layout {
+  display: grid;
+  grid-template-columns: minmax(560px, 1.22fr) minmax(320px, 0.78fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.gender-radar-map {
+  position: relative;
+  min-height: clamp(460px, 48cqw, 560px);
+  overflow: hidden;
+  border: 1px solid rgba(154, 190, 225, 0.14);
+  border-radius: 22px;
+  background:
+    linear-gradient(rgba(154, 190, 225, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(154, 190, 225, 0.055) 1px, transparent 1px),
+    radial-gradient(circle at 50% 50%, rgba(117, 185, 255, 0.12), transparent 28%),
+    linear-gradient(90deg, rgba(117, 185, 255, 0.07), transparent 50%, rgba(218, 83, 76, 0.09));
+  background-size: 64px 64px, 64px 64px, auto, auto;
+}
+
+.gender-radar-map::before,
+.gender-radar-map::after {
+  opacity: 0.55;
+}
+
+.gender-axis-y,
+.gender-axis-x,
+.gender-quadrant {
+  z-index: 1;
+}
+
+.gender-radar-dot,
+.gender-radar-dot:nth-of-type(2n),
+.gender-radar-dot:nth-of-type(3n) {
+  z-index: 4;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  inline-size: clamp(150px, 21cqw, 220px);
+  min-inline-size: 150px;
+  max-inline-size: 220px;
+  block-size: 54px;
+  min-block-size: 54px;
+  max-block-size: 54px;
+  border-radius: 17px;
+  padding: 6px 10px 6px 6px;
+  transform: translate(-50%, 50%);
+  box-shadow:
+    0 14px 26px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.gender-radar-dot b {
+  display: grid;
+  inline-size: 28px;
+  block-size: 28px;
+  min-inline-size: 0;
+  place-items: center;
+  border-radius: 11px;
+  background: rgba(5, 10, 19, 0.72);
+  color: var(--nr-text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.gender-radar-dot > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.gender-radar-dot small {
+  display: block;
+  overflow: hidden;
+  color: var(--nr-text);
+  font-size: 11.5px;
+  font-weight: 950;
+  line-height: 1.12;
+  text-overflow: ellipsis;
+  white-space: normal;
+}
+
+.gender-radar-dot em {
+  display: block;
+  overflow: hidden;
+  color: rgba(234, 244, 255, 0.78);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gender-radar-dot::after {
+  display: none;
+}
+
+.gender-radar-dot:hover,
+.gender-radar-dot:focus-visible {
+  z-index: 8;
+  transform: translate(-50%, 50%) scale(1.04);
+}
+
+.gender-radar-dot.is-female {
+  border-color: rgba(218, 83, 76, 0.44);
+  background: linear-gradient(90deg, rgba(218, 83, 76, 0.92), rgba(240, 188, 96, 0.86));
+}
+
+.gender-radar-dot.is-male {
+  border-color: rgba(148, 207, 247, 0.42);
+  background: linear-gradient(90deg, rgba(80, 154, 214, 0.94), rgba(163, 214, 244, 0.86));
+}
+
+.gender-radar-dot.is-balanced {
+  border-color: rgba(240, 188, 96, 0.42);
+  background: linear-gradient(90deg, rgba(240, 188, 96, 0.92), rgba(218, 83, 76, 0.84));
+}
+
+.gender-radar-dot.is-neutral {
+  border-color: rgba(154, 190, 225, 0.28);
+  background: linear-gradient(90deg, rgba(67, 79, 96, 0.96), rgba(102, 125, 148, 0.82));
+}
+
+.gender-radar-list article {
+  grid-template-columns: 38px minmax(0, 1fr) minmax(110px, auto);
+  min-height: 68px;
+  border-radius: 16px;
+  background: rgba(6, 13, 24, 0.78);
+}
+
+.gender-radar-list strong {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.gender-radar-list p {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.gender-radar-bars {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  border-radius: 22px;
+  padding: 14px;
+}
+
+.gender-radar-bar-item {
+  display: grid;
+  grid-template-columns: 38px minmax(210px, 0.58fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 104px;
+  border-radius: 18px;
+  background: rgba(7, 13, 24, 0.84);
+  padding: 14px;
+}
+
+.gender-radar-bar-rank {
+  position: static;
+  inline-size: 34px;
+  block-size: 34px;
+  border-radius: 12px;
+  color: var(--nr-active);
+}
+
+.gender-radar-bar-caption {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.gender-radar-bar-caption strong {
+  overflow: visible;
+  color: var(--nr-text);
+  font-size: 15px;
+  line-height: 1.25;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.gender-radar-bar-caption span {
+  color: var(--nr-muted);
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.gender-radar-bar-visual {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+}
+
+.gender-radar-meterline {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 54px;
+  align-items: center;
+  gap: 10px;
+}
+
+.gender-radar-meterline span {
+  color: var(--nr-faint);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.gender-radar-meterline i {
+  overflow: hidden;
+  block-size: 12px;
+  border: 1px solid rgba(154, 190, 225, 0.1);
+  border-radius: 999px;
+  background: rgba(154, 190, 225, 0.12);
+}
+
+.gender-radar-meterline i::before {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--nr-active), oklch(87% 0.045 232));
+  content: '';
+}
+
+.gender-radar-meterline.is-score i::before {
+  inline-size: var(--score-level, var(--bar-height));
+}
+
+.gender-radar-meterline.is-female i::before {
+  inline-size: var(--female-level, var(--female-ratio));
+  background: linear-gradient(90deg, oklch(75% 0.105 28), oklch(83% 0.07 235));
+}
+
+.gender-radar-meterline strong {
+  color: var(--nr-text);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 950;
+  text-align: right;
+}
+
+.gender-radar-bar-metrics {
+  display: none;
+}
+
+.gender-radar-bar-metrics div {
+  min-width: 86px;
+  border-radius: 12px;
+  padding: 9px 10px;
+}
+
+@media (max-width: 1180px) {
+  .today-decision-card .decision-store-card,
+  .today-decision-card .decision-store-card.is-go,
+  .today-decision-card .decision-store-card.is-maybe,
+  .today-decision-card .decision-store-card.is-skip {
+    grid-template-areas:
+      "rank main"
+      "signals signals"
+      "notice links";
+    grid-template-columns: 116px minmax(0, 1fr);
+  }
+
+  .today-decision-card .decision-store-links {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .gender-radar-layout,
+  .gender-radar-bars {
+    grid-template-columns: 1fr;
+  }
+
+  .gender-radar-map {
+    min-height: 480px;
+  }
+}
+
+@media (max-width: 720px) {
+  .today-decision-card {
+    border-radius: 20px;
+    padding: 13px;
+  }
+
+  .today-decision-card .decision-store-card,
+  .today-decision-card .decision-store-card.is-go,
+  .today-decision-card .decision-store-card.is-maybe,
+  .today-decision-card .decision-store-card.is-skip {
+    grid-template-areas:
+      "rank"
+      "main"
+      "signals"
+      "notice"
+      "links";
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .today-decision-card .decision-store-head {
+    grid-template-columns: 46px minmax(0, 1fr);
+    justify-items: start;
+    text-align: left;
+  }
+
+  .today-decision-card .decision-store-head span {
+    inline-size: 42px;
+    block-size: 42px;
+    font-size: 14px;
+  }
+
+  .today-decision-card .decision-store-main,
+  .today-decision-card .decision-store-card.is-go .decision-store-main,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-store-main {
+    grid-template-columns: minmax(0, 1fr) 74px;
+    min-height: 0;
+  }
+
+  .today-decision-card .decision-store-main > div:first-child,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-store-main > div:first-child,
+  .today-decision-card .decision-score-panel,
+  .today-decision-card .decision-store-card.is-go .decision-score-panel,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-score-panel {
+    min-height: 112px;
+  }
+
+  .today-decision-card .decision-signal-grid,
+  .today-decision-card .decision-store-card.is-go .decision-signal-grid,
+  .today-decision-card .decision-store-card:not(.is-go) .decision-signal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .today-decision-card .decision-signal-grid .is-main {
+    grid-column: 1 / -1;
+  }
+
+  .today-decision-card .decision-store-links {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .gender-radar-report {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gender-radar-map {
+    min-height: 420px;
+  }
+
+  .gender-radar-dot,
+  .gender-radar-dot:nth-of-type(2n),
+  .gender-radar-dot:nth-of-type(3n) {
+    inline-size: 138px;
+    min-inline-size: 138px;
+    block-size: 48px;
+  }
+
+  .gender-radar-dot small {
+    font-size: 10px;
+  }
+
+  .gender-radar-dot em {
+    font-size: 8.5px;
+  }
+
+  .gender-radar-list article,
+  .gender-radar-bar-item {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .gender-radar-list em,
+  .gender-radar-bar-visual {
+    grid-column: 2;
+  }
+
+  .gender-radar-meterline {
+    grid-template-columns: 68px minmax(0, 1fr) 48px;
+  }
+}

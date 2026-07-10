@@ -313,6 +313,7 @@ export type DashboardState = {
   stores: StoreProfile[]
   events: EventInput[]
   posts: PostRecord[]
+  businessContextPosts?: PostRecord[]
   scoredEvents: ScoredEvent[]
   situations: StoreSituation[]
   bbsSources: BbsSource[]

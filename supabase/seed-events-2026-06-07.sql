@@ -25,8 +25,7 @@ values
 ('club-zeus', 'CLUB ZEUS', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60),
 ('land-land', 'land land', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60),
 ('filt-shibuya', 'FILT SHIBUYA', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60),
-('communicationbar-sango', 'Communicationbar 珊瑚', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60),
-('off-white', 'Off White', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60)
+('communicationbar-sango', 'Communicationbar 珊瑚', '都内', true, true, '13:00', '19:00', '公式イベント観測', 60)
 on conflict (id) do update set
   name = excluded.name,
   area = excluded.area,

@@ -1,14 +1,16 @@
 import { cache } from 'react'
 import { events as demoEvents, posts as demoPosts, stores as demoStores } from './demo-data'
 import { formatBarName, formatStoreArea, formatStoreSessionLabel } from './display'
+import { collectPagedRows } from './pagination'
 import {
   buildEffectiveBbsPostRecords,
+  buildStoreActivityMetrics,
   buildStoreBbsAnalytics,
   buildStoreRadarPoints,
   buildVisitForecasts,
-  filterPostsForBusinessDay,
-  filterPostsWithinHours,
-  filterSnapshotsForBusinessDay,
+  filterPostsForStoreBusinessWindows,
+  filterSnapshotsForStoreBusinessWindows,
+  isStoreWithinBusinessHours,
   scoreEvents,
 } from './scoring'
 import { createSupabaseAdminClient } from './supabase/server'
@@ -327,13 +329,15 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
           .limit(320)
       : Promise.resolve({ data: [], error: null }),
     storeIds.length
-      ? supabase
-          .from('bbs_normalized_posts')
-          .select(normalizedPostSelectColumns)
-          .in('store_id', storeIds)
-          .gte('observed_at', recentPostThreshold)
-          .order('observed_at', { ascending: false })
-          .limit(1800)
+      ? collectPagedRows<DbRow, NonNullable<DbListResult['error']>>(async (from, to) =>
+          (await supabase
+            .from('bbs_normalized_posts')
+            .select(normalizedPostSelectColumns)
+            .in('store_id', storeIds)
+            .gte('observed_at', recentPostThreshold)
+            .order('observed_at', { ascending: false })
+            .range(from, to)) as DbListResult,
+        )
       : Promise.resolve({ data: [], error: null }),
   ])
 
@@ -367,8 +371,8 @@ function buildPublicState(input: {
   const posts = buildEffectiveBbsPostRecords(input.rawPosts, input.normalizedPosts)
   const scoredEvents = scoreEvents(input.events, input.stores, posts)
   const generatedAt = new Date().toISOString()
-  const businessDayPosts = filterPostsForBusinessDay(posts, generatedAt)
-  const businessDaySnapshots = filterSnapshotsForBusinessDay(input.snapshots, generatedAt)
+  const businessDayPosts = filterPostsForStoreBusinessWindows(posts, input.stores, generatedAt, input.snapshots)
+  const businessDaySnapshots = filterSnapshotsForStoreBusinessWindows(input.snapshots, input.stores, generatedAt, posts)
   const radar = buildStoreRadarPoints(input.stores, businessDayPosts, businessDaySnapshots)
   const analytics = buildStoreBbsAnalytics(input.stores, businessDayPosts)
   const forecasts = buildVisitForecasts(input.events, input.stores, posts, { windowDays: 7 })
@@ -421,14 +425,22 @@ function buildPublicStoreSummary(input: {
     ...input.posts.map((post) => post.postedAt),
     ...input.normalizedPosts.map((post) => post.postedAt ?? post.observedAt),
   ])
-  const recentPosts = filterPostsForBusinessDay(input.posts, generatedAt)
-  const recentThreeHourCount = filterPostsWithinHours(input.posts, generatedAt, 3).length
-  const recentNormalizedPosts = filterNormalizedPostsWithinHours(input.normalizedPosts, generatedAt, 24)
-  const femalePostCount = recentNormalizedPosts.filter(isFemaleNormalizedPost).length
+  const recentPosts = filterPostsForStoreBusinessWindows(input.posts, [point.store], generatedAt, input.snapshots)
+  const activity = buildStoreActivityMetrics({
+    storeId: point.store.id,
+    businessPosts: recentPosts,
+    normalizedPosts: input.normalizedPosts,
+    referenceAt: generatedAt,
+  })
+  const recentThreeHourCount = activity.recentThreeHourCount
+  const femalePostCount = activity.femalePostCount
   const todayEventCount = input.events.filter(isTodayEvent).length
   const weekendEventCount = input.events.filter((event) => /金曜|土曜|日曜/.test(event.weekday)).length
-  const womenRatio = computeWomenRatio(input.normalizedPosts, point)
-  const isOpenNow = isStoreOpenNow(point.store)
+  const womenRatio = activity.womenRatio
+  const isOpenNow = isStoreWithinBusinessHours(point.store, generatedAt, [
+    ...input.snapshots.map((snapshot) => snapshot.extractedText),
+    ...input.posts.map((post) => post.body),
+  ])
   const priceLabel = point.store.priceNote?.trim() || '公式で確認'
   const temperatureLabel =
     point.score >= 84
@@ -503,34 +515,6 @@ function googleMapUrl(store: StoreProfile, areaLabel: string) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
 }
 
-function computeWomenRatio(posts: BbsNormalizedPost[], point: StoreRadarPoint) {
-  const genderPosts = posts.filter((post) => /女性|男性/.test(post.authorGender))
-  if (genderPosts.length) {
-    const women = genderPosts.filter((post) => /女性/.test(post.authorGender)).length
-    return Math.round((women / genderPosts.length) * 100)
-  }
-  if (point.signals.totalSignals <= 0) return null
-  return Math.round((point.signals.femaleOnly / point.signals.totalSignals) * 100)
-}
-
-function normalizedPostTime(post: BbsNormalizedPost) {
-  return new Date(post.postedAt ?? post.observedAt).getTime()
-}
-
-function filterNormalizedPostsWithinHours(posts: BbsNormalizedPost[], reference: string, hours: number) {
-  const referenceTime = new Date(reference).getTime()
-  if (!Number.isFinite(referenceTime)) return []
-  const minTime = referenceTime - hours * 60 * 60 * 1000
-  return posts.filter((post) => {
-    const time = normalizedPostTime(post)
-    return Number.isFinite(time) && time >= minTime && time <= referenceTime
-  })
-}
-
-function isFemaleNormalizedPost(post: BbsNormalizedPost) {
-  return /女性|単女|女|♀/i.test(post.authorGender)
-}
-
 function japanDateKey(date: Date) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo',
@@ -543,24 +527,6 @@ function japanDateKey(date: Date) {
 function isTodayEvent(event: EventInput) {
   if (event.date === '今日') return true
   return event.date === japanDateKey(new Date())
-}
-
-function isStoreOpenNow(store: StoreProfile) {
-  const japanHour = Number(
-    new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', hour12: false }).format(new Date()),
-  )
-  const dayHour = parseHour(store.openingHourDay)
-  const nightHour = parseHour(store.openingHourNight)
-  const dayOpen = store.hasDaytime && dayHour != null && japanHour >= dayHour && japanHour < 19
-  const nightOpen = store.hasNight && nightHour != null && (japanHour >= nightHour || japanHour < 5)
-  return dayOpen || nightOpen
-}
-
-function parseHour(value: string) {
-  const match = value.match(/(\d{1,2})/)
-  if (!match) return null
-  const hour = Number(match[1])
-  return Number.isFinite(hour) ? hour : null
 }
 
 function formatRelativeUpdate(value: string | undefined, reference: string) {
