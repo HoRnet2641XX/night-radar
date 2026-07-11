@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
-import { extractNormalizedBbsPostsFromText } from '../src/lib/scoring.ts'
+import { extractNormalizedBbsPostsFromText, isLikelyCustomerNormalizedPost } from '../src/lib/scoring.ts'
 
 const DEFAULT_SNAPSHOT_BATCH_SIZE = 100
 const DEFAULT_UPSERT_BATCH_SIZE = 300
@@ -139,6 +139,7 @@ async function main() {
       extracted += posts.length
 
       for (const post of posts) {
+        if (!isLikelyCustomerNormalizedPost({ ...post, storeId: snapshot.store_id })) continue
         const row = toNormalizedRow(snapshot, post)
         if (!row.body || row.body.length < 2) continue
         const key = `${row.store_id}:${row.content_key}`

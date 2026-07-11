@@ -1,12 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { User } from '@supabase/supabase-js'
+import { buildDailyStoreDataset } from '../daily-store-insights'
 import { events as demoEvents, posts as demoPosts, stores as demoStores, storeSituations, wordCategories } from '../demo-data'
 import { highestAudienceForPlan, normalizePlan, planLimitMessage, planLimits, planRank } from '../plans'
+import { collectPagedRows } from '../pagination'
+import { mergeOfficialEvents } from '../official-events'
 import {
-  buildEffectiveBbsPostRecords,
   buildSearchableBbsRecords,
   extractNormalizedBbsPostsFromText,
-  filterPostsForBusinessDay,
+  filterPostsForStoreBusinessWindows,
+  isLikelyCustomerNormalizedPost,
   scoreEvents,
   searchExactBbsTerms,
 } from '../scoring'
@@ -92,6 +95,7 @@ const sourceSelectColumns =
   'id,store_id,label,url,parser_type,active,crawl_interval_minutes,last_fetched_at,last_status,last_message,created_at'
 const crawlRunSelectColumns = 'id,source_id,store_id,url,status,message,fetched_at,post_id'
 const snapshotLightSelectColumns = 'id,source_id,store_id,url,metrics,radar_score,captured_at'
+const snapshotContextSelectColumns = 'id,source_id,store_id,url,extracted_text,captured_at'
 const snapshotSearchSelectColumns = 'id,source_id,store_id,url,metrics,radar_score,captured_at,extracted_text'
 const normalizedPostSelectColumns =
   'id,source_id,store_id,source_url,article_no,author_name,author_gender,posted_at,observed_at,body,body_hash,content_key'
@@ -108,21 +112,32 @@ function isoHoursAgo(hours: number) {
 }
 
 function demoDashboardState(mode: RuntimeMode = 'demo', connectionNote?: string): DashboardState {
-  const scoredEvents = scoreEvents(demoEvents, demoStores, demoPosts)
+  const setupStatus = getServiceSetupStatus()
+  const dailyDataset = buildDailyStoreDataset({
+    stores: demoStores,
+    events: demoEvents,
+    rawPosts: demoPosts,
+    sources: [],
+    snapshots: [],
+    normalizedPosts: [],
+    referenceAt: setupStatus.generatedAt,
+  })
+  const scoredEvents = scoreEvents(demoEvents, demoStores, dailyDataset.effectivePosts)
 
   return {
     mode,
     connectionNote,
-    setupStatus: getServiceSetupStatus(),
+    setupStatus,
     stores: demoStores,
     events: demoEvents,
-    posts: demoPosts,
+    posts: dailyDataset.effectivePosts,
     scoredEvents,
     situations: storeSituations,
     bbsSources: [],
     crawlRuns: [],
     bbsSnapshots: [],
     bbsNormalizedPosts: [],
+    dailyInsights: dailyDataset.insights,
     storeDecisions: {},
     exactTerms: defaultExactTerms,
     wordBookmarks: [],
@@ -329,6 +344,18 @@ function toPost(row: DbRow): PostRecord {
     postedAt: stringField(row, 'posted_at'),
     body: stringField(row, 'body'),
     keywords: stringArrayField(row, 'keywords'),
+  }
+}
+
+function toBusinessContextPost(row: DbRow): PostRecord {
+  return {
+    id: `business-context-${stringField(row, 'id')}`,
+    storeId: stringField(row, 'store_id'),
+    source: 'scrape',
+    sourceUrl: optionalStringField(row, 'url'),
+    postedAt: stringField(row, 'captured_at'),
+    body: stringField(row, 'extracted_text'),
+    keywords: [],
   }
 }
 
@@ -843,7 +870,10 @@ async function saveNormalizedBbsPostsFromText(
   const posts = extractNormalizedBbsPostsFromText(extractedText, observedAt)
   if (!posts.length) return []
 
-  const rows = posts.map((post) => toBbsNormalizedPostRow({ source, observedAt, post }))
+  const rows = posts
+    .filter((post) => isLikelyCustomerNormalizedPost({ ...post, storeId: source.storeId }))
+    .map((post) => toBbsNormalizedPostRow({ source, observedAt, post }))
+  if (!rows.length) return []
   const { data, error } = await supabase
     .from('bbs_normalized_posts')
     .upsert(rows, { onConflict: 'store_id,content_key' })
@@ -928,6 +958,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     sourceResult,
     crawlResult,
     snapshotResult,
+    snapshotContextResult,
     normalizedPostResult,
     termResult,
     bookmarkResult,
@@ -971,12 +1002,24 @@ export async function getDashboardState(): Promise<DashboardState> {
         : Promise.resolve({ data: [], error: null }),
       storeIds.length
         ? supabase
-            .from('bbs_normalized_posts')
-            .select(normalizedPostSelectColumns)
+            .from('bbs_snapshots')
+            .select(snapshotContextSelectColumns)
             .in('store_id', storeIds)
-            .gte('observed_at', recentPostThreshold)
-            .order('observed_at', { ascending: false })
-            .limit(2200)
+            .neq('extracted_text', '')
+            .order('captured_at', { ascending: false })
+            .limit(120)
+        : Promise.resolve({ data: [], error: null }),
+      storeIds.length
+        ? collectPagedRows<DbRow, NonNullable<DbListResult['error']>>(async (from, to) =>
+            (await supabase
+              .from('bbs_normalized_posts')
+              .select(normalizedPostSelectColumns)
+              .in('store_id', storeIds)
+              .gte('observed_at', recentPostThreshold)
+              .order('observed_at', { ascending: false })
+              .order('id', { ascending: false })
+              .range(from, to)) as DbListResult,
+          )
         : Promise.resolve({ data: [], error: null }),
       supabase.from('exact_terms').select(exactTermSelectColumns).eq('user_id', user.id).order('created_at', { ascending: true }),
       supabase.from('word_bookmarks').select(wordBookmarkSelectColumns).eq('user_id', user.id).order('created_at', { ascending: false }),
@@ -1005,6 +1048,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     sourceResult.error ||
     crawlResult.error ||
     snapshotResult.error ||
+    snapshotContextResult.error ||
     normalizedPostError ||
     termResult.error ||
     bookmarkResult.error ||
@@ -1027,10 +1071,29 @@ export async function getDashboardState(): Promise<DashboardState> {
     if (!fallbackSnapshotResult.error) snapshotRows = fallbackSnapshotResult.data ?? snapshotRows
   }
 
-  const events = (eventResult.data ?? []).map(toEvent)
+  const events = mergeOfficialEvents((eventResult.data ?? []).map(toEvent))
   const rawPosts = (postResult.data ?? []).map(toPost)
+  const seenContextStores = new Set<string>()
+  const businessContextPosts = (snapshotContextResult.data ?? [])
+    .map(toBusinessContextPost)
+    .filter((post) => {
+      if (!post.body.trim() || seenContextStores.has(post.storeId)) return false
+      seenContextStores.add(post.storeId)
+      return true
+    })
   const bbsNormalizedPosts = normalizedPostResult.error ? [] : (normalizedPostResult.data ?? []).map(toBbsNormalizedPost)
-  const posts = buildEffectiveBbsPostRecords(rawPosts, bbsNormalizedPosts)
+  const setupStatus = getServiceSetupStatus()
+  const dailyDataset = buildDailyStoreDataset({
+    stores,
+    events,
+    rawPosts,
+    sources: (sourceResult.data ?? []).map(toBbsSource),
+    snapshots: snapshotRows.map(toBbsSnapshot),
+    normalizedPosts: bbsNormalizedPosts,
+    businessContextPosts,
+    referenceAt: setupStatus.generatedAt,
+  })
+  const posts = dailyDataset.effectivePosts
   const scoredEvents = scoreEvents(events, stores, posts)
   const decisionResult = await supabase.from('user_store_decisions').select(storeDecisionSelectColumns).eq('user_id', user.id)
   if (decisionResult.error && !isMissingRelationError(decisionResult.error)) {
@@ -1042,16 +1105,18 @@ export async function getDashboardState(): Promise<DashboardState> {
     userId: user.id,
     userEmail: user.email ?? undefined,
     userDisplayName: userDisplayName(user),
-    setupStatus: getServiceSetupStatus(),
+    setupStatus,
     stores,
     events,
     posts,
+    businessContextPosts,
     scoredEvents,
     situations: (situationResult.data ?? []).map(toSituation),
     bbsSources: (sourceResult.data ?? []).map(toBbsSource),
     crawlRuns: (crawlResult.data ?? []).map(toCrawlRun),
     bbsSnapshots: snapshotRows.map(toBbsSnapshot),
     bbsNormalizedPosts,
+    dailyInsights: dailyDataset.insights,
     storeDecisions: storeDecisionRowsToState(decisionResult.error ? [] : decisionResult.data),
     exactTerms: exactRowsToState(termResult.data),
     wordBookmarks: (bookmarkResult.data ?? []).map(toWordBookmark),
@@ -1166,7 +1231,7 @@ export async function saveAndSearchExactTerms(exactTerms: ExactTermState, fallba
 
   const state = await getDashboardState()
   const searchableRecords = buildSearchableBbsRecords(state.posts, state.bbsSnapshots)
-  const recentRecords = filterPostsForBusinessDay(searchableRecords, state.setupStatus.generatedAt)
+  const recentRecords = filterPostsForStoreBusinessWindows(searchableRecords, state.stores, state.setupStatus.generatedAt, state.bbsSnapshots)
   const matches = searchExactBbsTerms(recentRecords, state.stores, groups)
   const persistableMatches = matches.filter((match) => !match.post.id.startsWith('snapshot-'))
   if (persistableMatches.length) {
@@ -1594,7 +1659,7 @@ function normalizeCronMaxCrawls(options: CronCrawlOptions) {
   if (Number.isFinite(value) && value > 0) return Math.max(1, Math.min(10, Math.floor(value)))
   if (options.sourceIds?.length) return Math.max(1, Math.min(10, options.sourceIds.length))
   if (options.batchSize) return 1
-  return 2
+  return 3
 }
 
 export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) {
@@ -1628,15 +1693,27 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
   const crawlRows = prioritizeBbsRowsForCrawl(dueRows).slice(0, maxCrawls)
   const captureBrowserScreenshots = options.captureBrowserScreenshots === true
 
-  const results = []
+  const results: CrawlSourceResult[] = []
   const browserSession = crawlRows.length && captureBrowserScreenshots ? await createBrowserSnapshotSession() : null
   try {
-    for (const row of crawlRows) {
+    if (browserSession) {
+      for (const row of crawlRows) {
+        results.push(
+          await crawlSourceRowSafely(supabase, row, {
+            browserSession,
+            captureBrowserScreenshot: captureBrowserScreenshots,
+          }),
+        )
+      }
+    } else {
       results.push(
-        await crawlSourceRowSafely(supabase, row, {
-          browserSession,
-          captureBrowserScreenshot: captureBrowserScreenshots,
-        }),
+        ...(await Promise.all(
+          crawlRows.map((row) =>
+            crawlSourceRowSafely(supabase, row, {
+              captureBrowserScreenshot: false,
+            }),
+          ),
+        )),
       )
     }
   } finally {

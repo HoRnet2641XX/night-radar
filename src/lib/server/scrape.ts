@@ -1,5 +1,5 @@
-import * as cheerio from 'cheerio'
 import type { PostRecord, ScrapeResult } from '../types'
+import { extractBbsPageContent, extractScarletCommentsPayload } from './bbs-content'
 
 const blockedHostPatterns = [
   /^localhost$/i,
@@ -23,16 +23,27 @@ function readPositiveIntEnv(name: string, fallback: number) {
 
 function getFetchTimeoutMs(url: URL) {
   const standardTimeoutMs = readPositiveIntEnv('SCRAPE_FETCH_TIMEOUT_MS', 5_500)
-  if (url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com')) {
+  const slowHost =
+    url.hostname === 'neo-bbs.com' ||
+    url.hostname.endsWith('.neo-bbs.com') ||
+    url.hostname.endsWith('.silent-moon.net')
+  if (slowHost) {
     const slowHostTimeoutMs = readPositiveIntEnv('SCRAPE_SLOW_HOST_TIMEOUT_MS', 8_000)
-    return Math.max(standardTimeoutMs, readPositiveIntEnv('SCRAPE_NEO_FETCH_TIMEOUT_MS', slowHostTimeoutMs))
+    const hostTimeoutMs = url.hostname.includes('neo-bbs.com')
+      ? readPositiveIntEnv('SCRAPE_NEO_FETCH_TIMEOUT_MS', slowHostTimeoutMs)
+      : readPositiveIntEnv('SCRAPE_LEGACY_HOST_TIMEOUT_MS', 12_000)
+    return Math.max(standardTimeoutMs, hostTimeoutMs)
   }
 
   return standardTimeoutMs
 }
 
 function getFetchAttemptCount(url: URL) {
-  const attempts = url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com') ? readPositiveIntEnv('SCRAPE_NEO_FETCH_ATTEMPTS', 1) : 1
+  if (url.hostname.endsWith('.silent-moon.net')) return 1
+  const attempts =
+    url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com')
+      ? readPositiveIntEnv('SCRAPE_NEO_FETCH_ATTEMPTS', 2)
+      : readPositiveIntEnv('SCRAPE_FETCH_ATTEMPTS', 2)
   return Math.max(1, Math.min(3, attempts))
 }
 
@@ -79,6 +90,47 @@ async function scrapeReadableTextViaReader(url: URL): Promise<ScrapeResult | nul
   }
 }
 
+async function scrapeRenderedHtmlViaBrowserless(url: URL): Promise<ScrapeResult | null> {
+  const token = process.env.BROWSERLESS_API_TOKEN?.trim()
+  if (!token) return null
+
+  try {
+    const endpoint = new URL(
+      process.env.BROWSERLESS_CONTENT_ENDPOINT?.trim() || 'https://production-sfo.browserless.io/content',
+    )
+    endpoint.searchParams.set('token', token)
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_BROWSERLESS_TIMEOUT_MS', 12_000)),
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url: url.toString(),
+        bestAttempt: true,
+        rejectResourceTypes: ['image', 'media', 'font'],
+      }),
+    })
+    if (!response.ok) return null
+
+    const html = (await response.text()).slice(0, 500_000)
+    const page = extractBbsPageContent(html, url.toString())
+    if (page.extractedText.length < 80) return null
+
+    return {
+      url: url.toString(),
+      title: page.title,
+      extractedText: page.extractedText,
+      fetchedAt: new Date().toISOString(),
+      status: 'ok',
+      message: '外部ブラウザ経路で公開ページを取得しました。',
+    }
+  } catch {
+    return null
+  }
+}
+
 function isAllowedHost(hostname: string) {
   if (blockedHostPatterns.some((pattern) => pattern.test(hostname))) return false
 
@@ -94,42 +146,57 @@ function compactText(value: string) {
   return value.replace(/\s+/g, ' ').trim()
 }
 
-function extractReadableText($: cheerio.CheerioAPI) {
-  $('script, style, noscript, iframe, svg, nav, header, footer, form, button, select, option').remove()
+function japanDateLabel(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
 
-  const candidates = [
-    'article',
-    'main',
-    '[role="main"]',
-    '.bbs',
-    '.board',
-    '.thread',
-    '.topic',
-    '.post',
-    '.comment',
-    '.entry',
-    '.content',
-    '#content',
-  ]
+async function fetchKnownHostPosts(url: URL) {
+  if (!/(^|\.)scarlet\.tokyo$/i.test(url.hostname)) return ''
 
-  const seen = new Set<string>()
-  const blocks: string[] = []
-  candidates.forEach((selector) => {
-    $(selector).each((_, element) => {
-      const text = compactText($(element).text())
-      if (text.length < 40 || seen.has(text)) return
-      seen.add(text)
-      blocks.push(text)
+  try {
+    const endpoint = new URL('/api/comments', url)
+    endpoint.searchParams.set('date', japanDateLabel())
+    const response = await fetch(endpoint, {
+      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_SUPPLEMENTAL_TIMEOUT_MS', 5_000)),
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': process.env.SCRAPE_USER_AGENT || defaultUserAgent,
+      },
     })
-  })
+    if (!response.ok) return ''
+    return extractScarletCommentsPayload(await response.json())
+  } catch {
+    return ''
+  }
+}
 
-  const source = blocks.length ? blocks.join('\n') : compactText($('body').text())
-  return source
-    .split(/\n+/)
-    .map((line) => compactText(line))
-    .filter((line) => line.length >= 20)
-    .join('\n')
-    .slice(0, 12_000)
+async function fetchSupplementalText(urlValue: string) {
+  try {
+    const url = new URL(urlValue)
+    if (!['http:', 'https:'].includes(url.protocol) || !isAllowedHost(url.hostname)) return ''
+    const response = await fetch(url, {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_SUPPLEMENTAL_TIMEOUT_MS', 5_000)),
+      headers: {
+        'User-Agent': process.env.SCRAPE_USER_AGENT || defaultUserAgent,
+        Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+      },
+    })
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!response.ok || !contentType.includes('text/html')) return ''
+    const html = (await response.text()).slice(0, 500_000)
+    return extractBbsPageContent(html, response.url || url.toString()).extractedText
+  } catch {
+    return ''
+  }
 }
 
 export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> {
@@ -165,6 +232,7 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
 
   const maxAttempts = getFetchAttemptCount(url)
   let lastErrorMessage = 'Unknown scrape error.'
+  let lastFailureStatus: ScrapeResult['status'] = 'failed'
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -183,59 +251,68 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
 
       if (!response.ok) {
         const blocked = response.status === 401 || response.status === 403 || response.status === 429
-        if (blocked || attempt === maxAttempts) {
-          return {
-            url: url.toString(),
-            title: '',
-            extractedText: '',
-            fetchedAt: new Date().toISOString(),
-            status: blocked ? 'blocked' : 'failed',
-            message: blocked ? `取得が拒否されました（${response.status}）。` : `取得に失敗しました（${response.status}）。`,
-          }
-        }
-
         lastErrorMessage = `取得に失敗しました（${response.status}）。`
+        lastFailureStatus = blocked ? 'blocked' : 'failed'
+        if (blocked || attempt === maxAttempts) break
         continue
       }
 
       const contentType = response.headers.get('content-type') ?? ''
       if (!contentType.includes('text/html')) {
-        return {
-          url: url.toString(),
-          title: '',
-          extractedText: '',
-          fetchedAt: new Date().toISOString(),
-          status: 'blocked',
-          message: '公開HTMLページのみ巡回できます。',
-        }
+        lastErrorMessage = '公開HTMLを直接取得できませんでした。'
+        lastFailureStatus = 'blocked'
+        break
       }
 
       const html = (await response.text()).slice(0, 500_000)
-      const $ = cheerio.load(html)
-      const title = $('title').first().text().trim()
-      const extractedText = extractReadableText($)
+      const page = extractBbsPageContent(html, response.url || url.toString())
+      const [knownHostPosts, supplementalTexts] = await Promise.all([
+        fetchKnownHostPosts(url),
+        Promise.all(page.supplementalUrls.map(fetchSupplementalText)),
+      ])
+      const extractedText = [knownHostPosts, ...supplementalTexts, page.extractedText]
+        .filter((text) => text.trim())
+        .join('\n')
+        .slice(0, 24_000)
+      if (extractedText.length < 80) {
+        lastErrorMessage = '公開ページから投稿本文を確認できませんでした。'
+        lastFailureStatus = 'failed'
+        break
+      }
 
       return {
         url: url.toString(),
-        title,
+        title: page.title,
         extractedText,
         fetchedAt: new Date().toISOString(),
         status: 'ok',
       }
     } catch (error) {
       lastErrorMessage = error instanceof Error ? error.message : 'Unknown scrape error.'
+      lastFailureStatus = /timeout|aborted|fetch failed/i.test(lastErrorMessage) ? 'blocked' : 'failed'
       if (attempt < maxAttempts) continue
     }
   }
 
-  const blockedByRuntime = lastErrorMessage === 'fetch failed' || /timeout|aborted/i.test(lastErrorMessage)
+  const [browserlessResult, readerResult] = await Promise.all([
+    scrapeRenderedHtmlViaBrowserless(url),
+    scrapeReadableTextViaReader(url),
+  ])
+  const fallbackResult = browserlessResult ?? readerResult
+  if (fallbackResult) {
+    return {
+      ...fallbackResult,
+      message: fallbackResult.message || '代替経路で公開ページを取得しました。',
+    }
+  }
+
   return {
     url: url.toString(),
     title: '',
     extractedText: '',
     fetchedAt: new Date().toISOString(),
-    status: blockedByRuntime ? 'blocked' : 'failed',
-    message: blockedByRuntime ? '取得が拒否されたか、タイムアウトしました。' : lastErrorMessage,
+    status: lastFailureStatus,
+    message: lastFailureStatus === 'blocked' ? `取得が拒否されたか、タイムアウトしました。${lastErrorMessage ? ` ${lastErrorMessage}` : ''}` : lastErrorMessage,
   }
 }
 

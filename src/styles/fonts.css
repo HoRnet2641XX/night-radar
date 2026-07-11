@@ -1,0 +1,19 @@
+:root {
+  --font-serif: 'Noto Sans JP Variable', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', Meiryo, sans-serif;
+  --font-sans: 'Noto Sans JP Variable', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', Meiryo, sans-serif;
+  --font-mono: 'Noto Sans JP Variable', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', Meiryo, sans-serif;
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-cine: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: 'palt' 0;
+  font-kerning: normal;
+}
+
+.font-serif, .display {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  letter-spacing: 0;
+}

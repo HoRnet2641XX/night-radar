@@ -36,7 +36,8 @@ insert into public.stores (
   ('land-land', null, 'land land', '未設定', false, true, '', '19:00', '未分類', array[]::text[], array[]::text[], array[]::text[], 60),
   ('collabo', null, 'collabo', '未設定', false, true, '', '19:00', '未分類', array[]::text[], array[]::text[], array[]::text[], 60),
   ('neo', null, 'Neo', '未設定', false, true, '', '19:00', '未分類', array[]::text[], array[]::text[], array[]::text[], 60),
-  ('communicationbar-sango', null, 'Communicationbar 珊瑚', '未設定', false, true, '', '19:00', '未分類', array[]::text[], array[]::text[], array[]::text[], 60)
+  ('communicationbar-sango', null, 'Communicationbar 珊瑚', '未設定', false, true, '', '19:00', '未分類', array[]::text[], array[]::text[], array[]::text[], 60),
+  ('secret-bar-silent-moon', null, 'Secret Bar Silent Moon', '未設定', false, true, '', '19:00', '未分類', array[]::text[], array[]::text[], array[]::text[], 60)
 on conflict (id) do update set
   owner_id = excluded.owner_id,
   name = excluded.name,
@@ -81,11 +82,12 @@ insert into public.bbs_sources (
   ('filt-shibuya-bbs', 'filt-shibuya', 'BBS', 'https://filtshibuya.com/bbs/', 'auto', true, 5, 'pending'),
   ('b-dash-bbs', 'b-dash', 'BBS', 'https://b-dash.bar/topics/', 'auto', true, 5, 'pending'),
   ('ogikubo-himitsu-club-bbs', 'ogikubo-himitsu-club', 'BBS', 'https://ogikubo0620.com/forums/forum/bbs/', 'auto', true, 5, 'pending'),
-  ('club-zeus-bbs', 'club-zeus', 'BBS', 'http://sm-zeus.com/bbs/', 'auto', true, 5, 'pending'),
+  ('club-zeus-bbs', 'club-zeus', 'BBS', 'https://rara.jp/zeus/', 'auto', true, 5, 'pending'),
   ('land-land-bbs', 'land-land', 'BBS', 'https://land2021.com/bbs2/', 'auto', true, 5, 'pending'),
   ('collabo-bbs', 'collabo', 'BBS', 'https://www.collabo7.com/p/7/', 'auto', true, 5, 'pending'),
   ('neo-bbs', 'neo', 'BBS', 'https://neo-bbs.com/', 'auto', true, 5, 'pending'),
-  ('communicationbar-sango-bbs', 'communicationbar-sango', 'BBS', 'https://bar-sango.com/bbs/', 'auto', true, 5, 'pending')
+  ('communicationbar-sango-bbs', 'communicationbar-sango', 'BBS', 'https://bar-sango.com/bbs/', 'auto', true, 5, 'pending'),
+  ('silent-moon-bbs', 'secret-bar-silent-moon', 'BBS', 'https://www.silent-moon.net/jp/silentmoon-bbs.php', 'auto', true, 5, 'pending')
 on conflict (store_id, url) do update set
   label = excluded.label,
   parser_type = excluded.parser_type,

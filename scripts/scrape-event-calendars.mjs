@@ -41,7 +41,6 @@ const sources = [
   { storeId: 'land-land', storeName: 'land land', month: '2026-07', urls: ['https://land2021.com/category/event/'] },
   { storeId: 'filt-shibuya', storeName: 'FILT SHIBUYA', month: '2026-06', urls: ['https://filtshibuya.com/event/'] },
   { storeId: 'communicationbar-sango', storeName: 'Communicationbar 珊瑚', month: '2026-06', urls: ['https://bar-sango.com/events/'] },
-  { storeId: 'off-white', storeName: 'Off White', month: '2026-06', urls: ['https://off-white.bar/'] },
 ]
 
 function slug(value) {

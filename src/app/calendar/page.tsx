@@ -34,7 +34,6 @@ const officialStoreNames: Record<string, string> = {
   'land-land': 'land land',
   'filt-shibuya': 'FILT SHIBUYA',
   'communicationbar-sango': 'Communicationbar 珊瑚',
-  'off-white': 'Off White',
 }
 
 const monthFormatter = new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: 'long' })

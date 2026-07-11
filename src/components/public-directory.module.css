@@ -1745,6 +1745,11 @@
     justify-content: flex-start;
     overflow-x: auto;
     padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .publicHeader nav::-webkit-scrollbar {
+    display: none;
   }
 
   .heroPanel,

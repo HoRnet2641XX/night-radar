@@ -1,0 +1,232 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { extractNormalizedBbsPostsFromText } from '../scoring'
+import { extractBbsPageContent, extractScarletCommentsPayload } from './bbs-content'
+
+test('normalizes WordPress comments into dated customer posts', () => {
+  const page = extractBbsPageContent(
+    `<html><head><title>Topics</title></head><body>
+      <div class="comment-body" id="comment-101">
+        <div class="comment-author">R1 より:</div>
+        <div class="comment-meta">2026年7月10日 05:57:05</div>
+        <p>仕事が早く終われば夜の部に行きます。</p><div class="reply">返信</div>
+      </div>
+    </body></html>`,
+    'https://example.com/topics/100/',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-07-10T00:00:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].authorName, 'R1')
+  assert.equal(posts[0].postedAt, '2026-07-09T20:57:00.000Z')
+  assert.match(posts[0].body, /夜の部に行きます/)
+})
+
+test('normalizes bbPress replies with AM and PM dates', () => {
+  const page = extractBbsPageContent(
+    `<html><body><div class="bbp-reply-header">
+      <span class="bbp-reply-post-date">2026年5月15日 1:25 PM</span><a>#8999</a>
+    </div><div class="reply post-8999">
+      <div class="bbp-reply-author"><span class="bbp-author-name">よし（♂）ゲスト</span></div>
+      <div class="bbp-reply-content"><p>後ほど行きます</p></div>
+    </div></body></html>`,
+    'https://example.com/forums/topic/today/',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-05-15T05:00:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].articleNo, '8999')
+  assert.equal(posts[0].authorName, 'よし')
+  assert.equal(posts[0].authorGender, '男性')
+  assert.equal(posts[0].postedAt, '2026-05-15T04:25:00.000Z')
+})
+
+test('normalizes bbPress month-first dates', () => {
+  const page = extractBbsPageContent(
+    `<html><body><div class="bbp-reply-header">
+      <span class="bbp-reply-post-date">7月 10, 2026 9:53 am</span><a>#74955</a>
+    </div><div class="reply post-74955">
+      <div class="bbp-reply-author"><span class="bbp-author-name">Mi♂</span></div>
+      <div class="bbp-reply-content"><p>17時頃行きます</p></div>
+    </div></body></html>`,
+    'https://example.com/bbs/',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-07-10T01:00:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].postedAt, '2026-07-10T00:53:00.000Z')
+})
+
+test('normalizes inline author and date replies', () => {
+  const page = extractBbsPageContent(
+    `<html><body><article>
+      投稿者：N（女性） 2026/07/07(火) 00:09 初めてです。ふたりで行きます。 返信 編集・削除
+    </article></body></html>`,
+    'https://example.com/bbs/',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-07-07T00:10:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].authorName, 'N')
+  assert.equal(posts[0].authorGender, '女性')
+  assert.equal(posts[0].postedAt, '2026-07-06T15:09:00.000Z')
+})
+
+test('normalizes message cards with separate author metadata', () => {
+  const page = extractBbsPageContent(
+    `<html><body><div class="main-comment" id="message41298">
+      <p class="message">初めてです。本日19時から伺います。</p>
+      <p class="name"><span class="user_name">みく</span><span class="sex">女性</span><span>2026-07-10 09:12:48</span></p>
+    </div></body></html>`,
+    'https://example.com/message',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-07-10T01:00:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].articleNo, '41298')
+  assert.equal(posts[0].authorName, 'みく')
+  assert.equal(posts[0].authorGender, '女性')
+  assert.equal(posts[0].postedAt, '2026-07-10T00:12:00.000Z')
+})
+
+test('normalizes dated article cards', () => {
+  const page = extractBbsPageContent(
+    `<html><body><main>新規です。 2026/07/09 10:58:08 ［記事No：10013］投稿者：ゆーすけ 男性
+      本日仕事終わりに初めて来店します。返信する</main></body></html>`,
+    'https://example.com/bbs/',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-07-10T01:00:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].articleNo, '10013')
+  assert.equal(posts[0].authorName, 'ゆーすけ')
+  assert.equal(posts[0].authorGender, '男性')
+  assert.equal(posts[0].postedAt, '2026-07-09T01:58:00.000Z')
+})
+
+test('normalizes YYBBS customer posts and excludes Silent Moon staff posts', () => {
+  const page = extractBbsPageContent(
+    `<html><body>
+      <article class="art">
+        <h2>お知らせ</h2><p>本日も営業しています。</p>
+        <div class="art-info"><b>ATOM</b>さん<span class="num">2026/07/10(Fri) 10:07</span></div>
+        <div class="rep_button"><a href="./yybbs.cgi?res=46&amp;pg=0">返信</a></div>
+      </article>
+      <article class="art">
+        <h2>無題</h2><p>この後行かせて頂きます</p>
+        <div class="art-info"><b>しゅん</b>さん<span class="num">2026/07/07(Tue) 23:13</span></div>
+        <div class="rep_button"><a href="./yybbs.cgi?res=41&amp;pg=0">返信</a></div>
+      </article>
+    </body></html>`,
+    'https://www.silent-moon.net/bbs2025/yybbs.cgi',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-07-10T01:30:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].articleNo, '41')
+  assert.equal(posts[0].authorName, 'しゅん')
+  assert.equal(posts[0].postedAt, '2026-07-07T14:13:00.000Z')
+  assert.equal(posts[0].body, 'この後行かせて頂きます')
+})
+
+test('normalizes Rara posts and excludes board staff replies', () => {
+  const page = extractBbsPageContent(
+    `<html><body><div>
+      <div id="no164520" class="threadTitle"><h2>無題</h2></div>
+      <div class="user-box"><div class="user-name">ティナ、なな</div><div class="user-meta">2026/07/10 11:02 No.164520</div></div>
+      <div class="spc"><span class="mainText">きました</span></div>
+      <div class="res_waku"><div class="rwi" id="no164521">
+        <div class="user-box"><div class="user-name">440</div><div class="user-meta">2026/07/10 11:03 No.164521</div></div>
+        <div class="spc"><span class="mainText">いらっしゃいませ。</span></div>
+      </div></div>
+    </div></body></html>`,
+    'https://rara.jp/bar440/',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-07-10T03:00:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].articleNo, '164520')
+  assert.equal(posts[0].authorName, 'ティナ、なな')
+  assert.equal(posts[0].postedAt, '2026-07-10T02:02:00.000Z')
+  assert.equal(posts[0].body, 'きました')
+})
+
+test('normalizes legacy Rara thread replies and excludes Zeus staff', () => {
+  const page = extractBbsPageContent(
+    `<html><body>
+      <div id="631" class="layer">Re: topic ( No.631 )</div>
+      <div class="layer"><div style="float:left">日時： 2026年07月09日 23:09<br>名前： <b>シン</b></div><span class="mainText">待っています</span></div>
+      <div id="630" class="layer">Re: topic ( No.630 )</div>
+      <div class="layer"><div style="float:left">日時： 2026年07月09日 23:03<br>名前： <b>尋〜Hiro〜👩</b></div><span class="mainText">伺います。</span></div>
+    </body></html>`,
+    'https://rara.jp/zeus/page613',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-07-10T03:00:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].articleNo, '630')
+  assert.equal(posts[0].authorName, '尋〜Hiro〜👩')
+  assert.equal(posts[0].postedAt, '2026-07-09T14:03:00.000Z')
+  assert.equal(posts[0].body, '伺います。')
+})
+
+test('normalizes Scarlet API comments and excludes staff auto replies', () => {
+  const extractedText = extractScarletCommentsPayload({
+    success: true,
+    data: [
+      {
+        commentId: 'c-customer-01',
+        isStaffReply: false,
+        name: 'える♀',
+        body: '夜に行きます！',
+        createdAt: '2026-07-09T10:47:27.954Z',
+      },
+      {
+        commentId: 'c-staff-01',
+        isStaffReply: true,
+        name: 'STAFF',
+        body: 'スタッフ一同、お待ちしております。',
+        createdAt: '2026-07-09T10:47:27.975Z',
+      },
+    ],
+  })
+  const posts = extractNormalizedBbsPostsFromText(extractedText, '2026-07-10T03:00:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].articleNo, 'c-customer-01')
+  assert.equal(posts[0].authorName, 'える♀')
+  assert.equal(posts[0].postedAt, '2026-07-09T10:47:00.000Z')
+  assert.equal(posts[0].body, '夜に行きます！')
+})
+
+test('discovers latest topic details and BBS iframe pages', () => {
+  const topics = extractBbsPageContent(
+    `<html><body>
+      <a href="/topics/300/">詳細を見る</a><a href="/topics/299/">詳細を見る</a>
+      <iframe src="https://board.example.net/bbs/"></iframe>
+    </body></html>`,
+    'https://example.com/topics/',
+  )
+
+  assert.deepEqual(topics.supplementalUrls, [
+    'https://example.com/topics/300/',
+    'https://example.com/topics/299/',
+    'https://board.example.net/bbs/',
+  ])
+})
+
+test('discovers latest Rara thread details', () => {
+  const page = extractBbsPageContent(
+    `<html><body>
+      <a href="./page632">最新トピック</a>
+      <a href="./page630">前のトピック</a>
+      <a href="./new">新規作成</a>
+    </body></html>`,
+    'https://rara.jp/zeus/',
+  )
+
+  assert.deepEqual(page.supplementalUrls, [
+    'https://rara.jp/zeus/page632',
+    'https://rara.jp/zeus/page630',
+  ])
+})

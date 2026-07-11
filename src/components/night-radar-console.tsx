@@ -38,9 +38,9 @@ import {
   defaultWatchedTemplateKeys,
   extractWatchedAuthorEntries,
   extractWatchedAuthorText,
-  filterPostsForBusinessDay,
+  filterPostsForStoreBusinessWindows,
   filterPostsWithinHours,
-  filterSnapshotsForBusinessDay,
+  filterSnapshotsForStoreBusinessWindows,
   normalizeWatchedSearchText,
   parseExactTerms,
   prioritizeScoredEventsForToday,
@@ -372,12 +372,12 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   const todayOrderedScoredEvents = useMemo(() => prioritizeScoredEventsForToday(scoredEvents), [scoredEvents])
   const summary = useMemo(() => summarizeSignals(scoredEvents), [scoredEvents])
   const businessDayPosts = useMemo(
-    () => filterPostsForBusinessDay(posts, initialState.setupStatus.generatedAt),
-    [initialState.setupStatus.generatedAt, posts],
+    () => filterPostsForStoreBusinessWindows(posts, stores, initialState.setupStatus.generatedAt, bbsSnapshots),
+    [bbsSnapshots, initialState.setupStatus.generatedAt, posts, stores],
   )
   const businessDaySnapshots = useMemo(
-    () => filterSnapshotsForBusinessDay(bbsSnapshots, initialState.setupStatus.generatedAt),
-    [bbsSnapshots, initialState.setupStatus.generatedAt],
+    () => filterSnapshotsForStoreBusinessWindows(bbsSnapshots, stores, initialState.setupStatus.generatedAt, posts),
+    [bbsSnapshots, initialState.setupStatus.generatedAt, posts, stores],
   )
   const storeAnalytics = useMemo(() => buildStoreBbsAnalytics(stores, businessDayPosts), [businessDayPosts, stores])
   const storeRadar = useMemo(
@@ -507,7 +507,6 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     [activeExactMatches, exactMatchFilter],
   )
   const featuredEvent = todayOrderedScoredEvents[0] ?? summary.dayTop ?? summary.nightTop
-  const upcomingCalendarEventCount = useMemo(() => countCalendarEventsWithinDays(calendarEvents, 7), [calendarEvents])
   const visibleMatches = filteredExactMatches.slice(0, 16)
   const currentPlan = subscription.plan
   const currentLimits = planLimits[currentPlan]
@@ -1011,24 +1010,6 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
                   watchStore={watchStore}
                   busy={busy}
                 />
-                <AppDecisionFlow
-                  eventCount={upcomingCalendarEventCount}
-                  eventScopeLabel="直近7日"
-                  savedCount={candidateStoreCount + favoriteStoreCount}
-                  watchedCount={wordBookmarks.length + enabledWatchedTemplates.length}
-                  onOpenCalendar={() => {
-                    setActiveNav('calendar')
-                    setView('analytics')
-                  }}
-                  onOpenStores={() => {
-                    setActiveNav('stores')
-                    setView('capture')
-                  }}
-                  onOpenWatch={() => {
-                    setActiveNav('search')
-                    setView('automate')
-                  }}
-                />
               </>
             )}
           </section>
@@ -1524,66 +1505,6 @@ function TodayDecisionCard({
   )
 }
 
-function AppDecisionFlow({
-  eventCount,
-  eventScopeLabel,
-  savedCount,
-  watchedCount,
-  onOpenCalendar,
-  onOpenStores,
-  onOpenWatch,
-}: {
-  eventCount: number
-  eventScopeLabel: string
-  savedCount: number
-  watchedCount: number
-  onOpenCalendar: () => void
-  onOpenStores: () => void
-  onOpenWatch: () => void
-}) {
-  return (
-    <section className="app-decision-flow" aria-label="次に見る場所">
-      <div className="app-decision-flow-head">
-        <span>次の一手</span>
-        <h2>候補を広げず、行く理由だけを確認</h2>
-        <p>ランキングを眺め続けるのではなく、候補を削ってから予定と名前だけ確認します。</p>
-      </div>
-      <div className="app-flow-steps">
-        <button type="button" onClick={onOpenStores}>
-          <span>1</span>
-          <strong>候補を残す</strong>
-          <small>女性反応・営業中・料金で3店以内にする</small>
-          <em>{savedCount}件保存</em>
-        </button>
-        <button type="button" onClick={onOpenCalendar}>
-          <span>2</span>
-          <strong>今日の予定を見る</strong>
-          <small>朝イベ・夜イベ・BINGO・誕生日だけ拾う</small>
-          <em>{eventScopeLabel} {eventCount}件</em>
-        </button>
-        <button type="button" onClick={onOpenWatch}>
-          <span>3</span>
-          <strong>名前を確認</strong>
-          <small>直近24時間の投稿者名だけを見る</small>
-          <em>{watchedCount}語</em>
-        </button>
-      </div>
-    </section>
-  )
-}
-
-function countCalendarEventsWithinDays(events: EventInput[], days: number) {
-  const startKey = dateKeyInJapan()
-  const endKey = dateKeyInJapan(relativeDateInJapan(days - 1))
-
-  return events.filter((event) => {
-    const dateLabel = event.date.trim()
-    if (dateLabel === '今日' || dateLabel === '明日') return true
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateLabel)) return false
-    return dateLabel >= startKey && dateLabel <= endKey
-  }).length
-}
-
 function eventMatchesToday(event: EventInput) {
   const todayKey = dateKeyInJapan()
   const dateLabel = event.date.trim()
@@ -1780,7 +1701,6 @@ function compactStoreLabel(name: string) {
     .replace(/^BAR\s+/, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 11)
 }
 
 function getDisplayAttentionCount(point?: StoreRadarPoint, ranking?: GenderPostRanking) {
@@ -2236,44 +2156,58 @@ function buildGenderPostRankings(records: PostRecord[], stores: StoreProfile[]):
 
 function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; rankings: GenderPostRanking[] }) {
   const rankingByStoreId = new Map(rankings.map((ranking) => [ranking.store.id, ranking]))
-  const visiblePoints = points.slice(0, 8)
+  const visiblePoints = points.slice(0, 6)
   const leader = visiblePoints[0]
-  const offsetPattern = [
-    [0, 0],
-    [-10, 8],
-    [10, 9],
-    [-12, -8],
-    [12, -9],
-    [-4, 14],
-    [4, -14],
-    [0, 18],
-  ]
-  const radarItems = visiblePoints.map((point, index) => {
+  const rawRadarItems = visiblePoints.map((point) => {
     const ranking = rankingByStoreId.get(point.store.id)
     const hasGenderSignal = Boolean(ranking?.signalTotal)
     const femaleRatio = hasGenderSignal ? ranking?.femaleRatio ?? 50 : 50
     const maleRatio = hasGenderSignal ? ranking?.maleRatio ?? 50 : 50
-    const x = Math.max(14, Math.min(84, femaleRatio))
-    const y = Math.max(12, Math.min(88, point.score))
+    const x = Math.max(20, Math.min(80, femaleRatio))
+    const y = Math.max(16, Math.min(84, point.score))
     const signalTotal = ranking?.signalTotal ?? 0
     const tone = !hasGenderSignal ? 'neutral' : femaleRatio >= 60 ? 'female' : maleRatio >= 60 ? 'male' : 'balanced'
     const size = Math.max(13, Math.min(24, 13 + Math.round(signalTotal / 2)))
-    const [offsetX = 0, offsetY = 0] = offsetPattern[index % offsetPattern.length] ?? []
 
     return {
       point,
       ranking,
+      x,
+      y,
       femaleRatio,
       maleRatio,
       signalTotal,
       tone,
       shortLabel: compactStoreLabel(point.store.name),
+      size,
+    }
+  })
+  const placedRadarPositions: Array<{ x: number; y: number }> = []
+  const radarItems = rawRadarItems.map((item) => {
+    let placedY = item.y
+    const yCandidates = [0, 9, -9, 18, -18, 27, -27]
+
+    for (const delta of yCandidates) {
+      const candidateY = Math.max(16, Math.min(84, item.y + delta))
+      const collides = placedRadarPositions.some((position) => {
+        return Math.abs(position.x - item.x) < 24 && Math.abs(position.y - candidateY) < 12
+      })
+      if (!collides) {
+        placedY = candidateY
+        break
+      }
+    }
+
+    placedRadarPositions.push({ x: item.x, y: placedY })
+
+    return {
+      ...item,
       style: {
-        insetInlineStart: `${x}%`,
-        insetBlockEnd: `${y}%`,
-        '--dot-size': `${size}px`,
-        '--dot-offset-x': `${offsetX}px`,
-        '--dot-offset-y': `${offsetY}px`,
+        insetInlineStart: `${item.x}%`,
+        insetBlockEnd: `${placedY}%`,
+        '--dot-size': `${item.size}px`,
+        '--score-level': `${item.point.score}%`,
+        '--female-level': `${item.femaleRatio}%`,
       } as CSSProperties,
     }
   })
@@ -2281,15 +2215,15 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
   const maleLeaningCount = radarItems.filter((item) => item.tone === 'male').length
   const balancedCount = radarItems.filter((item) => item.tone === 'balanced').length
   const strongCandidateCount = radarItems.filter((item) => item.femaleRatio >= 55 && item.point.score >= 70).length
-  const barItems = radarItems.slice(0, 8)
+  const barItems = radarItems
 
   return (
     <section className="gender-radar-card" aria-label="店舗別の盛り上がりと男女比率">
       <div className="gender-radar-head">
         <div>
           <span>候補マップ</span>
-          <h2>右上ほど、今日の候補として強い</h2>
-          <p>縦は盛り上がり、横は女性系ワード比率です。散らばりを見るための参考値で、実人数ではありません。</p>
+          <h2>店舗の位置を、名前つきで見る</h2>
+          <p>縦は営業分の盛り上がり、横は女性系ワード比率です。上位候補だけを表示し、詳細は右の一覧で確認します。</p>
         </div>
         <strong>{leader ? formatBarName(leader.store.name) : '観測中'}</strong>
       </div>
@@ -2337,7 +2271,10 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
               title={`${formatBarName(item.point.store.name)} / ${item.point.score}点 / 女性${item.femaleRatio}% 男性${item.maleRatio}%`}
             >
               <b>{index + 1}</b>
-              <small>{item.shortLabel}</small>
+              <span>
+                <small>{item.shortLabel}</small>
+                <em>{item.point.score}点 / 女性{item.femaleRatio}%</em>
+              </span>
             </span>
           ))}
         </div>

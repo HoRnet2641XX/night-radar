@@ -15,6 +15,7 @@ import {
   sortByRanking,
   storeDetailPath,
   type PublicDirectoryState,
+  type PublicStoreDetail,
   type PublicStoreSummary,
   type RankingKind,
 } from '@/lib/public-directory'
@@ -405,7 +406,7 @@ function DecisionLeaderCard({ summary }: { summary: PublicStoreSummary }) {
         <div className={styles.decisionTags}>
           <span>{summary.temperatureLabel}</span>
           <span>{summary.areaLabel}</span>
-          <span>{summary.sessionLabel}</span>
+          <span>{summary.dataConfidenceLabel}</span>
         </div>
       </div>
       <div className={styles.decisionGauge} aria-label={`スコア ${summary.point.score}`}>
@@ -415,16 +416,16 @@ function DecisionLeaderCard({ summary }: { summary: PublicStoreSummary }) {
       <PublicStoreRadar summary={summary} variant="leader" />
       <dl className={styles.decisionFacts}>
         <div>
+          <dt>当日投稿</dt>
+          <dd>{summary.recentPostCount}件</dd>
+        </div>
+        <div>
           <dt>直近3時間</dt>
           <dd>{summary.recentThreeHourCount}件</dd>
         </div>
         <div>
-          <dt>女性投稿</dt>
-          <dd>{summary.femalePostCount}件</dd>
-        </div>
-        <div>
-          <dt>更新</dt>
-          <dd>{summary.lastUpdatedLabel}</dd>
+          <dt>集計</dt>
+          <dd>{summary.dataConfidence}点</dd>
         </div>
         <div>
           <dt>料金</dt>
@@ -461,8 +462,8 @@ function DecisionMiniCard({ summary, rank }: { summary: PublicStoreSummary; rank
       </div>
       <dl>
         <div>
-          <dt>女性投稿</dt>
-          <dd>{summary.femalePostCount}件</dd>
+          <dt>当日投稿</dt>
+          <dd>{summary.recentPostCount}件</dd>
         </div>
         <div>
           <dt>更新</dt>
@@ -487,16 +488,16 @@ function DecisionListRow({ summary, rank }: { summary: PublicStoreSummary; rank:
       <PublicStoreRadar summary={summary} variant="row" />
       <dl>
         <div>
-          <dt>温度</dt>
-          <dd>{summary.point.score}</dd>
-        </div>
-        <div>
-          <dt>女性投稿</dt>
-          <dd>{summary.femalePostCount}件</dd>
+          <dt>当日投稿</dt>
+          <dd>{summary.recentPostCount}件</dd>
         </div>
         <div>
           <dt>直近</dt>
           <dd>{summary.recentThreeHourCount}件</dd>
+        </div>
+        <div>
+          <dt>集計</dt>
+          <dd>{summary.dataConfidence}点</dd>
         </div>
       </dl>
       <Link href={storeDetailPath(summary.store)}>確認</Link>
@@ -505,7 +506,7 @@ function DecisionListRow({ summary, rank }: { summary: PublicStoreSummary; rank:
 }
 
 export function PublicStoreCard({ summary, rank }: { summary: PublicStoreSummary; rank: number }) {
-  const upcomingEvent = summary.events[0]
+  const upcomingEvent = summary.nextEvent
 
   return (
     <article className={styles.storeCard}>
@@ -522,11 +523,11 @@ export function PublicStoreCard({ summary, rank }: { summary: PublicStoreSummary
         </div>
         <strong>{summary.point.score}</strong>
       </div>
-      <p className={styles.reasonText}>{summary.primaryReason}</p>
+      <p className={styles.reasonText}>{summary.insight.rankingReason}</p>
       <dl className={styles.storeFacts}>
         <div>
-          <dt>女性投稿</dt>
-          <dd>{summary.femalePostCount}件</dd>
+          <dt>当日投稿</dt>
+          <dd>{summary.recentPostCount}件</dd>
         </div>
         <div>
           <dt>直近3時間</dt>
@@ -543,13 +544,13 @@ export function PublicStoreCard({ summary, rank }: { summary: PublicStoreSummary
       </dl>
       <div className={styles.storeMetaRow}>
         <span>{summary.areaLabel}</span>
-        <span>{summary.sessionLabel}</span>
+        <span>{summary.businessWindowLabel}</span>
         {summary.todayEventCount ? <span>本日予定 {summary.todayEventCount}件</span> : null}
       </div>
       <div className={styles.preVisitLine} aria-label="行く前チェック">
         <span>{summary.priceLabel}</span>
         <span>{summary.stationLabel}</span>
-        <span>{summary.source?.lastStatus === 'ok' ? '取得良好' : summary.lastUpdatedLabel}</span>
+        <span>{summary.reliabilityLabel}</span>
       </div>
       {upcomingEvent ? (
         <p className={styles.eventTeaser}>
@@ -581,8 +582,8 @@ export function PublicStoreCard({ summary, rank }: { summary: PublicStoreSummary
 export function PublicDecisionGuide() {
   const items = [
     {
-      title: 'ランキングは人数そのものではありません',
-      body: '公開BBSの投稿、女性表記、更新鮮度、イベント情報を組み合わせた候補順です。最後は公式情報も確認してください。',
+      title: 'ランキングは当日の顧客投稿数です',
+      body: '日本時間の当日営業分で確認できた顧客投稿を、男女・性別未記載を含めて集計します。同数の場合のみ直近3時間の投稿数を比較します。',
     },
     {
       title: '地図だけで決めない',
@@ -651,16 +652,16 @@ export function RankingView({ kind, state }: { kind: RankingKind; state: PublicD
           </div>
           <dl>
             <div>
-              <dt>スコア</dt>
-              <dd>{leader.point.score}</dd>
+              <dt>当日投稿</dt>
+              <dd>{leader.recentPostCount}件</dd>
             </div>
             <div>
-              <dt>女性投稿</dt>
-              <dd>{leader.femalePostCount}件</dd>
+              <dt>直近3時間</dt>
+              <dd>{leader.recentThreeHourCount}件</dd>
             </div>
             <div>
-              <dt>女性率</dt>
-              <dd>{leader.womenRatio == null ? '観測中' : `${leader.womenRatio}%`}</dd>
+              <dt>集計信頼度</dt>
+              <dd>{leader.dataConfidence}点</dd>
             </div>
             <div>
               <dt>更新</dt>
@@ -675,9 +676,19 @@ export function RankingView({ kind, state }: { kind: RankingKind; state: PublicD
   )
 }
 
-export function StoreDetailView({ summary }: { summary: PublicStoreSummary }) {
-  const relatedEvents = summary.events.slice(0, 6)
-  const recentPosts = summary.normalizedPosts.slice(0, 5)
+export function StoreDetailView({ detail }: { detail: PublicStoreDetail }) {
+  const { summary } = detail
+  const todayKey = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(summary.insight.generatedAt))
+  const relatedEvents = detail.events
+    .filter((event) => event.date === '今日' || event.date >= todayKey)
+    .toSorted((left, right) => left.date.localeCompare(right.date) || left.startsAt.localeCompare(right.startsAt))
+    .slice(0, 6)
+  const recentPosts = detail.recentPosts.slice(0, 5)
 
   return (
     <>
@@ -729,7 +740,7 @@ export function StoreDetailView({ summary }: { summary: PublicStoreSummary }) {
         <div>
           <p className={styles.kicker}>店舗レーダー</p>
           <h2>男女比率と動きを同じ目盛りで見る</h2>
-          <p>円は女性率、縦グラフは熱量・直近投稿・24時間投稿・本日イベントを示します。</p>
+          <p>円は判定できた投稿の女性率、縦グラフは投稿温度・直近3時間・当日営業分・本日イベントを示します。</p>
         </div>
         <PublicStoreRadar summary={summary} variant="detail" />
       </section>
@@ -752,8 +763,8 @@ export function StoreDetailView({ summary }: { summary: PublicStoreSummary }) {
         </article>
         <article>
           <span>根拠</span>
-          <strong>女性 {summary.femalePostCount}件</strong>
-          <p>直近24時間の性別表記から集計。直近3時間は{summary.recentThreeHourCount}件です。</p>
+          <strong>当日投稿 {summary.recentPostCount}件</strong>
+          <p>{summary.businessWindowLabel}。直近3時間は{summary.recentThreeHourCount}件、{summary.dataConfidenceLabel}です。</p>
         </article>
       </section>
 
@@ -761,11 +772,14 @@ export function StoreDetailView({ summary }: { summary: PublicStoreSummary }) {
         <article>
           <h2>今日見る理由</h2>
           <ul>
-            <li>{summary.primaryReason}</li>
-            <li>女性書き込み: {summary.femalePostCount}件</li>
-            <li>女性率: {summary.womenRatio == null ? '観測中' : `${summary.womenRatio}%`}</li>
+            <li>{summary.insight.rankingReason}</li>
+            <li>女性書き込み: {summary.femalePostCount}件（順位には不使用）</li>
+            <li>女性率: {summary.womenRatio == null ? '母数不足' : `${summary.womenRatio}%`}</li>
             <li>本日のイベント: {summary.todayEventCount}件</li>
-            <li>最終更新: {summary.lastUpdatedLabel}</li>
+            <li>取得状態: {summary.reliabilityLabel} / 最終更新 {summary.lastUpdatedLabel}</li>
+            {summary.excludedUntimestampedCount > 0 ? (
+              <li>解析保留レコード: {summary.excludedUntimestampedCount}件（順位には不使用）</li>
+            ) : null}
           </ul>
         </article>
         <article>
@@ -786,7 +800,7 @@ export function StoreDetailView({ summary }: { summary: PublicStoreSummary }) {
       </section>
 
       <section className={styles.recentPostPanel}>
-        <h2>直近のBBS要約</h2>
+        <h2>当日ランキングに使ったBBS投稿</h2>
         {recentPosts.length ? (
           <div>
             {recentPosts.map((post) => (
@@ -855,7 +869,7 @@ function PublicStoreRadar({
         </span>
         <span>
           <i data-kind="day" />
-          <em>24h</em>
+          <em>営業分</em>
           <strong>{dayCount}</strong>
         </span>
         <span>
