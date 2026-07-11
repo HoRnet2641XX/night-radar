@@ -5,6 +5,7 @@ import { events as demoEvents, posts as demoPosts, stores as demoStores } from '
 import { formatBarName, formatStoreArea, formatStoreSessionLabel } from './display'
 import { mergeOfficialEvents } from './official-events'
 import { collectPagedRows } from './pagination'
+import { PUBLIC_DIRECTORY_CACHE_TAG } from './public-directory-cache'
 import { isStructurallyValidCustomerNormalizedPost } from './scoring'
 import { resolvedStoreArea, resolvedStoreMapUrl, resolvedStoreOfficialUrl } from './store-catalog'
 import { matchesStoreSearch } from './store-search'
@@ -396,31 +397,10 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
 
 const loadCachedPublicDirectoryState = unstable_cache(loadPublicDirectoryState, ['public-directory-state-compact-2026-07-11'], {
   revalidate: 60,
-  tags: ['public-directory-state'],
+  tags: [PUBLIC_DIRECTORY_CACHE_TAG],
 })
 
-let publicDirectoryMemoryCache: { state: PublicDirectoryState; expiresAt: number } | null = null
-let publicDirectoryPending: Promise<PublicDirectoryState> | null = null
-
-async function loadSharedPublicDirectoryState() {
-  const now = Date.now()
-  if (publicDirectoryMemoryCache && publicDirectoryMemoryCache.expiresAt > now) {
-    return publicDirectoryMemoryCache.state
-  }
-  if (publicDirectoryPending) return publicDirectoryPending
-
-  const pending = loadCachedPublicDirectoryState()
-  publicDirectoryPending = pending
-  try {
-    const state = await pending
-    publicDirectoryMemoryCache = { state, expiresAt: now + 60_000 }
-    return state
-  } finally {
-    if (publicDirectoryPending === pending) publicDirectoryPending = null
-  }
-}
-
-export const getPublicDirectoryState = cache(loadSharedPublicDirectoryState)
+export const getPublicDirectoryState = cache(loadCachedPublicDirectoryState)
 
 async function loadPublicStoreDetail(storeId: string): Promise<PublicStoreDetail | null> {
   const state = await getPublicDirectoryState()

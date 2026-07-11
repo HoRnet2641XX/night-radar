@@ -1,4 +1,6 @@
+import { revalidateTag } from 'next/cache'
 import { jsonError } from '@/lib/env'
+import { PUBLIC_DIRECTORY_CACHE_TAG } from '@/lib/public-directory-cache'
 import { crawlDueBbsSourcesForCron, RepositoryError } from '@/lib/server/repository'
 import type { CronCrawlOptions } from '@/lib/server/repository'
 
@@ -119,7 +121,9 @@ export async function GET(request: Request) {
 
   try {
     const startedAt = Date.now()
-    return Response.json(compactCronCrawlResult(await crawlDueBbsSourcesForCron(getCronCrawlOptions(request)), Date.now() - startedAt))
+    const result = await crawlDueBbsSourcesForCron(getCronCrawlOptions(request))
+    if (result.crawled > 0) revalidateTag(PUBLIC_DIRECTORY_CACHE_TAG, { expire: 0 })
+    return Response.json(compactCronCrawlResult(result, Date.now() - startedAt))
   } catch (error) {
     if (error instanceof RepositoryError && error.status === 503) {
       return Response.json({ mode: 'demo', checked: 0, crawled: 0, message: error.message })
