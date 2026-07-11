@@ -834,6 +834,35 @@ describe('BBS radar signals', () => {
     assert.equal(effective[0].id, 'normalized-np-overlap')
   })
 
+  it('deduplicates the same post when parser metadata changes between crawls', () => {
+    const base: BbsNormalizedPost = {
+      id: 'semantic-old',
+      sourceId: 'source-1',
+      storeId: 'filt-shibuya',
+      authorName: 'とみぃ（指定なし）',
+      authorGender: '記載なし',
+      postedAt: '2026-07-10T12:58:00.000Z',
+      observedAt: '2026-07-11T10:00:00.000Z',
+      body: 'こんばんは〜見学しに行きます',
+      bodyHash: 'old-hash',
+      contentKey: 'old-key',
+    }
+    const reparsed: BbsNormalizedPost = {
+      ...base,
+      id: 'semantic-new',
+      authorGender: '指定なし',
+      observedAt: '2026-07-11T10:25:00.000Z',
+      body: '[[NR_TARGET_DATE:2026-07-11]] こんばんは〜見学しに行きます',
+      bodyHash: 'new-hash',
+      contentKey: 'new-key',
+    }
+
+    const effective = buildEffectiveBbsPostRecords([], [reparsed, base])
+
+    assert.equal(effective.length, 1)
+    assert.equal(effective[0].id, 'normalized-semantic-new')
+  })
+
   it('detects watched female-focused signals', () => {
     const metrics = buildBbsSnapshotMetrics('女性 はじめて 2人組 😊 久しぶり')
 

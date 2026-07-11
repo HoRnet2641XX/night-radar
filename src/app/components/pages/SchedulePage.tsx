@@ -1,7 +1,8 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Calendar, TrendingUp, Search } from 'lucide-react';
 import { GlassCard } from '../ui-nr/GlassCard';
-import { EVENTS, RUNTIME_META, type CalendarEventItem } from '../data/mock';
+import { type CalendarEventItem } from '../data/mock';
+import { useNightRadarData } from '../data/runtime';
 import { DigitRoll } from '../ui-nr/DigitRoll';
 import { WordReveal, Stagger, StaggerItem } from '../ui-nr/Reveal';
 import { useMemo, useState } from 'react';
@@ -31,8 +32,9 @@ function matchesQuery(event: CalendarEventItem, query: string) {
 }
 
 export function SchedulePage() {
-  const [visibleMonth, setVisibleMonth] = useState(RUNTIME_META.currentMonth);
-  const [selected, setSelected] = useState<number | null>(Number(RUNTIME_META.todayKey.slice(-2)) || 1);
+  const { events, meta } = useNightRadarData();
+  const [visibleMonth, setVisibleMonth] = useState(meta.currentMonth);
+  const [selected, setSelected] = useState<number | null>(Number(meta.todayKey.slice(-2)) || 1);
   const [filter, setFilter] = useState('すべて');
   const [query, setQuery] = useState('');
   const [year, month] = visibleMonth.split('-').map(Number);
@@ -41,7 +43,7 @@ export function SchedulePage() {
   const cellCount = Math.ceil((firstOffset + daysInMonth) / 7) * 7;
   const cells = Array.from({ length: cellCount }, (_, i) => i - firstOffset + 1);
   const monthLabel = visibleMonth.replace('-', '.');
-  const monthEvents = useMemo(() => EVENTS.filter((event) => event.date.startsWith(visibleMonth)), [visibleMonth]);
+  const monthEvents = useMemo(() => events.filter((event) => event.date.startsWith(visibleMonth)), [events, visibleMonth]);
   const filteredEvents = useMemo(
     () => monthEvents.filter((event) => matchesFilter(event, filter) && matchesQuery(event, query)),
     [filter, monthEvents, query],
@@ -54,10 +56,10 @@ export function SchedulePage() {
 
   function moveMonth(delta: number) {
     const nextMonth = shiftMonth(visibleMonth, delta);
-    const isCurrentMonth = nextMonth === RUNTIME_META.currentMonth;
-    const firstEventDay = EVENTS.find((event) => event.date.startsWith(nextMonth))?.day;
+    const isCurrentMonth = nextMonth === meta.currentMonth;
+    const firstEventDay = events.find((event) => event.date.startsWith(nextMonth))?.day;
     setVisibleMonth(nextMonth);
-    setSelected(isCurrentMonth ? Number(RUNTIME_META.todayKey.slice(-2)) || 1 : firstEventDay ?? 1);
+    setSelected(isCurrentMonth ? Number(meta.todayKey.slice(-2)) || 1 : firstEventDay ?? 1);
   }
 
   return (

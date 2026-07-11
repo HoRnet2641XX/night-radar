@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { extractNormalizedBbsPostsFromText } from '../scoring'
-import { extractBbsPageContent, extractScarletCommentsPayload } from './bbs-content'
+import { extractBbsPageContent, extractNeoReaderContent, extractScarletCommentsPayload } from './bbs-content'
 
 test('normalizes WordPress comments into dated customer posts', () => {
   const page = extractBbsPageContent(
@@ -89,6 +89,62 @@ test('normalizes message cards with separate author metadata', () => {
   assert.equal(posts[0].postedAt, '2026-07-10T00:12:00.000Z')
 })
 
+test('normalizes Papillon cards from direct body and gender image', () => {
+  const page = extractBbsPageContent(
+    `<html><body><div class="main-comment message" id="message77672">
+      <p>夜遅くに伺います。</p>
+      <div class="name"><span class="user_name">櫻井</span><img src="/images/sex/man.png"><span>2026-07-11 17:24:16</span><a data-id="77672">編集</a></div>
+      <div class="reply-comment message"><p>お待ちしています。</p></div>
+    </div></body></html>`,
+    'https://bar-papillon.net/message',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-07-11T09:00:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].articleNo, '77672')
+  assert.equal(posts[0].authorName, '櫻井')
+  assert.equal(posts[0].authorGender, '男性')
+  assert.equal(posts[0].body, '夜遅くに伺います。')
+})
+
+test('normalizes Sango customer cards without edit forms or staff replies', () => {
+  const page = extractBbsPageContent(
+    `<html><body><article class="bbs-post" id="post-4158" data-post-id="4158">
+      <span class="post-author">投稿者: つる <span class="gender-icon gender-icon-male" aria-label="男"></span></span>
+      <span class="post-date">2026年07月11日 18:00</span>
+      <div class="post-content"><p>初めて伺います。よろしくお願いいたします。</p></div>
+      <form class="bbs-edit-form"><label>パスワードを入力</label></form>
+      <div class="bbs-reply"><span class="post-author">投稿者: 珊瑚</span><p>お待ちしています。</p></div>
+    </article></body></html>`,
+    'https://bar-sango.com/bbs/',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-07-11T09:10:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].articleNo, '4158')
+  assert.equal(posts[0].authorName, 'つる')
+  assert.equal(posts[0].authorGender, '男性')
+  assert.equal(posts[0].body, '初めて伺います。よろしくお願いいたします。')
+})
+
+test('normalizes Neo reader threads into stable customer posts with target dates', () => {
+  const text = [
+    'Neo さん (9ei1b31j)NEW 2026/7/10 15:33 (No.154242)削除 Neo 7/11(土) 営業時間 昼の部：12:00-18:00 夜の部：18:00-05:00',
+    'し しらたま さん (9woghdlq)NEW 2026/7/10 17:08 削除 お昼から行きます！',
+    'ゆ ゆ♀さん (9yw8exs1)2026/7/11 09:06 削除 夕方に伺います🍻 返信',
+    'Neo さん (9ei1b31j)2026/7/11 00:13 (No.154362)削除 7/12(日)Neo 営業時間 12:00-20:00',
+    'デ デカ さん (9h5mralq)2026/7/11 05:49 削除 日曜日遊びいきます 返信',
+  ].join(' ')
+  const normalized = extractNormalizedBbsPostsFromText(extractNeoReaderContent(text), '2026-07-11T09:10:00.000Z')
+
+  assert.equal(normalized.length, 3)
+  assert.equal(normalized[0].authorName, 'しらたま')
+  assert.equal(normalized[0].articleNo, 'neo-9woghdlq-20267101708')
+  assert.match(normalized[0].body, /^\[\[NR_TARGET_DATE:2026-07-11\]\]/)
+  assert.equal(normalized[1].authorGender, '女性')
+  assert.match(normalized[2].body, /^\[\[NR_TARGET_DATE:2026-07-12\]\]/)
+})
+
 test('normalizes dated article cards', () => {
   const page = extractBbsPageContent(
     `<html><body><main>新規です。 2026/07/09 10:58:08 ［記事No：10013］投稿者：ゆーすけ 男性
@@ -168,6 +224,26 @@ test('normalizes legacy Rara thread replies and excludes Zeus staff', () => {
   assert.equal(posts[0].authorName, '尋〜Hiro〜👩')
   assert.equal(posts[0].postedAt, '2026-07-09T14:03:00.000Z')
   assert.equal(posts[0].body, '伺います。')
+})
+
+test('normalizes Z-Z board thread posts used by collabo', () => {
+  const page = extractBbsPageContent(
+    `<html><head><title>7/11(土) 来店予告</title></head><body><main><div class="com">
+      <div class="name"><span class="namecolor"><span class="no">1</span> みちお</span></div>
+      <div class="stat">♂</div><div class="texts">本日、お伺いします。</div>
+      <div class="time"><time datetime="2026-07-11T12:09">7/11(Sat)12:09</time></div>
+      <div class="edit"><a href="del1.cgi?id=collabo123&amp;no=12090858">削除</a></div>
+    </div></main></body></html>`,
+    'https://m.z-z.jp/thbbs.cgi?id=collabo123&th=5606',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-07-11T04:00:00.000Z')
+
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].articleNo, '12090858')
+  assert.equal(posts[0].authorName, 'みちお')
+  assert.equal(posts[0].authorGender, '男性')
+  assert.equal(posts[0].postedAt, '2026-07-11T03:09:00.000Z')
+  assert.match(posts[0].body, /^\[\[NR_TARGET_DATE:2026-07-11\]\]/)
 })
 
 test('normalizes Scarlet API comments and excludes staff auto replies', () => {

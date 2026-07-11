@@ -137,7 +137,7 @@ function withDailyInsights(input: DashboardState, events = input.events): Dashbo
   return { ...input, events, posts: dataset.effectivePosts, dailyInsights: dataset.insights }
 }
 
-test('adapter maps current business-window data without reservation placeholders', () => {
+test('adapter maps current decision-date data without reservation placeholders', () => {
   const result = adaptDashboardToBars(withDailyInsights(state), [event])
   const bar = result.bars[0]
 
@@ -158,14 +158,21 @@ test('adapter maps current business-window data without reservation placeholders
   assert.equal(bar.firstVisitCount, 1)
   assert.equal(bar.groupCount, 1)
   assert.equal(bar.eventCount, 1)
+  assert.equal(bar.vibe, 2)
+  assert.equal(bar.crowd, 20)
+  assert.equal(bar.music, 25)
   assert.equal(bar.signalCount, 1)
   assert.equal(bar.reliability, 'fresh')
   assert.ok(bar.score <= 100)
   assert.equal(Object.hasOwn(bar, 'liveSeats'), false)
   assert.equal(result.events[0].tag, 'BINGO')
+  assert.ok(bar.searchKeywords.includes(store.name))
+  assert.ok(bar.searchKeywords.includes(event.title))
+  assert.match(bar.mapUrl ?? '', /google\.com\/maps\/search/)
+  assert.equal(bar.officialUrl, 'https://example.com/')
 })
 
-test('adapter ranks by all current business-window posts before female count', () => {
+test('adapter ranks by all current decision-date posts before female count', () => {
   const activeStore: StoreProfile = { ...store, id: 'store-2', name: 'BAR TOTAL' }
   const activePosts: BbsNormalizedPost[] = [0, 1, 2].map((index) => ({
     id: `total-${index}`,
@@ -219,7 +226,7 @@ test('adapter excludes posts whose original writing time could not be parsed', (
 
   assert.equal(result.meta.postCount, 2)
   assert.equal(result.bars[0].femaleCount, 1)
-  assert.equal(result.bars[0].timestampCoverage, 75)
+  assert.equal(result.bars[0].timestampCoverage, 67)
 })
 
 test('adapter does not assign confidence without a source or measured posts', () => {

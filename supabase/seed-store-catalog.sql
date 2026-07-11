@@ -84,7 +84,7 @@ insert into public.bbs_sources (
   ('ogikubo-himitsu-club-bbs', 'ogikubo-himitsu-club', 'BBS', 'https://ogikubo0620.com/forums/forum/bbs/', 'auto', true, 5, 'pending'),
   ('club-zeus-bbs', 'club-zeus', 'BBS', 'https://rara.jp/zeus/', 'auto', true, 5, 'pending'),
   ('land-land-bbs', 'land-land', 'BBS', 'https://land2021.com/bbs2/', 'auto', true, 5, 'pending'),
-  ('collabo-bbs', 'collabo', 'BBS', 'https://www.collabo7.com/p/7/', 'auto', true, 5, 'pending'),
+  ('collabo-bbs', 'collabo', 'BBS', 'https://m.z-z.jp/?collabo123', 'auto', true, 5, 'pending'),
   ('neo-bbs', 'neo', 'BBS', 'https://neo-bbs.com/', 'auto', true, 5, 'pending'),
   ('communicationbar-sango-bbs', 'communicationbar-sango', 'BBS', 'https://bar-sango.com/bbs/', 'auto', true, 5, 'pending'),
   ('silent-moon-bbs', 'secret-bar-silent-moon', 'BBS', 'https://www.silent-moon.net/jp/silentmoon-bbs.php', 'auto', true, 5, 'pending')

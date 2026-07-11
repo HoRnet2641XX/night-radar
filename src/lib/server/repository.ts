@@ -5,11 +5,13 @@ import { events as demoEvents, posts as demoPosts, stores as demoStores, storeSi
 import { highestAudienceForPlan, normalizePlan, planLimitMessage, planLimits, planRank } from '../plans'
 import { collectPagedRows } from '../pagination'
 import { mergeOfficialEvents } from '../official-events'
+import { resolvedStoreArea } from '../store-catalog'
 import {
   buildSearchableBbsRecords,
   extractNormalizedBbsPostsFromText,
-  filterPostsForStoreBusinessWindows,
-  isLikelyCustomerNormalizedPost,
+  filterPostsWithinHours,
+  isStructurallyValidCustomerNormalizedPost,
+  normalizedBbsPostIdentityMaterial,
   scoreEvents,
   searchExactBbsTerms,
 } from '../scoring'
@@ -209,10 +211,11 @@ function stringArrayField(row: DbRow, key: string) {
 }
 
 function toStore(row: DbRow): StoreProfile {
+  const id = stringField(row, 'id')
   return {
-    id: stringField(row, 'id'),
+    id,
     name: stringField(row, 'name'),
-    area: stringField(row, 'area', '未設定'),
+    area: resolvedStoreArea(id, stringField(row, 'area', '未設定')),
     address: optionalStringField(row, 'address'),
     nearestStation: optionalStringField(row, 'nearest_station'),
     phone: optionalStringField(row, 'phone'),
@@ -392,15 +395,18 @@ function toBbsNormalizedPost(row: DbRow): BbsNormalizedPost {
 function normalizedPostContentKey(input: {
   articleNo?: string
   authorName: string
-  authorGender: string
+  postedAt?: string
   body: string
 }) {
   const articleNo = input.articleNo?.trim()
   if (articleNo) return `article:${articleNo}`
 
-  const authorName = input.authorName.replace(/\s+/g, ' ').trim() || '記載なし'
-  const authorGender = input.authorGender.replace(/\s+/g, '').trim() || '記載なし'
-  return `body:${bodyHash([authorName, authorGender, input.body].join('|'))}`
+  return `body:${bodyHash(normalizedBbsPostIdentityMaterial({
+    articleNo: undefined,
+    authorName: input.authorName,
+    postedAt: input.postedAt,
+    body: input.body,
+  }))}`
 }
 
 function toBbsNormalizedPostRow(input: {
@@ -428,7 +434,7 @@ function toBbsNormalizedPostRow(input: {
     content_key: normalizedPostContentKey({
       articleNo: articleNo ?? undefined,
       authorName,
-      authorGender,
+      postedAt: input.post.postedAt,
       body,
     }),
   }
@@ -857,6 +863,16 @@ async function savePostRow(supabase: DataClient, input: Partial<PostRecord>) {
   if (duplicate) return toPost(duplicate)
 
   const { data, error } = await supabase.from('posts').insert(row).select('*').single()
+  if (error?.code === '23505') {
+    const { data: concurrentDuplicate, error: concurrentLookupError } = await supabase
+      .from('posts')
+      .select('*')
+      .eq('store_id', row.store_id)
+      .eq('body_hash', row.body_hash)
+      .maybeSingle()
+    if (concurrentLookupError) throw new RepositoryError(concurrentLookupError.message, 400)
+    if (concurrentDuplicate) return toPost(concurrentDuplicate)
+  }
   if (error) throw new RepositoryError(error.message, 400)
   return toPost(data)
 }
@@ -871,7 +887,7 @@ async function saveNormalizedBbsPostsFromText(
   if (!posts.length) return []
 
   const rows = posts
-    .filter((post) => isLikelyCustomerNormalizedPost({ ...post, storeId: source.storeId }))
+    .filter((post) => isStructurallyValidCustomerNormalizedPost({ ...post, storeId: source.storeId }))
     .map((post) => toBbsNormalizedPostRow({ source, observedAt, post }))
   if (!rows.length) return []
   const { data, error } = await supabase
@@ -1231,7 +1247,7 @@ export async function saveAndSearchExactTerms(exactTerms: ExactTermState, fallba
 
   const state = await getDashboardState()
   const searchableRecords = buildSearchableBbsRecords(state.posts, state.bbsSnapshots)
-  const recentRecords = filterPostsForStoreBusinessWindows(searchableRecords, state.stores, state.setupStatus.generatedAt, state.bbsSnapshots)
+  const recentRecords = filterPostsWithinHours(searchableRecords, state.setupStatus.generatedAt, 24)
   const matches = searchExactBbsTerms(recentRecords, state.stores, groups)
   const persistableMatches = matches.filter((match) => !match.post.id.startsWith('snapshot-'))
   if (persistableMatches.length) {

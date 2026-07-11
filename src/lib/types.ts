@@ -190,7 +190,7 @@ export type StoreDailyInsight = {
   weekendEventCount: number
   heatScore: number
   rank: number
-  rankingBasis: 'business_customer_posts'
+  rankingBasis: 'decision_date_customer_posts'
   rankingReason: string
   reliability: StoreDataReliability
   reliabilityLabel: string

@@ -1,4 +1,5 @@
 import { formatBarName, formatStoreArea, formatStoreSessionLabel } from '@/lib/display'
+import { resolvedStoreMapUrl, resolvedStoreOfficialUrl } from '@/lib/store-catalog'
 import type { DashboardState, EventInput, StoreDailyInsight, StoreProfile } from '@/lib/types'
 import type { Bar, CalendarEventItem, RuntimeMeta } from './mock'
 
@@ -49,6 +50,7 @@ function priceNumber(store: StoreProfile) {
 
 function toBar(
   insight: StoreDailyInsight,
+  todayEvents: EventInput[] = [],
 ): Bar {
   const point = insight.point
   const store = point.store
@@ -73,11 +75,15 @@ function toBar(
   const dataConfidence = insight.dataConfidence
   const dataConfidenceLabel = insight.dataConfidenceLabel
   const businessStatusLabel = insight.isOpenNow ? '営業時間内' : '営業時間外'
+  const area = formatStoreArea(store.area)
+  const formattedName = formatBarName(store.name)
+  const officialUrl = resolvedStoreOfficialUrl(store, source?.url)
+  const mapUrl = resolvedStoreMapUrl(store)
 
   return {
     id: store.id,
-    name: formatBarName(store.name),
-    area: formatStoreArea(store.area),
+    name: formattedName,
+    area,
     tags: [
       businessStatusLabel,
       dataConfidenceLabel,
@@ -85,10 +91,23 @@ function toBar(
       storeActivity.recentThreeHourCount > 0 ? `直近3時間 ${storeActivity.recentThreeHourCount}件` : '',
       eventCount > 0 ? `予定 ${eventCount}件` : '',
     ].filter(Boolean),
+    searchKeywords: [
+      store.name,
+      formattedName,
+      area,
+      store.address,
+      store.nearestStation,
+      store.priceNote,
+      store.prStructure,
+      ...store.tags,
+      ...store.strongDays,
+      ...store.strongEvents,
+      ...todayEvents.map((event) => event.title),
+    ].filter((value): value is string => Boolean(value?.trim())),
     price: priceNumber(store),
-    vibe: clamp((Math.log1p(postCount) / Math.log1p(160)) * 100),
-    crowd: clamp((Math.log1p(storeActivity.recentThreeHourCount) / Math.log1p(12)) * 100),
-    music: eventCount ? clamp(45 + eventCount * 15) : 0,
+    vibe: clamp(postCount),
+    crowd: clamp(storeActivity.recentThreeHourCount * 10),
+    music: clamp(eventCount * 25),
     service: dataConfidence,
     drinks: femaleRatio ?? 0,
     score: clamp(point.score),
@@ -96,16 +115,16 @@ function toBar(
     hourly: hourly.hourly,
     hourLabels: hourly.hourLabels,
     note:
-      `当日営業分の顧客投稿${postCount}件。時刻解析率${storeActivity.timestampCoverage}%、性別判定率${storeActivity.genderCoverage}%です。` +
+      `当日顧客投稿${postCount}件。時刻解析率${storeActivity.timestampCoverage}%、性別判定率${storeActivity.genderCoverage}%です。` +
       (insight.excludedUntimestampedCount > 0
         ? ` 解析保留レコード${insight.excludedUntimestampedCount}件は順位に使用していません。`
         : ''),
     signalCount,
     reason: insight.rankingReason,
     peakHour: hourly.peakHour,
-    officialUrl: store.officialUrl,
+    officialUrl,
     bbsUrl: source?.url,
-    mapUrl: store.mapUrl,
+    mapUrl,
     phone: store.phone,
     priceNote: store.priceNote,
     sessionLabel: formatStoreSessionLabel(store),
@@ -137,7 +156,7 @@ function toBar(
     reliability,
     reliabilityLabel,
     rank: insight.rank,
-    rankingBasisLabel: '当日営業分の顧客投稿数',
+    rankingBasisLabel: '当日顧客投稿数',
     excludedUntimestampedCount: insight.excludedUntimestampedCount,
     genderUnknownCount: Math.max(0, postCount - storeActivity.genderSampleCount),
   }
@@ -187,7 +206,9 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
   const generatedAt = state.setupStatus.generatedAt || new Date().toISOString()
   const todayKey = japanDateKey(generatedAt)
   const sourceEvents = calendarEvents.length ? calendarEvents : state.events
-  const bars = state.dailyInsights.map(toBar).toSorted((left, right) => left.rank - right.rank)
+  const bars = state.dailyInsights
+    .map((insight) => toBar(insight, sourceEvents.filter((event) => event.storeId === insight.store.id && event.date === todayKey)))
+    .toSorted((left, right) => left.rank - right.rank)
   const events = sourceEvents
     .map((event) => toCalendarEvent(event, state.stores))
     .toSorted((left, right) => left.date.localeCompare(right.date) || (left.startsAt ?? '').localeCompare(right.startsAt ?? ''))
@@ -223,7 +244,7 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
       highConfidenceCount: bars.filter((bar) => bar.dataConfidence >= 80).length,
       normalizedCoverageAverage,
       timestampCoverageAverage,
-      rankingMetricLabel: '当日営業分の顧客投稿数',
+      rankingMetricLabel: '当日顧客投稿数',
       businessWindowSummary: bars[0]?.businessWindowLabel ?? '営業時間を確認中',
       excludedUntimestampedCount: bars.reduce((sum, bar) => sum + bar.excludedUntimestampedCount, 0),
       bookmarkCount: state.wordBookmarks.length,
@@ -232,7 +253,7 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
       modeLabel: modeLabel(state.mode),
       userDisplayName: state.userDisplayName?.trim() || state.userEmail?.split('@')[0] || 'Night Radar ユーザー',
       userEmail: state.userEmail,
-      summary: `当日営業分 ${bars.reduce((sum, bar) => sum + bar.postCount, 0)}件 / 直近3時間 ${recentThreeHourCount}件 / 時刻解析率 ${timestampCoverageAverage}%`,
+      summary: `当日顧客投稿 ${bars.reduce((sum, bar) => sum + bar.postCount, 0)}件 / 直近3時間 ${recentThreeHourCount}件 / 時刻解析率 ${timestampCoverageAverage}%`,
     },
   }
 }

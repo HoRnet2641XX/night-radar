@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { sortByRanking, type PublicStoreSummary } from './public-directory'
+import { filterPublicStores, publicConditions, sortByRanking, type PublicStoreSummary } from './public-directory'
+import { resolvedStoreArea } from './store-catalog'
 
 function storeSummary(input: {
   id: string
@@ -77,4 +78,37 @@ test('event ranking keeps event availability before daily post count', () => {
   )
 
   assert.equal(ranked[0].store.id, 'event-store')
+})
+
+test('public store search ignores width and whitespace and includes event titles', () => {
+  const retreat = storeSummary({ id: 'retreat-bar', score: 70, femalePostCount: 2, recentPostCount: 5 })
+  retreat.store.name = 'RETREAT BAR'
+  retreat.areaLabel = '新宿'
+  retreat.nextEvent = {
+    id: 'event-1',
+    storeId: retreat.store.id,
+    date: '2026-07-11',
+    weekday: '土',
+    startsAt: '19:00',
+    session: 'night',
+    category: 'イベント',
+    title: 'ＢＩＮＧＯナイト',
+  }
+
+  assert.deepEqual(filterPublicStores([retreat], { query: 'retreatbar' }).map((item) => item.store.id), ['retreat-bar'])
+  assert.deepEqual(filterPublicStores([retreat], { query: 'bingo ナイト' }).map((item) => item.store.id), ['retreat-bar'])
+})
+
+test('store area fallback never exposes generic seed values as verified locations', () => {
+  assert.equal(resolvedStoreArea('retreat-bar', '都内'), '新宿')
+  assert.equal(resolvedStoreArea('unknown-store', '未設定'), 'エリア未確認')
+})
+
+test('area filters include district labels and do not expose conditions without data', () => {
+  const bar440 = storeSummary({ id: 'bar440', score: 60, femalePostCount: 1, recentPostCount: 5 })
+  bar440.areaLabel = '新宿・歌舞伎町'
+
+  assert.deepEqual(filterPublicStores([bar440], { area: 'shinjuku' }).map((item) => item.store.id), ['bar440'])
+  assert.deepEqual(filterPublicStores([bar440], { area: 'tokyo' }).map((item) => item.store.id), ['bar440'])
+  assert.equal(publicConditions.some((condition) => condition.key === 'price'), false)
 })

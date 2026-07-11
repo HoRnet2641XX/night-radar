@@ -6,6 +6,7 @@ export type Bar = {
   name: string
   area: string
   tags: string[]
+  searchKeywords: string[]
   price: number
   vibe: number
   crowd: number
@@ -110,6 +111,7 @@ const fallbackBars: Bar[] = [
     name: 'bar RETREAT BAR',
     area: '都内',
     tags: ['データ接続待ち', '営業時間確認'],
+    searchKeywords: ['RETREAT BAR', '都内'],
     price: 0,
     vibe: 0,
     crowd: 0,
@@ -120,7 +122,7 @@ const fallbackBars: Bar[] = [
     trend: emptyTrend,
     hourly: emptyTrend,
     hourLabels: emptyHours,
-    note: 'BBSを取得すると、営業分の投稿件数、女性書き込み、直近3時間の投稿が反映されます。',
+    note: 'BBSを取得すると、当日顧客投稿、女性書き込み、直近3時間の投稿が反映されます。',
     signalCount: 0,
     reason: '現在はデータ接続を確認しています。',
     peakHour: '確認中',
@@ -149,23 +151,23 @@ const fallbackBars: Bar[] = [
     snapshotCount: 0,
     reliability: 'unknown',
     reliabilityLabel: '未確認',
-    rankingBasisLabel: '当日営業分の顧客投稿数',
+    rankingBasisLabel: '当日顧客投稿数',
     excludedUntimestampedCount: 0,
     genderUnknownCount: 0,
   },
 ]
 
-export let BARS: Bar[] = fallbackBars
-export let EVENTS: CalendarEventItem[] = []
-export let TICKER: { name: string; signal: number; area: string }[] = tickerFromBars(fallbackBars)
-export let RUNTIME_META: RuntimeMeta = createFallbackMeta()
+export const BARS: Bar[] = fallbackBars
+export const EVENTS: CalendarEventItem[] = []
+export const TICKER: { name: string; signal: number; area: string }[] = tickerFromBars(fallbackBars)
+export const RUNTIME_META: RuntimeMeta = createFallbackMeta()
 
 export const RADAR_KEYS = [
-  { key: 'vibe', label: '営業分投稿' },
+  { key: 'vibe', label: '当日投稿量' },
   { key: 'drinks', label: '女性比率' },
   { key: 'service', label: '集計信頼度' },
-  { key: 'music', label: '今日の予定' },
-  { key: 'crowd', label: '直近3時間' },
+  { key: 'music', label: '予定件数' },
+  { key: 'crowd', label: '直近投稿' },
 ] as const
 
 function createFallbackMeta(): RuntimeMeta {
@@ -194,7 +196,7 @@ function createFallbackMeta(): RuntimeMeta {
     highConfidenceCount: 0,
     normalizedCoverageAverage: 0,
     timestampCoverageAverage: 0,
-    rankingMetricLabel: '当日営業分の顧客投稿数',
+    rankingMetricLabel: '当日顧客投稿数',
     businessWindowSummary: '営業時間を確認中',
     excludedUntimestampedCount: 0,
     bookmarkCount: 0,
@@ -214,9 +216,4 @@ function tickerFromBars(bars: Bar[]) {
   }))
 }
 
-export function setNightRadarRuntimeData(nextBars: Bar[], nextEvents: CalendarEventItem[], meta: RuntimeMeta) {
-  BARS = nextBars
-  EVENTS = nextEvents
-  TICKER = tickerFromBars(nextBars)
-  RUNTIME_META = meta
-}
+export { tickerFromBars }

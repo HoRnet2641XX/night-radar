@@ -1017,7 +1017,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
 
         {view === 'capture' && (
           <section className="view-stack">
-            <ViewIntro eyebrow="探す" title="条件を絞って候補を決める" body="今日の営業分の女性書き込み順を起点に、行く余地がある店舗だけを残します。" />
+            <ViewIntro eyebrow="探す" title="条件を絞って候補を決める" body="当日顧客投稿の女性書き込みを起点に、条件に合う店舗だけを残します。" />
 
             <StoreDiscoveryPanel
               allPoints={storeRadar}
@@ -1624,7 +1624,7 @@ function DecisionStoreCard({
           </dl>
           <dl className="decision-signal-grid" aria-label="観測値">
             <div className="is-main">
-              <dt>営業分投稿</dt>
+              <dt>当日顧客投稿</dt>
               <dd>{attentionCount}<small>件</small></dd>
             </div>
             <div>
@@ -1819,7 +1819,7 @@ function buildStoreDecisionReason(
       ? `女性書き込み ${ranking.femaleSignals}件`
       : '女性反応は蓄積中'
   const eventText = todayEventCount ? `今日の予定 ${todayEventCount}件` : '今日の予定なし'
-  return `${eventText} / 営業分投稿 ${attentionCount}件 / ${femaleText} / ${sourceReliabilityLabel(source)}`
+  return `${eventText} / 当日顧客投稿 ${attentionCount}件 / ${femaleText} / ${sourceReliabilityLabel(source)}`
 }
 
 function storeSkipScore(point: StoreRadarPoint, ranking?: GenderPostRanking, source?: BbsSource, eventCount = 0) {
@@ -2009,7 +2009,7 @@ function StoreInlineRadar({
           <dd>{hasGenderSignal ? `${maleRatio}%` : '--'}</dd>
         </div>
         <div>
-          <dt>営業分投稿</dt>
+          <dt>当日顧客投稿</dt>
           <dd>{attentionCount || 0}</dd>
         </div>
       </dl>
@@ -2223,7 +2223,7 @@ function StoreGenderRadar({ points, rankings }: { points: StoreRadarPoint[]; ran
         <div>
           <span>候補マップ</span>
           <h2>店舗の位置を、名前つきで見る</h2>
-          <p>縦は営業分の盛り上がり、横は女性系ワード比率です。上位候補だけを表示し、詳細は右の一覧で確認します。</p>
+          <p>縦は当日顧客投稿の量、横は女性系ワード比率です。上位候補だけを表示し、詳細は右の一覧で確認します。</p>
         </div>
         <strong>{leader ? formatBarName(leader.store.name) : '観測中'}</strong>
       </div>

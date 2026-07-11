@@ -1,5 +1,5 @@
 import type { PostRecord, ScrapeResult } from '../types'
-import { extractBbsPageContent, extractScarletCommentsPayload } from './bbs-content'
+import { extractBbsPageContent, extractNeoReaderContent, extractScarletCommentsPayload } from './bbs-content'
 
 const blockedHostPatterns = [
   /^localhost$/i,
@@ -75,7 +75,11 @@ async function scrapeReadableTextViaReader(url: URL): Promise<ScrapeResult | nul
     const text = await response.text()
     const title = text.match(/^Title:\s*(.+)$/m)?.[1]?.trim() ?? ''
     const content = text.split(/Markdown Content:\s*/).at(1) ?? text
-    const extractedText = compactText(content)
+    const compactContent = compactText(content)
+    const canonicalContent = url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com')
+      ? extractNeoReaderContent(compactContent)
+      : ''
+    const extractedText = [canonicalContent, compactContent].filter(Boolean).join('\n')
     if (extractedText.length < 80) return null
 
     return {
@@ -146,6 +150,17 @@ function compactText(value: string) {
   return value.replace(/\s+/g, ' ').trim()
 }
 
+async function readHtmlResponse(response: Response) {
+  const buffer = await response.arrayBuffer()
+  const probe = new TextDecoder('latin1').decode(buffer.slice(0, 4096))
+  const declaredCharset =
+    response.headers.get('content-type')?.match(/charset=([^;\s]+)/i)?.[1] ||
+    probe.match(/charset=["']?([^"'\s;>]+)/i)?.[1] ||
+    'utf-8'
+  const charset = /shift[_-]?jis|sjis|windows-31j/i.test(declaredCharset) ? 'shift_jis' : 'utf-8'
+  return new TextDecoder(charset).decode(buffer)
+}
+
 function japanDateLabel(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo',
@@ -192,7 +207,7 @@ async function fetchSupplementalText(urlValue: string) {
     })
     const contentType = response.headers.get('content-type') ?? ''
     if (!response.ok || !contentType.includes('text/html')) return ''
-    const html = (await response.text()).slice(0, 500_000)
+    const html = (await readHtmlResponse(response)).slice(0, 500_000)
     return extractBbsPageContent(html, response.url || url.toString()).extractedText
   } catch {
     return ''
@@ -264,7 +279,7 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
         break
       }
 
-      const html = (await response.text()).slice(0, 500_000)
+      const html = (await readHtmlResponse(response)).slice(0, 500_000)
       const page = extractBbsPageContent(html, response.url || url.toString())
       const [knownHostPosts, supplementalTexts] = await Promise.all([
         fetchKnownHostPosts(url),

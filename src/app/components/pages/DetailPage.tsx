@@ -5,7 +5,8 @@ import { RadarChart } from '../ui-nr/RadarChart';
 import { Sparkline } from '../ui-nr/Sparkline';
 import { DigitRoll } from '../ui-nr/DigitRoll';
 import { WordReveal, Stagger, StaggerItem } from '../ui-nr/Reveal';
-import { BARS, RADAR_KEYS, type Bar } from '../data/mock';
+import { RADAR_KEYS, type Bar } from '../data/mock';
+import { useNightRadarData } from '../data/runtime';
 
 const ease = [0.22, 1, 0.36, 1] as const;
 type BarMetricKey = Extract<keyof Bar, 'vibe' | 'drinks' | 'service' | 'music' | 'crowd'>;
@@ -16,15 +17,16 @@ const detailMetrics: Array<{
   hint: string;
   unit: string;
 }> = [
-  { k: 'vibe', label: '当日営業分', color: 'var(--nr-accent-2)', hint: '対象の営業時間帯に確認できた顧客投稿', unit: '件' },
+  { k: 'vibe', label: '当日顧客投稿', color: 'var(--nr-accent-2)', hint: '今日の来店日として判定した顧客投稿', unit: '件' },
   { k: 'drinks', label: '女性書き込み', color: 'var(--nr-accent)', hint: '投稿者の性別を判定できた投稿から集計', unit: '件' },
-  { k: 'service', label: '集計信頼度', color: 'var(--nr-accent-soft)', hint: '取得鮮度・正規化・投稿時刻・件数から算出', unit: '%' },
+  { k: 'service', label: '集計信頼度', color: 'var(--nr-accent-soft)', hint: '取得鮮度・正規化・投稿時刻・件数から算出', unit: '点' },
   { k: 'music', label: '今日の予定', color: 'var(--nr-accent-deep)', hint: '当日の登録イベント', unit: '件' },
   { k: 'crowd', label: '直近3時間', color: 'var(--nr-accent)', hint: '現在時刻から3時間以内の投稿', unit: '件' },
 ];
 
 export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) => void }) {
-  const bar = BARS.find(b => b.id === id) ?? BARS[0];
+  const { bars } = useNightRadarData();
+  const bar = bars.find(b => b.id === id) ?? bars[0];
   if (!bar) {
     return <GlassCard className="p-6 nr-hairline">表示できる店舗データがありません。</GlassCard>;
   }
@@ -33,7 +35,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
     return v;
   });
   const radarLabels = RADAR_KEYS.map(k => k.label);
-  const others = BARS
+  const others = bars
     .filter(b => b.id !== bar.id)
     .toSorted((left, right) => left.rank - right.rank)
     .slice(0, 5);
@@ -76,7 +78,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           className="flex flex-col items-start lg:items-end gap-2"
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.4 }}
         >
-          <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>当日営業分の顧客投稿</span>
+          <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>当日顧客投稿</span>
           <div className="nr-heading text-[56px] sm:text-[64px] leading-none" style={{ color: 'var(--nr-accent)' }}>
             <DigitRoll value={`${bar.postCount}件`} delay={0.55} />
           </div>
@@ -118,11 +120,11 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
       {/* Radar + Metric grid */}
       <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-4">
         <GlassCard className="p-6 flex flex-col items-center relative overflow-hidden nr-hairline">
-          <div className="nr-mono text-[12px] mb-2" style={{ color: 'var(--nr-text-mid)' }}>店舗データ · 5項目</div>
+          <div className="nr-mono text-[12px] mb-2" style={{ color: 'var(--nr-text-mid)' }}>店舗比較指数 · 0〜100</div>
           <RadarChart values={radarValues} labels={radarLabels} size={340} color="var(--nr-accent)" />
           <div className="flex items-center gap-2 mt-2 nr-mono text-[10px]">
             <span className="w-2 h-2 rounded-full" style={{ background: 'var(--nr-accent)' }} />
-            <span style={{ color: 'var(--nr-text-mid)' }}>当日営業分</span>
+            <span style={{ color: 'var(--nr-text-mid)' }}>投稿100件・直近10件・予定4件を上限100で換算</span>
             <span className="w-2 h-2 rounded-full ml-4" style={{ background: 'rgba(255,255,255,0.2)' }} />
             <span style={{ color: 'var(--nr-text-mid)' }}>{bar.dataConfidenceLabel}</span>
           </div>
@@ -175,7 +177,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>時間帯別の投稿</div>
-              <h3 className="nr-heading text-[20px] mt-1" style={{ color: 'var(--nr-text-hi)' }}>営業分で投稿が確認できた時間</h3>
+              <h3 className="nr-heading text-[20px] mt-1" style={{ color: 'var(--nr-text-hi)' }}>当日顧客投稿があった時間</h3>
             </div>
             <span className="nr-chip nr-mono">最多 {hourlyMax > 0 ? bar.peakHour : '未判定'}</span>
           </div>
@@ -209,7 +211,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
         </GlassCard>
 
         <GlassCard className="p-5 flex flex-col gap-3 nr-hairline">
-          <div className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>当日営業分の推移</div>
+          <div className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>当日顧客投稿の推移</div>
           <h3 className="nr-heading text-[20px]" style={{ color: 'var(--nr-text-hi)' }}>投稿数の時間変化</h3>
           <div className="flex-1 flex items-end">
             <Sparkline data={bar.trend} w={360} h={140} color="var(--nr-accent)" />

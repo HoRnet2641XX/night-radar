@@ -179,7 +179,9 @@ export function buildStoreActivityMetrics(input: {
 }): StoreActivityMetrics {
   const businessPosts = input.businessPosts.filter((post) => post.storeId === input.storeId)
   const businessPostIds = new Set(businessPosts.map((post) => post.id))
-  const allNormalizedPosts = (input.normalizedPosts ?? []).filter((post) => post.storeId === input.storeId)
+  const allNormalizedPosts = (input.normalizedPosts ?? []).filter(
+    (post) => post.storeId === input.storeId && isStructurallyValidCustomerNormalizedPost(post),
+  )
   const businessNormalizedPosts = allNormalizedPosts.filter((post) => businessPostIds.has(`normalized-${post.id}`))
   const recentThreeHourPosts = filterPostsWithinHours(businessPosts, input.referenceAt, 3)
   const recentThreeHourIds = new Set(recentThreeHourPosts.map((post) => post.id))
@@ -192,8 +194,16 @@ export function buildStoreActivityMetrics(input: {
   const uniqueAuthors = [...new Set(authorNames)]
   const authorCoverage = businessPosts.length ? clamp((authorNames.length / businessPosts.length) * 100) : 0
   const genderCoverage = businessPosts.length ? clamp((genderSampleCount / businessPosts.length) * 100) : 0
-  const timestampCoverage = allNormalizedPosts.length
-    ? clamp((allNormalizedPosts.filter((post) => Boolean(post.postedAt)).length / allNormalizedPosts.length) * 100)
+  const referenceTime = referenceTimestamp(input.referenceAt)
+  const recentParserPosts = referenceTime === null
+    ? allNormalizedPosts
+    : allNormalizedPosts.filter((post) => {
+        const observedTime = new Date(post.observedAt).getTime()
+        return Number.isFinite(observedTime) && observedTime >= referenceTime - 6 * 60 * 60 * 1000 && observedTime <= referenceTime + 10 * 60 * 1000
+      })
+  const parserCoveragePosts = recentParserPosts.length ? recentParserPosts : allNormalizedPosts
+  const timestampCoverage = parserCoveragePosts.length
+    ? clamp((parserCoveragePosts.filter((post) => Boolean(post.postedAt)).length / parserCoveragePosts.length) * 100)
     : 0
   const allAuthorCounts = new Map<string, number>()
 
@@ -324,7 +334,7 @@ function extractBusinessTimeRangesFromText(text: string): BusinessTimeRange[] {
   const ranges: BusinessTimeRange[] = []
   const businessContextPattern = /(朝活|昼部|夜部|昼の部|夜の部|昼営業|夜営業|営業時間|営業|開店|閉店|オープン|クローズ|open|close)/i
   const pattern =
-    /(?:(朝活|昼部|夜部|昼の部|夜の部|昼営業|夜営業|昼|夜|朝|営業時間|営業)[^\d\n\r。]{0,24})?([0-3]?\d)\s*(?::|時)\s*([0-5]\d)?\s*(?:-|~|から|より|→|ー|―|－)\s*(?:翌)?([0-3]?\d)\s*(?::|時)\s*([0-5]\d)?/g
+    /(?:(朝活|昼部|夜部|昼の部|夜の部|昼営業|夜営業|昼|夜|朝|営業時間|営業)[^\d\n\r。]{0,24})?([0-3]?\d)(?::\s*([0-5]\d)|\s*時(?:\s*([0-5]\d)\s*分)?)\s*(?:-|~|から|より|→|ー|―|－)\s*(?:翌)?([0-3]?\d)(?::\s*([0-5]\d)|\s*時(?:\s*([0-5]\d)\s*分)?)/g
 
   for (const match of normalized.matchAll(pattern)) {
     const prefix = match[1] ?? ''
@@ -332,9 +342,9 @@ function extractBusinessTimeRangesFromText(text: string): BusinessTimeRange[] {
     const context = normalized.slice(Math.max(0, matchIndex - 32), Math.min(normalized.length, matchIndex + match[0].length + 32))
     if (!prefix && !businessContextPattern.test(context)) continue
     const startHour = Number(match[2])
-    const startMinute = Number(match[3] ?? 0)
-    const endHour = Number(match[4])
-    const endMinute = Number(match[5] ?? 0)
+    const startMinute = Number(match[3] ?? match[4] ?? 0)
+    const endHour = Number(match[5])
+    const endMinute = Number(match[6] ?? match[7] ?? 0)
     if (!Number.isFinite(startHour) || !Number.isFinite(endHour)) continue
     if (startHour > 30 || endHour > 30) continue
 
@@ -393,10 +403,19 @@ function businessTimeRangesFromStore(store: StoreProfile): BusinessTimeRange[] {
 }
 
 function storeBusinessRanges(store: StoreProfile, contextTexts: string[] = []) {
-  const ranges: BusinessTimeRange[] = []
+  const bbsRanges: BusinessTimeRange[] = []
   contextTexts.slice(0, 24).forEach((text) => {
-    extractBusinessTimeRangesFromText(text).forEach((range) => pushUniqueRange(ranges, range))
+    extractBusinessTimeRangesFromText(text).forEach((range) => pushUniqueRange(bbsRanges, range))
   })
+  if (bbsRanges.length) {
+    const firstRangeByLabel = new Map<string, BusinessTimeRange>()
+    bbsRanges.forEach((range) => {
+      if (!firstRangeByLabel.has(range.label)) firstRangeByLabel.set(range.label, range)
+    })
+    return [...firstRangeByLabel.values()]
+  }
+
+  const ranges: BusinessTimeRange[] = []
   businessTimeRangesFromStore(store).forEach((range) => pushUniqueRange(ranges, range))
   return ranges
 }
@@ -544,6 +563,78 @@ export function filterPostsForBusinessDay(posts: PostRecord[], referenceAt: stri
   return posts.filter((post) => {
     const postedTime = new Date(post.postedAt).getTime()
     return Number.isFinite(postedTime) && postedTime >= range.start && postedTime <= futureTolerance
+  })
+}
+
+function japanCalendarDateKey(value: string | number | Date) {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
+}
+
+function shiftJapanDateKey(dateKey: string, days: number) {
+  const match = dateKey.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return dateKey
+  const shifted = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days, 12))
+  return japanCalendarDateKey(shifted) ?? dateKey
+}
+
+export function decisionDateKeyInJapan(referenceAt: string | number | Date) {
+  const range = businessDayRangeInJapan(referenceAt)
+  return range ? japanCalendarDateKey(range.start) : null
+}
+
+const cancelledVisitPattern = /(行けなくな|行けません|行きません|伺えません|伺いません|キャンセル|中止にし|取りやめ|見送ります)/i
+
+function explicitTargetDateKey(body: string, postedAt: string) {
+  const normalized = body.normalize('NFKC')
+  const full = normalized.match(/(20\d{2})[年./-](\d{1,2})[月./-](\d{1,2})日?/)
+  const short = full ? null : normalized.match(/(?:^|\D)(\d{1,2})[月./-](\d{1,2})日?(?:\D|$)/)
+  const postedParts = japanDateParts(new Date(postedAt))
+  const year = full ? Number(full[1]) : postedParts.year
+  const month = Number(full?.[2] ?? short?.[1])
+  const day = Number(full?.[3] ?? short?.[2])
+  if (!month || !day) return null
+
+  const date = new Date(Date.UTC(year, month - 1, day, 12))
+  if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+export function postDecisionDateKey(post: PostRecord) {
+  const markedDate = post.keywords.find((keyword) => keyword.startsWith('target-date:'))?.slice('target-date:'.length)
+  if (markedDate && /^\d{4}-\d{2}-\d{2}$/.test(markedDate)) return markedDate
+
+  const body = post.body.normalize('NFKC')
+  if (cancelledVisitPattern.test(body)) return null
+
+  const explicitDate = explicitTargetDateKey(body, post.postedAt)
+  if (explicitDate) return explicitDate
+
+  const postedCalendarDate = japanCalendarDateKey(post.postedAt)
+  if (!postedCalendarDate) return null
+  if (/明後日/.test(body)) return shiftJapanDateKey(postedCalendarDate, 2)
+  if (/明日/.test(body)) return shiftJapanDateKey(postedCalendarDate, 1)
+  if (/(今日|本日|今夜|今晩)/.test(body)) return postedCalendarDate
+
+  const range = businessDayRangeInJapan(post.postedAt)
+  return range ? japanCalendarDateKey(range.start) : postedCalendarDate
+}
+
+export function filterPostsForDecisionDate(posts: PostRecord[], referenceAt: string | number | Date) {
+  const targetDate = decisionDateKeyInJapan(referenceAt)
+  const referenceTime = referenceTimestamp(referenceAt)
+  if (!targetDate || referenceTime === null) return posts
+  const futureTolerance = referenceTime + 10 * 60 * 1000
+
+  return posts.filter((post) => {
+    const postedTime = new Date(post.postedAt).getTime()
+    return Number.isFinite(postedTime) && postedTime <= futureTolerance && postDecisionDateKey(post) === targetDate
   })
 }
 
@@ -930,6 +1021,7 @@ function cleanNormalizedBbsPostBody(block: string, entry: WatchedAuthorEntry | n
     .replace(/No[.\s]*\d{1,}\)?/gi, ' ')
     .replace(/(?:投稿日時?|投稿日|書き込み日時?)[:：]?\s*20\d{2}[年/-]\s*\d{1,2}[月/-]\s*\d{1,2}日?(?:\([^)]+\))?\s*\d{0,2}(?:[:：時]\s*\d{0,2})?(?::\d{1,2})?/g, ' ')
     .replace(/(?:投稿日時?|投稿日|書き込み日時?)[:：]?\s*\d{1,2}[月/-]\s*\d{1,2}日?(?:\([^)]+\))?\s*\d{0,2}(?:[:：時]\s*\d{0,2})?(?::\d{1,2})?/g, ' ')
+    .replace(/対象日[:：]?\s*\d{4}-\d{2}-\d{2}/g, ' ')
     .replace(/^投稿者[:：]\s*/i, ' ')
     .replace(/^名前[:：]\s*/i, ' ')
     .replace(/^Name[:：]\s*/i, ' ')
@@ -939,10 +1031,10 @@ function cleanNormalizedBbsPostBody(block: string, entry: WatchedAuthorEntry | n
 
   body = body.trim()
 
-  if (authorName) body = body.replace(new RegExp(`^${authorName}\\s*`, 'i'), ' ')
   if (authorName && genderToken) {
     body = body.replace(new RegExp(`^${authorName}\\s*[（(]\\s*${genderToken}\\s*[）)]\\s*`, 'i'), ' ')
   }
+  if (authorName) body = body.replace(new RegExp(`^${authorName}\\s*`, 'i'), ' ')
   if (genderToken) body = body.replace(new RegExp(`^[（(]\\s*${genderToken}\\s*[）)]\\s*`, 'i'), ' ')
   if (articleNo) body = body.replace(new RegExp(`^${articleNo}\\)?\\s*`, 'i'), ' ')
 
@@ -1021,7 +1113,9 @@ export function extractNormalizedBbsPostsFromText(value: string, observedAt: str
     const parsedGender = entry?.gender || '記載なし'
     const inferredGender = resolvedNormalizedPostGender({ authorName, authorGender: parsedGender })
     const authorGender = inferredGender === 'female' ? '女性' : inferredGender === 'male' ? '男性' : parsedGender
-    const body = cleanNormalizedBbsPostBody(block, entry, articleNo)
+    const targetDate = block.match(/対象日[:：]?\s*(\d{4}-\d{2}-\d{2})/)?.[1]
+    const cleanBody = cleanNormalizedBbsPostBody(block, entry, articleNo)
+    const body = targetDate ? `[[NR_TARGET_DATE:${targetDate}]] ${cleanBody}` : cleanBody
     const postedAt = parseBbsPostedAt(block, observedAt)
 
     if (body.length < 2) return
@@ -1049,6 +1143,9 @@ const storeAuthoredContentPattern =
 const explicitStoreAttributionPattern =
   /(?:^|投稿者[:：]\s*)(?:retreat\s*bar|campo\s*bar|b-?dash|voluptuous|agreeable|arabesque|bar\s*440|bar\s*canelo|bar\s*face|bar\s*rusk|bar\s*spear|colors\s*bar|honey\s*trap)/i
 const genericStoreAuthorPattern = /^(staff|スタッフ|管理人|管理者|運営|公式|店長|オーナー|マスター|受付|事務局)$/i
+const malformedPostBodyPattern =
+  /(パスワードを入力|ニックネーム\s*\*|選択してください|利用規約に同意|投稿を編集|投稿を削除|bbs-edit-form|javascript:|Copyright ©)/i
+const targetDateMarkerPattern = /^\[\[NR_TARGET_DATE:(\d{4}-\d{2}-\d{2})\]\]\s*/
 const storeAuthorAliases: Record<string, RegExp> = {
   agreeable: /^agreeable$/i,
   arabesque: /^arabesque$/i,
@@ -1060,6 +1157,7 @@ const storeAuthorAliases: Record<string, RegExp> = {
   'bar-spear': /^(?:bar)?spear$/i,
   'campo-bar': /^(?:campo(?:bar)?|barcampo)$/i,
   'club-scarlet-tokyo': /^(?:club)?scarlet(?:tokyo)?$/i,
+  collabo: /^(?:akiba)?collabo$/i,
   'colors-bar': /^(?:colors(?:bar)?|barcolors)$/i,
   'communicationbar-sango': /^(?:communicationbar)?珊瑚$/i,
   'filt-shibuya': /^filt(?:shibuya)?$/i,
@@ -1077,22 +1175,65 @@ function normalizedAuthorForStaffCheck(value: string) {
     .toLowerCase()
 }
 
+export function normalizedBbsPostIdentityMaterial(
+  post: Pick<BbsNormalizedPost, 'articleNo' | 'authorName' | 'postedAt' | 'body'>,
+) {
+  const articleNo = post.articleNo?.trim()
+  if (articleNo) return `article:${articleNo}`
+
+  const author = post.authorName.normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase('ja-JP') || '記載なし'
+  const postedMinute = post.postedAt?.slice(0, 16) ?? 'time-unknown'
+  const body = post.body
+    .replace(targetDateMarkerPattern, '')
+    .normalize('NFKC')
+    .replace(/\s+/g, '')
+    .toLowerCase()
+  return `body:${author}:${postedMinute}:${body}`
+}
+
 export function isLikelyCustomerNormalizedPost(
   post: Pick<BbsNormalizedPost, 'storeId' | 'authorName' | 'body'>,
 ) {
   const author = normalizedAuthorForStaffCheck(post.authorName)
   const matchesStoreAuthor = Boolean(author && storeAuthorAliases[post.storeId]?.test(author))
   if (author && genericStoreAuthorPattern.test(author)) return false
+  if (matchesStoreAuthor) return false
   if (automatedStoreReplyPattern.test(post.body) && (matchesStoreAuthor || explicitStoreAttributionPattern.test(post.body))) return false
   if (matchesStoreAuthor && storeAuthoredContentPattern.test(post.body)) return false
   return true
 }
 
+export function isStructurallyValidCustomerNormalizedPost(
+  post: Pick<BbsNormalizedPost, 'storeId' | 'authorName' | 'body'>,
+) {
+  if (!isLikelyCustomerNormalizedPost(post)) return false
+
+  const author = normalizedAuthorForStaffCheck(post.authorName)
+  const body = post.body.replace(targetDateMarkerPattern, '').replace(/\s+/g, ' ').trim()
+  if (!author || author === '記載なし' || author.length > 80 || /^(?:投稿者|投稿日|記事番号|No\.)[:：]?$/i.test(author)) return false
+  if (body.length < 2 || body.length > 1600 || malformedPostBodyPattern.test(body)) return false
+  if ((body.match(/(?:投稿者|名前|Name)[:：]/gi) ?? []).length > 1) return false
+  if ((body.match(/20\d{2}[年./-]\d{1,2}[月./-]\d{1,2}/g) ?? []).length > 2) return false
+  return true
+}
+
+export function isRankableCustomerNormalizedPost(
+  post: Pick<BbsNormalizedPost, 'storeId' | 'authorName' | 'body' | 'postedAt'>,
+) {
+  return Boolean(post.postedAt) && isStructurallyValidCustomerNormalizedPost(post)
+}
+
+function normalizedPostFingerprint(post: BbsNormalizedPost) {
+  return `${post.storeId}:${normalizedBbsPostIdentityMaterial(post)}`
+}
+
 export function normalizedBbsPostsToPostRecords(posts: BbsNormalizedPost[]): PostRecord[] {
   return posts
-    .filter((post): post is BbsNormalizedPost & { postedAt: string } => Boolean(post.postedAt))
-    .filter(isLikelyCustomerNormalizedPost)
-    .map((post) => ({
+    .filter((post): post is BbsNormalizedPost & { postedAt: string } => isRankableCustomerNormalizedPost(post))
+    .map((post) => {
+      const targetDate = post.body.match(targetDateMarkerPattern)?.[1]
+      const cleanBody = post.body.replace(targetDateMarkerPattern, '').trim()
+      return {
       id: `normalized-${post.id}`,
       storeId: post.storeId,
       source: 'scrape',
@@ -1101,18 +1242,25 @@ export function normalizedBbsPostsToPostRecords(posts: BbsNormalizedPost[]): Pos
       body: [
         post.articleNo ? `記事番号: ${post.articleNo}` : '',
         post.authorName !== '記載なし' ? `投稿者: ${post.authorName}${post.authorGender !== '記載なし' ? `（${post.authorGender}）` : ''}` : '',
-        post.body,
+        cleanBody,
       ]
         .filter(Boolean)
         .join(' '),
-      keywords: [],
-    }))
+      keywords: targetDate ? [`target-date:${targetDate}`] : [],
+    }
+    })
 }
 
 export function buildEffectiveBbsPostRecords(posts: PostRecord[], normalizedPosts: BbsNormalizedPost[] = []) {
   if (!normalizedPosts.length) return posts
   const manualPosts = posts.filter((post) => post.source !== 'scrape')
-  const uniqueNormalizedPosts = [...new Map(normalizedPosts.map((post) => [post.id, post])).values()]
+  const seenNormalizedPosts = new Set<string>()
+  const uniqueNormalizedPosts = normalizedPosts.filter((post) => {
+    const fingerprint = normalizedPostFingerprint(post)
+    if (seenNormalizedPosts.has(fingerprint)) return false
+    seenNormalizedPosts.add(fingerprint)
+    return true
+  })
   return [...normalizedBbsPostsToPostRecords(uniqueNormalizedPosts), ...manualPosts].toSorted(
     (a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime(),
   )

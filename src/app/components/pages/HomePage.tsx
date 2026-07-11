@@ -6,7 +6,8 @@ import { Sparkline } from '../ui-nr/Sparkline';
 import { DigitRoll } from '../ui-nr/DigitRoll';
 import { WordReveal, Stagger, StaggerItem } from '../ui-nr/Reveal';
 import { Ticker } from '../ui-nr/Ticker';
-import { BARS, EVENTS, RUNTIME_META, TICKER, type Bar } from '../data/mock';
+import { type Bar } from '../data/mock';
+import { useNightRadarData, useNightRadarTicker } from '../data/runtime';
 import { useRef, useState } from 'react';
 
 const FILTERS = ['すべて', '営業時間内', '直近3時間', '女性書き込みあり', '初回来店の記述', '複数来店の記述', '予定あり', '集計信頼度80点以上'];
@@ -24,14 +25,16 @@ function matchesFilter(bar: Bar, filter: string) {
 }
 
 export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void; onNavigate: (tab: 'search' | 'schedule' | 'account') => void }) {
+  const { bars, events, meta } = useNightRadarData();
+  const ticker = useNightRadarTicker();
   const [filter, setFilter] = useState('すべて');
-  const visibleBars = BARS.filter((bar) => matchesFilter(bar, filter));
-  const totalFemale = BARS.reduce((sum, bar) => sum + bar.femaleCount, 0);
-  const currentMonthEventCount = EVENTS.filter((event) => event.date.startsWith(RUNTIME_META.currentMonth)).length;
-  const activeRecentStores = BARS.filter((bar) => bar.recentThreeHourCount > 0).length;
-  const postMax = Math.max(1, ...BARS.map((bar) => bar.postCount));
-  const femaleMax = Math.max(1, ...BARS.map((bar) => bar.femaleCount));
-  const recentMax = Math.max(1, ...BARS.map((bar) => bar.recentThreeHourCount));
+  const visibleBars = bars.filter((bar) => matchesFilter(bar, filter));
+  const totalFemale = bars.reduce((sum, bar) => sum + bar.femaleCount, 0);
+  const currentMonthEventCount = events.filter((event) => event.date.startsWith(meta.currentMonth)).length;
+  const activeRecentStores = bars.filter((bar) => bar.recentThreeHourCount > 0).length;
+  const postMax = Math.max(1, ...bars.map((bar) => bar.postCount));
+  const femaleMax = Math.max(1, ...bars.map((bar) => bar.femaleCount));
+  const recentMax = Math.max(1, ...bars.map((bar) => bar.recentThreeHourCount));
 
   const mx = useMotionValue(50); const my = useMotionValue(50);
   const bg = useMotionTemplate`radial-gradient(600px 300px at ${mx}% ${my}%, rgba(255,106,91,0.10), transparent 60%)`;
@@ -40,7 +43,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
   return (
     <div className="flex flex-col gap-7">
       {/* Ticker */}
-      <Ticker items={TICKER} />
+      <Ticker items={ticker} />
 
       {/* Hero — asymmetric editorial */}
       <motion.div
@@ -59,7 +62,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, ease }}
           >
             <span className="nr-pulse" />
-            <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>最終集計 · {RUNTIME_META.generatedAtLabel}（日本時間）</span>
+            <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>最終集計 · {meta.generatedAtLabel}（日本時間）</span>
           </motion.div>
           <h1 className="nr-heading text-[36px] sm:text-[42px] leading-[1.12]" style={{ color: 'var(--nr-text-hi)' }}>
             <WordReveal text="今夜の候補を、" />
@@ -71,7 +74,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
             style={{ color: 'var(--nr-text-mid)' }}
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.7 }}
           >
-            当日営業分の顧客投稿数を主順位にし、同数の場合だけ直近3時間と集計信頼度で比べます。性別は順位に使いません。
+            当日顧客投稿数を主順位にし、同数の場合だけ直近3時間と集計信頼度で比べます。性別は順位に使いません。
           </motion.p>
         </div>
         <motion.div
@@ -82,11 +85,11 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
           <div className="nr-heading text-[56px] sm:text-[64px] leading-none" style={{ color: 'var(--nr-text-hi)' }}>
             <DigitRoll value={`${activeRecentStores}店`} delay={0.6} />
           </div>
-          <div className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>投稿 {RUNTIME_META.recentThreeHourCount}件 / 対象 {BARS.length}店</div>
+          <div className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>投稿 {meta.recentThreeHourCount}件 / 対象 {bars.length}店</div>
           <button
             className="nr-accent-btn rounded-full px-4 py-2 text-[13px] flex items-center gap-1.5 mt-1"
-            onClick={() => BARS[0] && onOpen(BARS[0].id)}
-            disabled={!BARS.length}
+            onClick={() => bars[0] && onOpen(bars[0].id)}
+            disabled={!bars.length}
           >
             当日投稿1位の店舗を見る <ArrowUpRight size={14} />
           </button>
@@ -97,10 +100,10 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
       <Stagger delay={0.9} gap={0.08}>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            { label: '当日営業分', value: RUNTIME_META.postCount, suffix: '件', hint: '顧客投稿のみ' },
-            { label: '直近3時間', value: RUNTIME_META.recentThreeHourCount, suffix: '件', hint: 'BBS投稿' },
+            { label: '当日顧客投稿', value: meta.postCount, suffix: '件', hint: '店側投稿を除外' },
+            { label: '直近3時間', value: meta.recentThreeHourCount, suffix: '件', hint: 'BBS投稿' },
             { label: '女性書き込み', value: totalFemale, suffix: '件', hint: '性別判定済み' },
-            { label: '今日の予定', value: RUNTIME_META.todayEventCount, suffix: '件', hint: '公式URL登録済み' },
+            { label: '今日の予定', value: meta.todayEventCount, suffix: '件', hint: '公式URL登録済み' },
           ].map((k, i) => (
             <StaggerItem key={i}>
               <GlassCard className="p-4 flex flex-col gap-1.5 nr-focus nr-hairline">
@@ -150,13 +153,13 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
                         {b.tags.map(t => <span key={t} className="text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{t}</span>)}
                       </div>
                     </div>
-                    <MetricRing value={b.postCount} max={postMax} label="営業分投稿" color="var(--nr-accent)" />
+                    <MetricRing value={b.postCount} max={postMax} label="当日顧客投稿" color="var(--nr-accent)" />
                     <MetricRing value={b.femaleCount} max={femaleMax} label="女性書き込み" color="var(--nr-accent-2)" />
                     <MetricRing value={b.recentThreeHourCount} max={recentMax} label="直近3時間" color="var(--nr-accent-soft)" />
                     <MetricRing value={b.dataConfidence} label="集計信頼度" color="var(--nr-accent-deep)" />
                     <div className="flex flex-col gap-2 items-start sm:items-end sm:col-span-2 xl:col-span-1">
                       <div className="flex items-center gap-1.5 nr-mono text-[10px]" style={{ color: 'var(--nr-text-mid)' }}>
-                        <TrendingUp size={10} color="var(--nr-accent)" /> 営業分の投稿推移
+                        <TrendingUp size={10} color="var(--nr-accent)" /> 当日顧客投稿の推移
                       </div>
                       <Sparkline data={b.trend} w={190} h={44} color="var(--nr-accent)" />
                       <div className="flex items-start gap-1.5 max-w-[240px] mt-1">
@@ -187,9 +190,9 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[
-            { icon: TrendingUp, title: '条件から探す', sub: '女性書き込み・直近更新・予定で絞る', meta: `${BARS.length}店から検索`, tab: 'search' as const },
-            { icon: Clock, title: '予定を確認する', sub: '日付と時間帯から公式予定を見る', meta: `今日 ${RUNTIME_META.todayEventCount}件 / 今月 ${currentMonthEventCount}件`, tab: 'schedule' as const },
-            { icon: Users, title: '取得状態を見る', sub: '鮮度・投稿者名・性別・正規化率を確認', meta: `信頼度80%以上 ${RUNTIME_META.highConfidenceCount}店`, tab: 'account' as const },
+            { icon: TrendingUp, title: '条件から探す', sub: '女性書き込み・直近更新・予定で絞る', meta: `${bars.length}店から検索`, tab: 'search' as const },
+            { icon: Clock, title: '予定を確認する', sub: '日付と時間帯から公式予定を見る', meta: `今日 ${meta.todayEventCount}件 / 今月 ${currentMonthEventCount}件`, tab: 'schedule' as const },
+            { icon: Users, title: '取得状態を見る', sub: '鮮度・投稿者名・性別・正規化率を確認', meta: `信頼度80%以上 ${meta.highConfidenceCount}店`, tab: 'account' as const },
           ].map((c, i) => (
             <GlassCard key={i} interactive onClick={() => onNavigate(c.tab)} className="p-5 flex items-center gap-3 nr-focus nr-hairline">
               <div className="w-10 h-10 rounded-xl grid place-items-center" style={{ background: 'rgba(255,106,91,0.10)', border: '1px solid rgba(255,106,91,0.22)' }}>

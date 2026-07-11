@@ -5,7 +5,9 @@ import { events as demoEvents, posts as demoPosts, stores as demoStores } from '
 import { formatBarName, formatStoreArea, formatStoreSessionLabel } from './display'
 import { mergeOfficialEvents } from './official-events'
 import { collectPagedRows } from './pagination'
-import { isLikelyCustomerNormalizedPost } from './scoring'
+import { isStructurallyValidCustomerNormalizedPost } from './scoring'
+import { resolvedStoreArea, resolvedStoreMapUrl, resolvedStoreOfficialUrl } from './store-catalog'
+import { matchesStoreSearch } from './store-search'
 import { createSupabaseAdminClient } from './supabase/server'
 import type {
   BbsNormalizedPost,
@@ -57,16 +59,21 @@ function isMissingColumnError(error?: { code?: string; message?: string } | null
 }
 
 const areaSlugMap: Record<string, string> = {
-  tokyo: '東京',
+  tokyo: '東京全域',
   shinjuku: '新宿',
   ikebukuro: '池袋',
   shibuya: '渋谷',
-  yokohama: '横浜',
-  osaka: '大阪',
-  nagoya: '名古屋',
+  ueno: '上野',
+  gotanda: '五反田',
+  roppongi: '六本木',
+  kinshicho: '錦糸町',
+  akihabara: '秋葉原',
   ogikubo: '荻窪',
-  all: '全国',
+  tama: '聖蹟桜ヶ丘',
+  all: 'すべて',
 }
+
+const tokyoAreaFragments = ['新宿', '池袋', '渋谷', '上野', '御徒町', '五反田', '六本木', '西麻布', '錦糸町', '秋葉原', '荻窪', '聖蹟桜ヶ丘']
 
 const conditionLabels = {
   hot: 'いま動きあり',
@@ -131,9 +138,11 @@ export type PublicStoreDetail = {
 }
 
 export const publicAreas = Object.entries(areaSlugMap).map(([slug, label]) => ({ slug, label }))
-export const publicConditions = Object.entries(conditionLabels).map(([key, label]) => ({ key: key as ConditionKey, label }))
+export const publicConditions = Object.entries(conditionLabels)
+  .filter(([key]) => key !== 'price')
+  .map(([key, label]) => ({ key: key as ConditionKey, label }))
 export const publicRankingKinds: Array<{ key: RankingKind; label: string; description: string }> = [
-  { key: 'today', label: '今日', description: '当日の営業分で確認できた顧客投稿の総数が多い順に並べます。' },
+  { key: 'today', label: '今日', description: '今日の来店判断に含めた顧客投稿の総数が多い順に並べます。' },
   { key: 'weekend', label: '週末', description: '週末イベントを優先しつつ、当日の顧客投稿が多い店舗を上にします。' },
   { key: 'female', label: '女性書込', description: '直近の性別表記から女性の書き込みが多い順に見ます。' },
   { key: 'events', label: 'イベントあり', description: '本日または直近イベントがある店舗の中で、当日の顧客投稿が多い順に見ます。' },
@@ -166,10 +175,11 @@ function stringArrayField(row: DbRow, key: string) {
 }
 
 function toStore(row: DbRow): StoreProfile {
+  const id = stringField(row, 'id')
   return {
-    id: stringField(row, 'id'),
+    id,
     name: stringField(row, 'name'),
-    area: stringField(row, 'area', '未設定'),
+    area: resolvedStoreArea(id, stringField(row, 'area', '未設定')),
     address: optionalStringField(row, 'address'),
     nearestStation: optionalStringField(row, 'nearest_station'),
     phone: optionalStringField(row, 'phone'),
@@ -418,23 +428,15 @@ async function loadPublicStoreDetail(storeId: string): Promise<PublicStoreDetail
   if (!summary) return null
 
   const events = state.events.filter((event) => event.storeId === storeId)
-  const windows = summary.insight.businessWindows
   const supabase = createSupabaseAdminClient()
-  if (!supabase || !windows.length) return { summary, events, recentPosts: [] }
+  if (!supabase) return { summary, events, recentPosts: [] }
 
-  const startsAt = windows.map((window) => new Date(window.startsAt).getTime()).filter(Number.isFinite)
-  const endsAt = windows.map((window) => new Date(window.endsAt).getTime()).filter(Number.isFinite)
-  if (!startsAt.length || !endsAt.length) return { summary, events, recentPosts: [] }
-
-  const rangeStart = new Date(Math.min(...startsAt)).toISOString()
-  const rangeEnd = new Date(Math.max(...endsAt)).toISOString()
   const result = await collectPagedRows<DbRow, NonNullable<DbListResult['error']>>(async (from, to) =>
     (await supabase
       .from('bbs_normalized_posts')
       .select(normalizedPostSelectColumns)
       .eq('store_id', storeId)
-      .gte('posted_at', rangeStart)
-      .lte('posted_at', rangeEnd)
+      .gte('observed_at', isoHoursAgo(recentPostWindowHours))
       .order('posted_at', { ascending: false })
       .range(from, to)) as DbListResult,
   )
@@ -444,13 +446,8 @@ async function loadPublicStoreDetail(storeId: string): Promise<PublicStoreDetail
   const rankingPostIds = new Set(summary.insight.rankingPostIds)
   const recentPosts = (result.data ?? [])
     .map(toBbsNormalizedPost)
-    .filter(isLikelyCustomerNormalizedPost)
+    .filter(isStructurallyValidCustomerNormalizedPost)
     .filter((post) => rankingPostIds.has(`normalized-${post.id}`))
-    .filter((post) => {
-      const postedAt = post.postedAt ? new Date(post.postedAt).getTime() : Number.NaN
-      if (!Number.isFinite(postedAt)) return false
-      return windows.some((window) => postedAt >= new Date(window.startsAt).getTime() && postedAt <= new Date(window.endsAt).getTime())
-    })
     .filter((post) => {
       const key = post.contentKey || post.id
       if (seen.has(key)) return false
@@ -510,7 +507,7 @@ function buildPublicStoreSummary(input: {
   const { point, source, generatedAt } = insight
   const areaLabel = inferStoreArea(point.store)
   const bbsUrl = source?.url
-  const officialUrl = point.store.officialUrl || rootUrlFromSource(bbsUrl)
+  const officialUrl = resolvedStoreOfficialUrl(point.store, bbsUrl)
   const lastUpdatedAt = latestDate(
     [
       insight.lastSuccessfulAt,
@@ -564,7 +561,7 @@ function buildPublicStoreSummary(input: {
     addressLabel: point.store.address?.trim() || '住所は公式で確認',
     officialUrl,
     bbsUrl,
-    mapUrl: point.store.mapUrl?.trim() || googleMapUrl(point.store, areaLabel),
+    mapUrl: resolvedStoreMapUrl(point.store),
     priceLabel,
     sessionLabel: formatStoreSessionLabel(point.store),
     womenRatio,
@@ -596,21 +593,6 @@ function latestDate(values: Array<string | undefined>, referenceAt: string) {
   return sorted[0] ? new Date(sorted[0]).toISOString() : undefined
 }
 
-function rootUrlFromSource(url?: string) {
-  if (!url) return undefined
-  try {
-    const parsed = new URL(url)
-    return `${parsed.protocol}//${parsed.host}/`
-  } catch {
-    return undefined
-  }
-}
-
-function googleMapUrl(store: StoreProfile, areaLabel: string) {
-  const query = [store.address, store.name, areaLabel].filter(Boolean).join(' ')
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
-}
-
 function formatRelativeUpdate(value: string | undefined, reference: string) {
   if (!value) return '更新待ち'
   const diffMs = new Date(reference).getTime() - new Date(value).getTime()
@@ -625,15 +607,7 @@ function formatRelativeUpdate(value: string | undefined, reference: string) {
 
 function inferStoreArea(store: StoreProfile) {
   const explicit = formatStoreArea(store.area)
-  if (explicit !== 'エリア未登録') return explicit
-  const name = store.name.toLowerCase()
-  if (/shibuya|渋谷/.test(name)) return '渋谷'
-  if (/ogikubo|荻窪/.test(name)) return '荻窪'
-  if (/tokyo|scarlet|harnes/.test(name)) return '東京'
-  if (/neo|440|rusk|face|campo|spear|canelo|honey|papillon|retreat|arabesque|agreeable|colors|voluptuous|b-dash|land|collabo|sango|zeus|mille/.test(name)) {
-    return '東京圏'
-  }
-  return 'エリア確認中'
+  return explicit === 'エリア未登録' ? 'エリア未確認' : explicit
 }
 
 export function storeDetailPath(store: StoreProfile) {
@@ -653,7 +627,7 @@ export function getAreaLabelFromSlug(slug?: string) {
 }
 
 export function areaSlugForLabel(label: string) {
-  const found = Object.entries(areaSlugMap).find(([, value]) => value === label)
+  const found = Object.entries(areaSlugMap).find(([slug, value]) => slug !== 'tokyo' && slug !== 'all' && label.includes(value))
   return found?.[0] ?? encodeURIComponent(label)
 }
 
@@ -666,16 +640,29 @@ export function filterPublicStores(
     ranking?: RankingKind
   },
 ) {
-  const query = options.query?.trim().toLowerCase()
+  const query = options.query?.trim() ?? ''
   const areaLabel = options.area && options.area !== 'all' ? getAreaLabelFromSlug(options.area) ?? options.area : ''
   const condition = options.condition as ConditionKey | undefined
 
   let items = summaries.filter((summary) => {
     if (query) {
-      const haystack = [summary.store.name, summary.areaLabel, summary.stationLabel, summary.store.tags.join(' ')].join(' ').toLowerCase()
-      if (!haystack.includes(query)) return false
+      const searchableValues = [
+        summary.store.name,
+        summary.areaLabel,
+        summary.stationLabel,
+        summary.addressLabel,
+        summary.priceLabel,
+        summary.sessionLabel,
+        (summary.store.tags ?? []).join(' '),
+        (summary.store.strongDays ?? []).join(' '),
+        (summary.store.strongEvents ?? []).join(' '),
+        summary.nextEvent?.title,
+        summary.nextEvent?.details,
+      ]
+      if (!matchesStoreSearch(query, searchableValues)) return false
     }
-    if (areaLabel && summary.areaLabel !== areaLabel) return false
+    if (areaLabel === '東京全域' && !tokyoAreaFragments.some((fragment) => summary.areaLabel.includes(fragment))) return false
+    if (areaLabel && areaLabel !== '東京全域' && !summary.areaLabel.includes(areaLabel)) return false
     if (condition && !matchesCondition(summary, condition)) return false
     return true
   })

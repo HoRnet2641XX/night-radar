@@ -1,6 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildDailyStoreDataset, DAILY_INSIGHT_CONTRACT_VERSION } from '../src/lib/daily-store-insights.ts'
 import { mergeOfficialEvents } from '../src/lib/official-events.ts'
+import {
+  isRankableCustomerNormalizedPost,
+  isStructurallyValidCustomerNormalizedPost,
+  normalizedBbsPostIdentityMaterial,
+} from '../src/lib/scoring.ts'
+import { resolvedStoreArea, resolvedStoreMapUrl, resolvedStoreOfficialUrl } from '../src/lib/store-catalog.ts'
 
 const PAGE_SIZE = 1000
 const RECENT_HOURS = 48
@@ -57,7 +63,7 @@ function toStore(row) {
   return {
     id: row.id,
     name: row.name,
-    area: row.area || '未設定',
+    area: resolvedStoreArea(row.id, row.area || '未設定'),
     address: row.address || undefined,
     nearestStation: row.nearest_station || undefined,
     phone: row.phone || undefined,
@@ -75,6 +81,15 @@ function toStore(row) {
     weakEvents: row.weak_events ?? [],
     trustSeed: Number(row.trust_seed ?? 60),
   }
+}
+
+function semanticPostKey(row) {
+  return `${row.store_id}:${normalizedBbsPostIdentityMaterial({
+    articleNo: row.article_no || undefined,
+    authorName: row.author_name || '記載なし',
+    postedAt: row.posted_at || undefined,
+    body: row.body || '',
+  })}`
 }
 
 function toNormalizedPost(row) {
@@ -168,8 +183,9 @@ async function main() {
   const stores = storeRows.map(toStore)
   const storeIds = new Set(stores.map((store) => store.id))
   const normalizedPosts = normalizedRows.map(toNormalizedPost)
+  const structuredCustomerPosts = normalizedPosts.filter(isStructurallyValidCustomerNormalizedPost)
+  const rankableCustomerPosts = structuredCustomerPosts.filter(isRankableCustomerNormalizedPost)
   const events = mergeOfficialEvents(eventRows.map(toEvent))
-  const timestampedNormalizedPosts = normalizedPosts.filter((post) => Boolean(post.postedAt))
   const latestContextByStore = new Map()
   for (const snapshot of snapshotRows) {
     if (!latestContextByStore.has(snapshot.store_id) && snapshot.extracted_text?.trim()) {
@@ -198,7 +214,11 @@ async function main() {
   const latestRunBySource = new Map()
   for (const run of crawlRows) if (!latestRunBySource.has(run.source_id)) latestRunBySource.set(run.source_id, run)
 
-  const storeAudit = dataset.insights.map((insight) => ({
+  const storeAudit = dataset.insights.map((insight) => {
+    const storeRows = normalizedRows.filter((row) => row.store_id === insight.store.id)
+    const validRows = structuredCustomerPosts.filter((post) => post.storeId === insight.store.id)
+    const rankableRows = rankableCustomerPosts.filter((post) => post.storeId === insight.store.id)
+    return {
     rank: insight.rank,
     id: insight.store.id,
     name: insight.store.name,
@@ -210,8 +230,14 @@ async function main() {
     dataConfidence: insight.dataConfidence,
     reliability: insight.reliability,
     excludedUntimestamped: insight.excludedUntimestampedCount,
+    rawNormalizedRows: storeRows.length,
+    structuredCustomerRows: validRows.length,
+    rankableRows: rankableRows.length,
+    rejectedMalformedRows: Math.max(0, storeRows.length - validRows.length),
+    semanticDuplicates: duplicateCount(storeRows, semanticPostKey),
     businessWindows: insight.businessWindows.map((window) => `${window.label} ${window.startsAt}-${window.endsAt} (${window.source})`),
-  }))
+    }
+  })
 
   const sourceAudit = sourceRows.map((source) => {
     const latestRun = latestRunBySource.get(source.id)
@@ -220,16 +246,46 @@ async function main() {
     const latestDataAt = latestContextByStore.get(source.store_id)?.postedAt
     const dataDate = latestDataAt ? new Date(latestDataAt) : null
     const dataAgeMinutes = dataDate && !Number.isNaN(dataDate.getTime()) ? Math.max(0, Math.round((now.getTime() - dataDate.getTime()) / 60000)) : null
+    const sourcePosts = normalizedPosts.filter((post) => post.sourceId === source.id)
+    const validPosts = sourcePosts.filter(isStructurallyValidCustomerNormalizedPost)
+    const rankablePosts = validPosts.filter(isRankableCustomerNormalizedPost)
+    const latestObservationMs = Math.max(0, ...sourcePosts.map((post) => new Date(post.observedAt).getTime()).filter(Number.isFinite))
+    const currentBatchPosts = latestObservationMs
+      ? sourcePosts.filter((post) => Math.abs(new Date(post.observedAt).getTime() - latestObservationMs) <= 2 * 60_000)
+      : []
+    const currentValidPosts = currentBatchPosts.filter(isStructurallyValidCustomerNormalizedPost)
+    const currentRankablePosts = currentValidPosts.filter(isRankableCustomerNormalizedPost)
+    const timestampCoverage = percent(currentRankablePosts.length, currentValidPosts.length)
     return {
       storeId: source.store_id,
       status: source.last_status || '未設定',
       attemptAgeMinutes,
       dataAgeMinutes,
       latestRunStatus: latestRun?.status || '直近48時間なし',
+      rawNormalizedRows: sourcePosts.length,
+      structuredCustomerRows: validPosts.length,
+      rankableRows: rankablePosts.length,
+      currentBatchRows: currentBatchPosts.length,
+      currentBatchStructuredRows: currentValidPosts.length,
+      currentBatchRankableRows: currentRankablePosts.length,
+      timestampCoverage,
+      parserHealth:
+        source.last_status !== 'ok'
+          ? '取得失敗'
+          : currentBatchPosts.length === 0
+            ? '投稿0件'
+          : currentValidPosts.length === 0
+            ? '構造解析失敗'
+            : timestampCoverage < 50
+              ? '投稿時刻の解析不足'
+              : '正常',
     }
   })
 
   const normalizedDuplicateCount = duplicateCount(normalizedRows, (row) => `${row.store_id}:${row.content_key}`)
+  const semanticDuplicateCount = duplicateCount(normalizedRows, semanticPostKey)
+  const currentParserStructuredPosts = sourceAudit.reduce((sum, source) => sum + source.currentBatchStructuredRows, 0)
+  const currentParserRankablePosts = sourceAudit.reduce((sum, source) => sum + source.currentBatchRankableRows, 0)
   const eventDuplicateCount = duplicateCount(eventRows, (row) => [row.store_id, row.date_label, row.starts_at, row.title].join('|'))
   const orphanEventCount = eventRows.filter((row) => !storeIds.has(row.store_id)).length
   const eventSourceMissingCount = eventRows.filter((row) => !row.source_url).length
@@ -240,11 +296,16 @@ async function main() {
 
   const issues = []
   if (normalizedDuplicateCount) issues.push(`正規化投稿の重複 ${normalizedDuplicateCount}件`)
+  if (semanticDuplicateCount) issues.push(`意味上同一の正規化投稿 ${semanticDuplicateCount}件`)
+  if (normalizedRows.length > structuredCustomerPosts.length) {
+    issues.push(`順位対象外の不完全な正規化行 ${normalizedRows.length - structuredCustomerPosts.length}件`)
+  }
   if (normalizedRows.some((row) => !row.body?.trim())) issues.push('本文が空の正規化投稿あり')
   if (eventDuplicateCount) issues.push(`当月イベントの重複 ${eventDuplicateCount}件`)
   if (orphanEventCount) issues.push(`登録店舗に紐付かない当月イベント ${orphanEventCount}件`)
   if (sourceAudit.some((source) => source.status !== 'ok')) issues.push('最終取得状態がok以外の巡回元あり')
   if (sourceAudit.some((source) => source.dataAgeMinutes === null || source.dataAgeMinutes > 180)) issues.push('最新データから3時間超の巡回元あり')
+  if (sourceAudit.some((source) => !['正常', '投稿0件'].includes(source.parserHealth))) issues.push('投稿構造または投稿時刻を再確認すべき巡回元あり')
 
   console.log(JSON.stringify({
     auditedAt: referenceAt,
@@ -256,8 +317,14 @@ async function main() {
       healthySources,
       recentDataSources,
       normalizedPosts: normalizedRows.length,
-      timestampedPosts: timestampedNormalizedPosts.length,
-      timestampCoverage: percent(timestampedNormalizedPosts.length, normalizedRows.length),
+      structuredCustomerPosts: structuredCustomerPosts.length,
+      rankableCustomerPosts: rankableCustomerPosts.length,
+      rejectedMalformedPosts: normalizedRows.length - structuredCustomerPosts.length,
+      timestampedPosts: rankableCustomerPosts.length,
+      timestampCoverage: percent(rankableCustomerPosts.length, structuredCustomerPosts.length),
+      currentParserStructuredPosts,
+      currentParserRankablePosts,
+      currentParserTimestampCoverage: percent(currentParserRankablePosts, currentParserStructuredPosts),
       businessPosts: businessPosts.length,
       authorCoverage: percent(namedPosts, normalizedRows.length),
       genderCoverage: percent(genderedPosts, normalizedRows.length),
@@ -265,16 +332,28 @@ async function main() {
       currentMonthEvents: events.filter((event) => event.date.startsWith(monthKey)).length,
       todayEvents: events.filter((event) => event.date === todayKey).length,
       normalizedDuplicateCount,
+      semanticDuplicateCount,
       eventDuplicateCount,
       orphanEventCount,
       eventSourceMissingCount,
     },
     metadata: {
-      areaMissing: storeRows.filter((row) => !row.area || row.area === '未設定').length,
-      addressMissing: storeRows.filter((row) => !row.address).length,
-      officialUrlMissing: storeRows.filter((row) => !row.official_url).length,
-      mapUrlMissing: storeRows.filter((row) => !row.map_url).length,
-      priceMissing: storeRows.filter((row) => !row.price_note).length,
+      storedFields: {
+        areaMissing: storeRows.filter((row) => !row.area || row.area === '未設定').length,
+        addressMissing: storeRows.filter((row) => !row.address).length,
+        officialUrlMissing: storeRows.filter((row) => !row.official_url).length,
+        mapUrlMissing: storeRows.filter((row) => !row.map_url).length,
+        priceMissing: storeRows.filter((row) => !row.price_note).length,
+      },
+      displayFallbacks: {
+        areaUnresolved: stores.filter((store) => store.area === 'エリア未確認').length,
+        officialUrlUnresolved: stores.filter((store) => {
+          const sourceUrl = sourceRows.find((source) => source.store_id === store.id)?.url
+          return !resolvedStoreOfficialUrl(store, sourceUrl)
+        }).length,
+        mapUrlUnresolved: stores.filter((store) => !resolvedStoreMapUrl(store)).length,
+        priceUnresolved: stores.filter((store) => !store.priceNote).length,
+      },
     },
     issues,
     sourceAudit,

@@ -25,7 +25,7 @@ function cleanBody(value: string) {
     .trim()
 }
 
-function canonicalPost(input: { author: string; body: string; date: string; articleNo?: string }) {
+function canonicalPost(input: { author: string; body: string; date: string; articleNo?: string; targetDate?: string }) {
   const author = cleanAuthor(input.author)
   const body = cleanBody(input.body)
   const date = compactText(input.date)
@@ -37,6 +37,7 @@ function canonicalPost(input: { author: string; body: string; date: string; arti
     body,
     `投稿日： ${date}`,
     input.articleNo ? `記事番号： ${input.articleNo}` : '',
+    input.targetDate ? `対象日： ${input.targetDate}` : '',
     canonicalPostEnd,
   ]
     .filter(Boolean)
@@ -150,11 +151,24 @@ function extractMessageCards($: cheerio.CheerioAPI) {
 
   $('.main-comment').each((_, element) => {
     const card = $(element)
-    const body = card.find('.message').first().text()
+    const body =
+      card.children('p').not('.name').first().text() ||
+      card.find('.message').not('.reply-comment').first().text()
     const author = card.find('.user_name').first().text()
-    const gender = card.find('.sex').first().text()
+    const genderImage = card.find('img[src*="/images/sex/"]').first().attr('src') ?? ''
+    const gender =
+      card.find('.sex').first().text() ||
+      (/woman/i.test(genderImage)
+        ? '女性'
+        : /man_woman|couple/i.test(genderImage)
+          ? 'カップル'
+          : /man/i.test(genderImage)
+            ? '男性'
+            : '')
     const date = compactText(card.find('.name').first().text()).match(dateTokenPattern)?.[0] ?? ''
-    const articleNo = card.attr('id')?.match(/(\d{3,})/)?.[1]
+    const articleNo =
+      card.attr('id')?.match(/(\d{3,})/)?.[1] ||
+      card.find('[data-id]').first().attr('data-id')?.match(/(\d{3,})/)?.[1]
     const post = canonicalPost({
       author: [author, gender ? `（${compactText(gender)}）` : ''].filter(Boolean).join(''),
       body,
@@ -165,6 +179,96 @@ function extractMessageCards($: cheerio.CheerioAPI) {
   })
 
   return posts
+}
+
+function extractSangoPosts($: cheerio.CheerioAPI, pageUrl: URL) {
+  if (!/(^|\.)bar-sango\.com$/i.test(pageUrl.hostname)) return []
+
+  const posts: string[] = []
+  $('.bbs-post').each((_, element) => {
+    const card = $(element)
+    const rawAuthor = card.find('.post-author').first().clone().children().remove().end().text()
+    const author = cleanAuthor(rawAuthor.replace(/^投稿者\s*[:：]\s*/i, ''))
+    const genderLabel = card.find('.gender-icon').first().attr('aria-label') ?? ''
+    const gender = /女/.test(genderLabel) ? '女性' : /男/.test(genderLabel) ? '男性' : ''
+    const body = card.find('.post-content').first().text()
+    const date = card.find('.post-date').first().text()
+    const articleNo = card.attr('data-post-id') || card.attr('id')?.match(/(\d{3,})/)?.[1]
+    const post = canonicalPost({
+      author: [author, gender ? `（${gender}）` : ''].filter(Boolean).join(''),
+      body,
+      date,
+      articleNo,
+    })
+    if (post) posts.push(post)
+  })
+
+  return posts
+}
+
+function cleanNeoAuthor(value: string) {
+  const cleaned = compactText(value).replace(/^返信\s+/i, '')
+  const parts = cleaned.split(' ')
+  if (parts.length >= 2) {
+    const avatarToken = parts[0]?.normalize('NFKC') ?? ''
+    const candidate = parts.slice(1).join(' ').trim()
+    if (/^neo$/i.test(candidate)) return candidate
+    if (avatarToken.length <= 2 && candidate.normalize('NFKC').startsWith(avatarToken)) return candidate
+  }
+  return cleaned
+}
+
+export function extractNeoReaderContent(value: string) {
+  const markerPattern = /\(([a-z0-9]+)\)(?:NEW\s*)?(20\d{2}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2})(?:\s+\(No\.(\d+)\))?\s*[]?削除\s*/gi
+  const markers = [...value.matchAll(markerPattern)].flatMap((match) => {
+    const markerIndex = match.index ?? 0
+    const prefixStart = Math.max(0, markerIndex - 96)
+    const prefix = value.slice(prefixStart, markerIndex)
+    const authorMatch = prefix.match(/(?:^|\s)((?:\S+\s+)?\S{1,40})\s*さん\s*$/u)
+    if (!authorMatch || authorMatch.index == null) return []
+    const leadingSpace = authorMatch[0].length - authorMatch[0].trimStart().length
+    return [{
+      author: cleanNeoAuthor(authorMatch[1] ?? ''),
+      authorStart: prefixStart + authorMatch.index + leadingSpace,
+      accountId: match[1] ?? '',
+      date: match[2] ?? '',
+      articleNo: match[3],
+      bodyStart: markerIndex + match[0].length,
+    }]
+  })
+  const posts: string[] = []
+  let threadTargetDate = ''
+  const observedYear = value.match(/20\d{2}/)?.[0] ?? String(new Date().getUTCFullYear())
+
+  markers.forEach((marker, index) => {
+    const bodyEnd = markers[index + 1]?.authorStart ?? value.length
+    const body = value
+      .slice(marker.bodyStart, bodyEnd)
+      .replace(/\s*返信\s*$/i, '')
+      .replace(/\s*Copyright ©[\s\S]*$/i, '')
+      .trim()
+    if (/^neo$/i.test(marker.author)) {
+      const target = body.match(/(?:^|\s)(\d{1,2})\/(\d{1,2})(?:\([^)]+\))?/)
+      threadTargetDate = target
+        ? `${observedYear}-${String(Number(target[1])).padStart(2, '0')}-${String(Number(target[2])).padStart(2, '0')}`
+        : ''
+      return
+    }
+    if (!marker.author) return
+    if (!body) return
+
+    const stableDate = marker.date.replace(/\D/g, '')
+    const post = canonicalPost({
+      author: marker.author,
+      body,
+      date: marker.date,
+      articleNo: marker.articleNo || `neo-${marker.accountId}-${stableDate}`,
+      targetDate: marker.articleNo ? undefined : threadTargetDate || undefined,
+    })
+    if (post) posts.push(post)
+  })
+
+  return [...new Set(posts)].join('\n')
 }
 
 function extractDatedArticlePosts($: cheerio.CheerioAPI) {
@@ -274,6 +378,51 @@ function extractRaraPosts($: cheerio.CheerioAPI, pageUrl: URL) {
   return posts
 }
 
+function extractZzBoardPosts($: cheerio.CheerioAPI, pageUrl: URL) {
+  if (pageUrl.hostname !== 'm.z-z.jp') return []
+
+  const posts: string[] = []
+  $('.com').each((_, element) => {
+    const card = $(element)
+    const author = card.find('.name .namecolor').first().clone().children('.no').remove().end().text()
+    const genderText = card.find('.stat').first().text()
+    const gender = /♀/.test(genderText) ? '女性' : /♂/.test(genderText) ? '男性' : ''
+    const date = (card.find('time').first().attr('datetime') || card.find('.time').first().text()).replace('T', ' ')
+    const dateParts = date.match(/(20\d{2})-(\d{2})-(\d{2})/)
+    const threadTitle = compactText(card.find('.tit').first().text() || $('title').first().text())
+    const explicitMonthDay = threadTitle.match(/(\d{1,2})\s*[/-]\s*(\d{1,2})/)
+    const explicitDay = explicitMonthDay ? null : threadTitle.match(/(?:^|\D)(\d{1,2})日(?:\D|$)/)
+    let targetDate: string | undefined
+    if (dateParts && (explicitMonthDay || explicitDay)) {
+      const month = Number(explicitMonthDay?.[1] ?? dateParts[2])
+      const day = Number(explicitMonthDay?.[2] ?? explicitDay?.[1])
+      targetDate = `${dateParts[1]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    } else if (dateParts && /明日/.test(threadTitle)) {
+      const next = new Date(Date.UTC(Number(dateParts[1]), Number(dateParts[2]) - 1, Number(dateParts[3]) + 1, 12))
+      targetDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`
+    } else if (dateParts) {
+      const weekdayIndex = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜'].findIndex((label) => threadTitle.includes(label))
+      if (weekdayIndex >= 0) {
+        const postedDate = new Date(Date.UTC(Number(dateParts[1]), Number(dateParts[2]) - 1, Number(dateParts[3]), 12))
+        const offset = (weekdayIndex - postedDate.getUTCDay() + 7) % 7
+        postedDate.setUTCDate(postedDate.getUTCDate() + offset)
+        targetDate = `${postedDate.getUTCFullYear()}-${String(postedDate.getUTCMonth() + 1).padStart(2, '0')}-${String(postedDate.getUTCDate()).padStart(2, '0')}`
+      }
+    }
+    const articleNo = card.find('.edit a[href*="no="]').first().attr('href')?.match(/[?&]no=(\d+)/)?.[1]
+    const post = canonicalPost({
+      author: [author, gender ? `（${gender}）` : ''].filter(Boolean).join(''),
+      body: card.find('.texts').first().text(),
+      date,
+      articleNo,
+      targetDate,
+    })
+    if (post) posts.push(post)
+  })
+
+  return posts
+}
+
 function extractGeneralText($: cheerio.CheerioAPI) {
   const content = cheerio.load($.html())
   content('script, style, noscript, iframe, svg, nav, header, footer, form, button, select, option').remove()
@@ -344,26 +493,44 @@ function discoverSupplementalUrls($: cheerio.CheerioAPI, pageUrl: URL) {
     })
   }
 
+  if (pageUrl.hostname === 'm.z-z.jp') {
+    $('a[href*="thbbs.cgi"]').each((_, element) => add($(element).attr('href')))
+  }
+
+  if (pageUrl.hostname === 'harnes.tokyo' && pageUrl.pathname === '/event-calendar/') {
+    const now = new Date()
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric',
+    }).formatToParts(now)
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
+    const todayPath = `/event/${part('year')}-${part('month')}-${part('day')}`
+    $(`a[href*="${todayPath}"]`).each((_, element) => add($(element).attr('href')))
+  }
+
   $('iframe[src]').each((_, element) => {
     const src = $(element).attr('src')
     if (src && /(bbs|board|forum|message|thread)/i.test(src)) add(src)
   })
 
-  return urls.slice(0, 3)
+  return urls.slice(0, pageUrl.hostname === 'm.z-z.jp' ? 12 : 3)
 }
 
 export function extractBbsPageContent(html: string, urlValue: string) {
   const $ = cheerio.load(html)
   const pageUrl = new URL(urlValue)
-  const canonicalPosts = [
-    ...extractWordPressComments($),
-    ...extractBbPressReplies($),
-    ...extractMessageCards($),
-    ...extractDatedArticlePosts($),
-    ...extractYybbsPosts($, pageUrl),
-    ...extractRaraPosts($, pageUrl),
-    ...extractInlineDatedPosts($),
-  ]
+  const sangoPosts = extractSangoPosts($, pageUrl)
+  const canonicalPosts = sangoPosts.length
+    ? sangoPosts
+    : [
+        ...extractWordPressComments($),
+        ...extractBbPressReplies($),
+        ...extractMessageCards($),
+        ...extractDatedArticlePosts($),
+        ...extractYybbsPosts($, pageUrl),
+        ...extractRaraPosts($, pageUrl),
+        ...extractZzBoardPosts($, pageUrl),
+        ...extractInlineDatedPosts($),
+      ]
   const canonicalText = [...new Set(canonicalPosts)].join('\n')
   const generalText = extractGeneralText($)
 

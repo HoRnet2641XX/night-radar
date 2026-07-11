@@ -583,7 +583,7 @@ export function PublicDecisionGuide() {
   const items = [
     {
       title: 'ランキングは当日の顧客投稿数です',
-      body: '日本時間の当日営業分で確認できた顧客投稿を、男女・性別未記載を含めて集計します。同数の場合のみ直近3時間の投稿数を比較します。',
+      body: '日本時間で今日の来店判断に含めた顧客投稿を、男女・性別未記載を含めて集計します。同数の場合のみ直近3時間の投稿数を比較します。',
     },
     {
       title: '地図だけで決めない',
@@ -740,7 +740,7 @@ export function StoreDetailView({ detail }: { detail: PublicStoreDetail }) {
         <div>
           <p className={styles.kicker}>店舗レーダー</p>
           <h2>男女比率と動きを同じ目盛りで見る</h2>
-          <p>円は判定できた投稿の女性率、縦グラフは投稿温度・直近3時間・当日営業分・本日イベントを示します。</p>
+          <p>円は判定できた投稿の女性率、縦グラフは投稿温度・直近3時間・当日顧客投稿・本日イベントを示します。</p>
         </div>
         <PublicStoreRadar summary={summary} variant="detail" />
       </section>
@@ -869,7 +869,7 @@ function PublicStoreRadar({
         </span>
         <span>
           <i data-kind="day" />
-          <em>営業分</em>
+          <em>当日</em>
           <strong>{dayCount}</strong>
         </span>
         <span>
@@ -1074,5 +1074,5 @@ export function resolveConditionLabel(condition?: string) {
 
 export function resolveAreaTitle(area?: string) {
   const label = getAreaLabelFromSlug(area)
-  return label && label !== '全国' ? `${label}の店舗` : '公開店舗一覧'
+  return label && label !== 'すべて' ? `${label}の店舗` : '公開店舗一覧'
 }

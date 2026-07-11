@@ -2,11 +2,12 @@ import { motion } from 'motion/react';
 import { GlassCard } from '../ui-nr/GlassCard';
 import { WordReveal, Stagger, StaggerItem } from '../ui-nr/Reveal';
 import { LogOut, Shield, Activity, Database, CheckCircle2, FileText } from 'lucide-react';
-import { RUNTIME_META } from '../data/mock';
+import { useNightRadarData } from '../data/runtime';
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
 export function AccountPage() {
+  const { meta } = useNightRadarData();
   async function signOut() {
     await fetch('/api/auth/signout', { method: 'POST' });
     window.location.assign('/');
@@ -39,10 +40,10 @@ export function AccountPage() {
             <span className="nr-heading text-[22px]" style={{ color: '#0A0B10' }}>N</span>
           </div>
           <div className="flex-1">
-            <div className="text-[16px]" style={{ color: 'var(--nr-text-hi)' }}>{RUNTIME_META.userDisplayName}</div>
-            <div className="text-[11px]" style={{ color: 'var(--nr-text-low)' }}>X認証 · {RUNTIME_META.modeLabel} · {RUNTIME_META.planLabel}プラン</div>
+            <div className="text-[16px]" style={{ color: 'var(--nr-text-hi)' }}>{meta.userDisplayName}</div>
+            <div className="text-[11px]" style={{ color: 'var(--nr-text-low)' }}>X認証 · {meta.modeLabel} · {meta.planLabel}プラン</div>
           </div>
-          <span className="nr-chip">{RUNTIME_META.planLabel}プラン</span>
+          <span className="nr-chip">{meta.planLabel}プラン</span>
         </GlassCard>
       </motion.div>
 
@@ -54,8 +55,8 @@ export function AccountPage() {
         </div>
         <div className="flex items-center justify-between rounded-xl px-3 py-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--nr-border)' }}>
           <div className="flex flex-col">
-            <span className="text-[13px]" style={{ color: 'var(--nr-text-hi)' }}>{RUNTIME_META.userEmail || 'Xアカウントでログイン中'}</span>
-            <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>最終集計 · {RUNTIME_META.generatedAtLabel} JST</span>
+            <span className="text-[13px]" style={{ color: 'var(--nr-text-hi)' }}>{meta.userEmail || 'Xアカウントでログイン中'}</span>
+            <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>最終集計 · {meta.generatedAtLabel} JST</span>
           </div>
           <button className="nr-chip flex items-center gap-1.5" onClick={signOut}><LogOut size={12} /> ログアウト</button>
         </div>
@@ -68,9 +69,9 @@ export function AccountPage() {
       <Stagger delay={0.2} gap={0.08}>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[
-            { icon: Activity, title: 'BBS巡回元', sub: '有効な取得対象', meta: `${RUNTIME_META.sourceCount}件` },
-            { icon: CheckCircle2, title: '集計信頼度80点以上', sub: '取得鮮度・正規化・投稿時刻・件数から算出', meta: `${RUNTIME_META.highConfidenceCount}店` },
-            { icon: Database, title: '書き込み時刻を解析', sub: '当日営業分の順位に使える投稿の割合', meta: `${RUNTIME_META.timestampCoverageAverage}%・解析保留 ${RUNTIME_META.excludedUntimestampedCount}件` },
+            { icon: Activity, title: 'BBS巡回元', sub: '有効な取得対象', meta: `${meta.sourceCount}件` },
+            { icon: CheckCircle2, title: '集計信頼度80点以上', sub: '取得鮮度・正規化・投稿時刻・件数から算出', meta: `${meta.highConfidenceCount}店` },
+            { icon: Database, title: '書き込み時刻を解析', sub: '当日顧客投稿の順位に使える割合', meta: `${meta.timestampCoverageAverage}%・解析保留 ${meta.excludedUntimestampedCount}件` },
           ].map((c, i) => (
             <StaggerItem key={i}>
               <GlassCard className="p-4 flex flex-col gap-2 nr-hairline">
@@ -86,7 +87,7 @@ export function AccountPage() {
 
       <GlassCard className="p-4 nr-hairline">
         <div className="text-[12px] leading-relaxed" style={{ color: 'var(--nr-text-mid)' }}>
-          集計信頼度は、取得鮮度30点、正規化20点、書き込み時刻35点、当日営業分の件数15点を上限に算出します。性別はランキングと集計信頼度に使用しません。投稿内容の事実性を保証する数値ではありません。
+          集計信頼度は、取得鮮度30点、正規化20点、書き込み時刻35点、当日顧客投稿の件数15点を上限に算出します。性別はランキングと集計信頼度に使用しません。投稿内容の事実性を保証する数値ではありません。
         </div>
       </GlassCard>
 

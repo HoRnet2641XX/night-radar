@@ -2,9 +2,10 @@ import {
   buildEffectiveBbsPostRecords,
   buildStoreActivityMetrics,
   buildStoreRadarPoints,
-  filterPostsForStoreBusinessWindows,
-  filterSnapshotsForStoreBusinessWindows,
+  filterPostsForDecisionDate,
+  filterSnapshotsForBusinessDay,
   inferStoreBusinessWindows,
+  isStructurallyValidCustomerNormalizedPost,
 } from './scoring'
 import type {
   BbsNormalizedPost,
@@ -19,7 +20,7 @@ import type {
   StoreRadarPoint,
 } from './types'
 
-export const DAILY_INSIGHT_CONTRACT_VERSION = '2026-07-11'
+export const DAILY_INSIGHT_CONTRACT_VERSION = '2026-07-11.2'
 
 export type DailyStoreDataset = {
   generatedAt: string
@@ -49,6 +50,13 @@ function validTime(value?: string) {
   if (!value) return null
   const time = new Date(value).getTime()
   return Number.isFinite(time) ? time : null
+}
+
+function observedWithinHours(value: string, referenceAt: string, hours: number) {
+  const observed = validTime(value)
+  const reference = validTime(referenceAt)
+  if (observed === null || reference === null) return false
+  return observed >= reference - hours * 60 * 60 * 1000 && observed <= reference + 10 * 60 * 1000
 }
 
 function latestDate(values: Array<string | undefined>, referenceAt: string) {
@@ -261,20 +269,9 @@ export function buildDailyStoreDataset(input: BuildDailyStoreDatasetInput): Dail
   const todayKey = japanDateKey(generatedAt)
   const upcomingKeys = upcomingJapanDateKeys(generatedAt)
   const effectivePosts = buildEffectiveBbsPostRecords(input.rawPosts, input.normalizedPosts)
-  const businessContextPosts = [...effectivePosts, ...(input.businessContextPosts ?? [])]
-  const businessPosts = filterPostsForStoreBusinessWindows(
-    effectivePosts,
-    input.stores,
-    generatedAt,
-    input.snapshots,
-    businessContextPosts,
-  )
-  const businessSnapshots = filterSnapshotsForStoreBusinessWindows(
-    input.snapshots,
-    input.stores,
-    generatedAt,
-    businessContextPosts,
-  )
+  const businessContextPosts = input.businessContextPosts ?? []
+  const businessPosts = filterPostsForDecisionDate(effectivePosts, generatedAt)
+  const businessSnapshots = filterSnapshotsForBusinessDay(input.snapshots, generatedAt)
   const basePoints = buildStoreRadarPoints(input.stores, businessPosts, businessSnapshots)
 
   const drafts = input.stores.map((store) => {
@@ -350,7 +347,7 @@ export function buildDailyStoreDataset(input: BuildDailyStoreDatasetInput): Dail
       weekendEventCount: weekendEvents.length,
       heatScore: 0,
       rank: 0,
-      rankingBasis: 'business_customer_posts' as const,
+      rankingBasis: 'decision_date_customer_posts' as const,
       rankingReason: '',
       reliability: sourceState.reliability,
       reliabilityLabel: sourceState.label,
@@ -361,7 +358,12 @@ export function buildDailyStoreDataset(input: BuildDailyStoreDatasetInput): Dail
       dataConfidence,
       dataConfidenceLabel: confidenceLabel(dataConfidence),
       genderConfidence: genderConfidence(activity.genderCoverage, activity.genderSampleCount),
-      excludedUntimestampedCount: normalizedPosts.filter((post) => !post.postedAt).length,
+      excludedUntimestampedCount: normalizedPosts.filter(
+        (post) =>
+          !post.postedAt &&
+          observedWithinHours(post.observedAt, generatedAt, 6) &&
+          isStructurallyValidCustomerNormalizedPost(post),
+      ).length,
     } satisfies StoreDailyInsight
   })
 
@@ -383,7 +385,7 @@ export function buildDailyStoreDataset(input: BuildDailyStoreDatasetInput): Dail
     return {
       ...insight,
       heatScore,
-      rankingReason: `当日営業分 ${insight.activity.recentPostCount}件 / 直近3時間 ${insight.activity.recentThreeHourCount}件 / ${genderBasis} / ${insight.dataConfidenceLabel}`,
+      rankingReason: `当日顧客投稿 ${insight.activity.recentPostCount}件 / 直近3時間 ${insight.activity.recentThreeHourCount}件 / ${genderBasis} / ${insight.dataConfidenceLabel}`,
     }
   })
 

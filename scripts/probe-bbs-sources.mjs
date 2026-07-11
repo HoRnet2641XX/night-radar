@@ -1,5 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
-import { extractNormalizedBbsPostsFromText } from '../src/lib/scoring.ts'
+import {
+  extractNormalizedBbsPostsFromText,
+  filterPostsForDecisionDate,
+  isRankableCustomerNormalizedPost,
+  isStructurallyValidCustomerNormalizedPost,
+  normalizedBbsPostsToPostRecords,
+} from '../src/lib/scoring.ts'
 import { scrapePublicPage } from '../src/lib/server/scrape.ts'
 
 const CONCURRENCY = 4
@@ -15,7 +21,22 @@ async function probeSource(source) {
   const startedAt = Date.now()
   const result = await scrapePublicPage(source.url)
   const posts = result.status === 'ok' ? extractNormalizedBbsPostsFromText(result.extractedText, result.fetchedAt) : []
-  const timedPosts = posts.filter((post) => Boolean(post.postedAt)).length
+  const structuredPosts = posts.filter((post) => isStructurallyValidCustomerNormalizedPost({ ...post, storeId: source.store_id }))
+  const rankablePosts = structuredPosts.filter((post) => isRankableCustomerNormalizedPost({ ...post, storeId: source.store_id }))
+  const timedPosts = rankablePosts.length
+  const decisionDatePosts = filterPostsForDecisionDate(
+    normalizedBbsPostsToPostRecords(rankablePosts.map((post, index) => ({
+      ...post,
+      id: `probe-${source.id}-${index}`,
+      sourceId: source.id,
+      storeId: source.store_id,
+      sourceUrl: source.url,
+      observedAt: result.fetchedAt,
+      bodyHash: '',
+      contentKey: '',
+    }))),
+    result.fetchedAt,
+  )
 
   return {
     id: source.id,
@@ -24,8 +45,22 @@ async function probeSource(source) {
     elapsedMs: Date.now() - startedAt,
     textLength: result.extractedText.length,
     postCount: posts.length,
+    structuredPostCount: structuredPosts.length,
+    rankablePostCount: rankablePosts.length,
+    rejectedPostCount: posts.length - structuredPosts.length,
     timedPostCount: timedPosts,
-    timestampCoverage: posts.length ? Math.round((timedPosts / posts.length) * 100) : 0,
+    decisionDatePostCount: decisionDatePosts.length,
+    timestampCoverage: structuredPosts.length ? Math.round((timedPosts / structuredPosts.length) * 100) : 0,
+    parserHealth:
+      result.status !== 'ok'
+        ? '取得失敗'
+        : posts.length === 0
+          ? '投稿0件'
+        : posts.length > 0 && structuredPosts.length === 0
+          ? '構造解析失敗'
+          : structuredPosts.length > 0 && timedPosts / structuredPosts.length < 0.5
+            ? '投稿時刻の解析不足'
+            : '正常',
     message: result.message || result.title || '',
     url: source.url,
   }
@@ -45,7 +80,7 @@ for (let index = 0; index < (sources ?? []).length; index += CONCURRENCY) {
 }
 
 const okRows = rows.filter((row) => row.status === 'ok')
-const rowsWithPosts = okRows.filter((row) => row.postCount > 0)
+const rowsWithPosts = okRows.filter((row) => row.rankablePostCount > 0)
 console.log(JSON.stringify({
   auditedAt: new Date().toISOString(),
   summary: {
@@ -53,8 +88,11 @@ console.log(JSON.stringify({
     reachableSources: okRows.length,
     sourcesWithPosts: rowsWithPosts.length,
     failedSources: rows.filter((row) => row.status !== 'ok').length,
-    totalPosts: rows.reduce((sum, row) => sum + row.postCount, 0),
+    totalParsedRows: rows.reduce((sum, row) => sum + row.postCount, 0),
+    structuredPosts: rows.reduce((sum, row) => sum + row.structuredPostCount, 0),
+    rankablePosts: rows.reduce((sum, row) => sum + row.rankablePostCount, 0),
     timedPosts: rows.reduce((sum, row) => sum + row.timedPostCount, 0),
+    decisionDatePosts: rows.reduce((sum, row) => sum + row.decisionDatePostCount, 0),
   },
   sources: rows,
 }, null, 2))

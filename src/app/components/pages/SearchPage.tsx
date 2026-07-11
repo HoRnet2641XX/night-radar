@@ -2,8 +2,10 @@ import { motion } from 'motion/react';
 import { Search, X, MapPin, Activity } from 'lucide-react';
 import { GlassCard } from '../ui-nr/GlassCard';
 import { WordReveal } from '../ui-nr/Reveal';
-import { BARS, type Bar } from '../data/mock';
+import { type Bar } from '../data/mock';
+import { useNightRadarData } from '../data/runtime';
 import { useState } from 'react';
+import { matchesStoreSearch } from '@/lib/store-search';
 
 const CATEGORIES = ['すべて', '営業時間内', '直近3時間', '女性書き込みあり', '初回来店の記述', '複数来店の記述', '予定あり', '集計信頼度80点以上'];
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -20,12 +22,11 @@ function matchesCategory(bar: Bar, category: string) {
 }
 
 export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
+  const { bars } = useNightRadarData();
   const [q, setQ] = useState('');
   const [category, setCategory] = useState('すべて');
-  const normalizedQuery = q.trim().toLocaleLowerCase('ja-JP');
-  const filtered = BARS.filter((bar) => {
-    const matchesQuery = !normalizedQuery || [bar.name, bar.area, ...bar.tags]
-      .some((value) => value.toLocaleLowerCase('ja-JP').includes(normalizedQuery));
+  const filtered = bars.filter((bar) => {
+    const matchesQuery = matchesStoreSearch(q, bar.searchKeywords);
     return matchesQuery && matchesCategory(bar, category);
   }).toSorted((left, right) =>
     category === '女性書き込みあり'
@@ -77,7 +78,16 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
           <div className="nr-mono text-[12px] mb-3" style={{ color: 'var(--nr-text-mid)' }}>条件</div>
           <div className="flex flex-wrap gap-2">
             {CATEGORIES.map((item) => (
-              <button key={item} type="button" className="nr-chip" data-active={category === item} aria-pressed={category === item} onClick={() => setCategory(item)}>{item}</button>
+              <button
+                key={item}
+                type="button"
+                className="nr-chip"
+                data-active={category === item}
+                aria-pressed={category === item}
+                onClick={() => setCategory((current) => current === item && item !== 'すべて' ? 'すべて' : item)}
+              >
+                {item}
+              </button>
             ))}
           </div>
         </GlassCard>
@@ -90,9 +100,18 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
           <h2 className="nr-heading text-[22px]" style={{ color: 'var(--nr-text-hi)' }}>該当 <span style={{ color: 'var(--nr-accent)' }}>{filtered.length}</span> 件</h2>
         </div>
         <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>
-          並び順 · {category === '女性書き込みあり' ? '女性書き込み' : '当日営業分の顧客投稿'}
+          並び順 · {category === '女性書き込みあり' ? '女性書き込み' : '当日顧客投稿'}
         </span>
       </div>
+
+      {(q || category !== 'すべて') && (
+        <div className="flex flex-wrap items-center gap-2 -mt-5" aria-live="polite">
+          <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>適用中</span>
+          {q && <span className="nr-chip" data-active>検索「{q.trim()}」</span>}
+          {category !== 'すべて' && <span className="nr-chip" data-active>{category}</span>}
+          <button type="button" className="nr-chip" onClick={() => { setQ(''); setCategory('すべて'); }}>条件をすべて外す</button>
+        </div>
+      )}
 
       <GlassCard className="p-2 nr-hairline">
         {filtered.map((b, i) => {
@@ -109,7 +128,7 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
               <div className="min-w-0">
                 <div className="text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>{b.rank}位 · {b.name}</div>
                 <div className="text-[11px] flex items-center gap-1" style={{ color: 'var(--nr-text-low)' }}>
-                  <MapPin size={10} /> {b.area} · 当日営業分 {b.postCount}件
+                  <MapPin size={10} /> {b.area} · 当日顧客投稿 {b.postCount}件
                 </div>
               </div>
               <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>女性書き込み</span><br /><span className="nr-mono text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>{b.femaleCount}件</span></div>
@@ -122,6 +141,13 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
             </motion.button>
           );
         })}
+        {filtered.length === 0 && (
+          <div className="px-5 py-8 text-center" role="status">
+            <p className="text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>一致する店舗がありません</p>
+            <p className="text-[12px] mt-2" style={{ color: 'var(--nr-text-low)' }}>店名の一部だけにするか、条件を外して再度確認してください。</p>
+            <button type="button" className="nr-accent-btn rounded-full px-5 py-2 text-[12px] mt-4" onClick={() => { setQ(''); setCategory('すべて'); }}>条件をリセット</button>
+          </div>
+        )}
       </GlassCard>
 
       {/* Random / tag jump */}

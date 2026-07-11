@@ -88,7 +88,7 @@ test('daily insight contract ranks all customer posts and exposes one shared bas
     referenceAt,
   })
 
-  assert.equal(DAILY_INSIGHT_CONTRACT_VERSION, '2026-07-11')
+  assert.equal(DAILY_INSIGHT_CONTRACT_VERSION, '2026-07-11.2')
   assert.equal(dataset.insights[0].store.id, 'total-posts')
   assert.equal(dataset.insights[0].rank, 1)
   assert.equal(dataset.insights[0].activity.recentPostCount, 3)
@@ -100,8 +100,33 @@ test('daily insight contract ranks all customer posts and exposes one shared bas
   assert.equal(dataset.insights[1].activity.femalePostCount, 2)
   assert.equal(dataset.insights[1].excludedUntimestampedCount, 1)
   assert.equal(dataset.insights[0].weekendEventCount, 0)
-  assert.equal(dataset.insights[0].rankingBasis, 'business_customer_posts')
+  assert.equal(dataset.insights[0].rankingBasis, 'decision_date_customer_posts')
   assert.match(dataset.insights[0].businessWindowLabel, /7\/10 夜部 19:00-翌05:00/)
+})
+
+test('daily insight contract includes pre-opening posts assigned to today and excludes tomorrow or cancelled visits', () => {
+  const target = store('decision-date-store')
+  const rows = [
+    { ...post({ id: 'thread-target', storeId: target.id, postedAt: '2026-07-09T08:08:00.000Z', authorName: '前日予告' }), body: '[[NR_TARGET_DATE:2026-07-10]] お昼から行きます。' },
+    { ...post({ id: 'today', storeId: target.id, postedAt: '2026-07-10T00:30:00.000Z', authorName: '当日予告' }), body: '今夜伺います。' },
+    { ...post({ id: 'tomorrow', storeId: target.id, postedAt: '2026-07-10T01:00:00.000Z', authorName: '翌日予告' }), body: '明日伺います。' },
+    { ...post({ id: 'cancelled', storeId: target.id, postedAt: '2026-07-10T01:10:00.000Z', authorName: '取消' }), body: '今日は行けなくなりました。' },
+  ]
+  const dataset = buildDailyStoreDataset({
+    stores: [target],
+    events: [],
+    rawPosts: [],
+    sources: [source(target.id)],
+    snapshots: [],
+    normalizedPosts: rows,
+    referenceAt,
+  })
+
+  assert.equal(dataset.insights[0].activity.recentPostCount, 2)
+  assert.deepEqual(dataset.insights[0].rankingPostIds.toSorted(), [
+    'normalized-thread-target',
+    'normalized-today',
+  ])
 })
 
 test('daily insight contract separates crawl failure from the last successful data', () => {
@@ -113,7 +138,7 @@ test('daily insight contract separates crawl failure from the last successful da
     sources: [source(target.id, 'blocked')],
     snapshots: [],
     normalizedPosts: [
-      post({ id: 'blocked-post', storeId: target.id, postedAt: '2026-07-10T11:30:00.000Z', authorName: '投稿者' }),
+      post({ id: 'blocked-post', storeId: target.id, postedAt: '2026-07-10T11:30:00.000Z', authorName: '来店者' }),
     ],
     referenceAt,
   })
