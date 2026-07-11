@@ -318,6 +318,7 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
 
   const storeIds = (storeResult.data ?? []).map((row) => String(row.id)).filter(Boolean)
   const recentPostThreshold = isoHoursAgo(recentPostWindowHours)
+  const normalizedPostUpperBound = new Date().toISOString()
   const [eventResult, postResult, sourceResult, snapshotResult, snapshotContextResult, normalizedPostResult] = await Promise.all([
     storeIds.length
       ? supabase
@@ -361,8 +362,10 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
             .from('bbs_normalized_posts')
             .select(normalizedPostSelectColumns)
             .in('store_id', storeIds)
-            .gte('observed_at', recentPostThreshold)
-            .order('observed_at', { ascending: false })
+            .gte('posted_at', recentPostThreshold)
+            .lte('posted_at', normalizedPostUpperBound)
+            .order('posted_at', { ascending: false })
+            .order('id', { ascending: false })
             .range(from, to)) as DbListResult,
         )
       : Promise.resolve({ data: [], error: null }),
@@ -395,7 +398,7 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
   })
 }
 
-const loadCachedPublicDirectoryState = unstable_cache(loadPublicDirectoryState, ['public-directory-state-compact-2026-07-11'], {
+const loadCachedPublicDirectoryState = unstable_cache(loadPublicDirectoryState, ['public-directory-state-stable-posted-at-2026-07-11'], {
   revalidate: 60,
   tags: [PUBLIC_DIRECTORY_CACHE_TAG],
 })
@@ -416,8 +419,10 @@ async function loadPublicStoreDetail(storeId: string): Promise<PublicStoreDetail
       .from('bbs_normalized_posts')
       .select(normalizedPostSelectColumns)
       .eq('store_id', storeId)
-      .gte('observed_at', isoHoursAgo(recentPostWindowHours))
+      .gte('posted_at', isoHoursAgo(recentPostWindowHours))
+      .lte('posted_at', state.generatedAt)
       .order('posted_at', { ascending: false })
+      .order('id', { ascending: false })
       .range(from, to)) as DbListResult,
   )
   if (result.error && !isMissingRelationError(result.error)) return { summary, events, recentPosts: [] }

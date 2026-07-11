@@ -966,6 +966,7 @@ export async function getDashboardState(): Promise<DashboardState> {
   const storeIds = (storeResult.data ?? []).map((row) => row.id)
   const stores = (storeResult.data ?? []).map(toStore)
   const recentPostThreshold = isoHoursAgo(recentDashboardPostWindowHours)
+  const normalizedPostUpperBound = new Date().toISOString()
 
   const [
     eventResult,
@@ -1031,8 +1032,9 @@ export async function getDashboardState(): Promise<DashboardState> {
               .from('bbs_normalized_posts')
               .select(normalizedPostSelectColumns)
               .in('store_id', storeIds)
-              .gte('observed_at', recentPostThreshold)
-              .order('observed_at', { ascending: false })
+              .gte('posted_at', recentPostThreshold)
+              .lte('posted_at', normalizedPostUpperBound)
+              .order('posted_at', { ascending: false })
               .order('id', { ascending: false })
               .range(from, to)) as DbListResult,
           )
