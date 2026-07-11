@@ -7,7 +7,7 @@
     "dev": "next dev --webpack -p 3010",
     "build": "next build --webpack",
     "lint": "eslint .",
-    "test": "node --import tsx --test src/lib/csv.test.ts src/lib/pagination.test.ts src/lib/scoring.test.ts src/lib/daily-store-insights.test.ts src/lib/public-directory.test.ts src/lib/server/bbs-content.test.ts src/app/components/data/adapter.test.ts",
+    "test": "node --import tsx --test src/lib/csv.test.ts src/lib/pagination.test.ts src/lib/scoring.test.ts src/lib/daily-store-insights.test.ts src/lib/public-directory.test.ts src/lib/text.test.ts src/lib/server/bbs-content.test.ts src/app/components/data/adapter.test.ts",
     "check:ready": "node scripts/check-local-readiness.mjs",
     "catalog:upsert:bbs": "node scripts/upsert-bbs-sources.mjs",
     "catalog:upsert:events": "node scripts/upsert-official-events.mjs",

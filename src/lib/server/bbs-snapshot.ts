@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { buildBbsSnapshotMetrics, scoreBbsSnapshot } from '../scoring'
+import { storageSafeText } from '../text'
 import type { BbsSnapshot, BbsSource, ScrapeResult } from '../types'
 
 type BrowserSnapshot = {
@@ -120,7 +121,7 @@ async function captureBrowserSnapshotWithBrowser(url: string, browser: BrowserLi
 
       return {
         screenshotDataUrl: `data:image/jpeg;base64,${image.toString('base64')}`,
-        extractedText: text.slice(0, 12_000),
+        extractedText: storageSafeText(text, 12_000),
       }
     } finally {
       await page.close().catch(() => {})

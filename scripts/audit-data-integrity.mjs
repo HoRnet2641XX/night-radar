@@ -185,6 +185,8 @@ async function main() {
   const normalizedPosts = normalizedRows.map(toNormalizedPost)
   const structuredCustomerPosts = normalizedPosts.filter(isStructurallyValidCustomerNormalizedPost)
   const rankableCustomerPosts = structuredCustomerPosts.filter(isRankableCustomerNormalizedPost)
+  const rankableRowIds = new Set(rankableCustomerPosts.map((post) => post.id))
+  const rankableNormalizedRows = normalizedRows.filter((row) => rankableRowIds.has(row.id))
   const events = mergeOfficialEvents(eventRows.map(toEvent))
   const latestContextByStore = new Map()
   for (const snapshot of snapshotRows) {
@@ -218,6 +220,7 @@ async function main() {
     const storeRows = normalizedRows.filter((row) => row.store_id === insight.store.id)
     const validRows = structuredCustomerPosts.filter((post) => post.storeId === insight.store.id)
     const rankableRows = rankableCustomerPosts.filter((post) => post.storeId === insight.store.id)
+    const rankableStoreRows = rankableNormalizedRows.filter((row) => row.store_id === insight.store.id)
     return {
     rank: insight.rank,
     id: insight.store.id,
@@ -234,7 +237,7 @@ async function main() {
     structuredCustomerRows: validRows.length,
     rankableRows: rankableRows.length,
     rejectedMalformedRows: Math.max(0, storeRows.length - validRows.length),
-    semanticDuplicates: duplicateCount(storeRows, semanticPostKey),
+    semanticDuplicates: duplicateCount(rankableStoreRows, semanticPostKey),
     businessWindows: insight.businessWindows.map((window) => `${window.label} ${window.startsAt}-${window.endsAt} (${window.source})`),
     }
   })
@@ -283,7 +286,7 @@ async function main() {
   })
 
   const normalizedDuplicateCount = duplicateCount(normalizedRows, (row) => `${row.store_id}:${row.content_key}`)
-  const semanticDuplicateCount = duplicateCount(normalizedRows, semanticPostKey)
+  const semanticDuplicateCount = duplicateCount(rankableNormalizedRows, semanticPostKey)
   const currentParserStructuredPosts = sourceAudit.reduce((sum, source) => sum + source.currentBatchStructuredRows, 0)
   const currentParserRankablePosts = sourceAudit.reduce((sum, source) => sum + source.currentBatchRankableRows, 0)
   const eventDuplicateCount = duplicateCount(eventRows, (row) => [row.store_id, row.date_label, row.starts_at, row.title].join('|'))

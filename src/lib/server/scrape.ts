@@ -1,4 +1,5 @@
 import type { PostRecord, ScrapeResult } from '../types'
+import { storageSafeText } from '../text'
 import { extractBbsPageContent, extractNeoReaderContent, extractScarletCommentsPayload } from './bbs-content'
 
 const blockedHostPatterns = [
@@ -85,7 +86,7 @@ async function scrapeReadableTextViaReader(url: URL): Promise<ScrapeResult | nul
     return {
       url: url.toString(),
       title,
-      extractedText: extractedText.slice(0, 12_000),
+      extractedText: storageSafeText(extractedText, 12_000),
       fetchedAt: new Date().toISOString(),
       status: 'ok',
     }
@@ -118,7 +119,7 @@ async function scrapeRenderedHtmlViaBrowserless(url: URL): Promise<ScrapeResult 
     })
     if (!response.ok) return null
 
-    const html = (await response.text()).slice(0, 500_000)
+    const html = storageSafeText(await response.text(), 500_000)
     const page = extractBbsPageContent(html, url.toString())
     if (page.extractedText.length < 80) return null
 
@@ -207,7 +208,7 @@ async function fetchSupplementalText(urlValue: string) {
     })
     const contentType = response.headers.get('content-type') ?? ''
     if (!response.ok || !contentType.includes('text/html')) return ''
-    const html = (await readHtmlResponse(response)).slice(0, 500_000)
+    const html = storageSafeText(await readHtmlResponse(response), 500_000)
     return extractBbsPageContent(html, response.url || url.toString()).extractedText
   } catch {
     return ''
@@ -279,16 +280,18 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
         break
       }
 
-      const html = (await readHtmlResponse(response)).slice(0, 500_000)
+      const html = storageSafeText(await readHtmlResponse(response), 500_000)
       const page = extractBbsPageContent(html, response.url || url.toString())
       const [knownHostPosts, supplementalTexts] = await Promise.all([
         fetchKnownHostPosts(url),
         Promise.all(page.supplementalUrls.map(fetchSupplementalText)),
       ])
-      const extractedText = [knownHostPosts, ...supplementalTexts, page.extractedText]
+      const extractedText = storageSafeText(
+        [knownHostPosts, ...supplementalTexts, page.extractedText]
         .filter((text) => text.trim())
-        .join('\n')
-        .slice(0, 24_000)
+          .join('\n'),
+        24_000,
+      )
       if (extractedText.length < 80) {
         lastErrorMessage = '公開ページから投稿本文を確認できませんでした。'
         lastFailureStatus = 'failed'
@@ -340,7 +343,7 @@ export function scrapeResultToPost(result: ScrapeResult, storeId: string): PostR
     source: 'scrape',
     sourceUrl: result.url,
     postedAt: result.fetchedAt,
-    body: result.extractedText.slice(0, 1500),
+    body: storageSafeText(result.extractedText, 1500),
     keywords: [],
   }
 }
