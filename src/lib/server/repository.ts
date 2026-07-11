@@ -949,13 +949,12 @@ async function saveBbsSourceWithAccess(access: Extract<WriteAccess, { mode: 'dat
 }
 
 export async function getDashboardState(): Promise<DashboardState> {
-  const supabase = await createSupabaseServerClient()
-  if (!supabase) return demoDashboardState('demo', 'Supabase未接続')
-
+  const sessionClient = await createSupabaseServerClient()
   const {
     data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return demoDashboardState('anonymous', 'ログイン待ち')
+  } = sessionClient ? await sessionClient.auth.getUser() : { data: { user: null } }
+  const supabase = createSupabaseAdminClient() ?? sessionClient
+  if (!supabase) return demoDashboardState('demo', 'Supabase未接続')
 
   let storeResult = (await supabase.from('stores').select(storeSelectColumns).order('created_at', { ascending: false })) as DbListResult
   if (isMissingColumnError(storeResult.error)) {
@@ -1039,22 +1038,34 @@ export async function getDashboardState(): Promise<DashboardState> {
               .range(from, to)) as DbListResult,
           )
         : Promise.resolve({ data: [], error: null }),
-      supabase.from('exact_terms').select(exactTermSelectColumns).eq('user_id', user.id).order('created_at', { ascending: true }),
-      supabase.from('word_bookmarks').select(wordBookmarkSelectColumns).eq('user_id', user.id).order('created_at', { ascending: false }),
-      supabase
-        .from('notification_jobs')
-        .select(notificationJobSelectColumns)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(20),
-      supabase.from('notification_preferences').select(notificationPreferenceSelectColumns).eq('user_id', user.id).maybeSingle(),
-      supabase
-        .from('import_batches')
-        .select(importBatchSelectColumns)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(12),
-      supabase.from('subscriptions').select(subscriptionSelectColumns).eq('user_id', user.id).maybeSingle(),
+      user
+        ? supabase.from('exact_terms').select(exactTermSelectColumns).eq('user_id', user.id).order('created_at', { ascending: true })
+        : Promise.resolve({ data: [], error: null }),
+      user
+        ? supabase.from('word_bookmarks').select(wordBookmarkSelectColumns).eq('user_id', user.id).order('created_at', { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
+      user
+        ? supabase
+            .from('notification_jobs')
+            .select(notificationJobSelectColumns)
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(20)
+        : Promise.resolve({ data: [], error: null }),
+      user
+        ? supabase.from('notification_preferences').select(notificationPreferenceSelectColumns).eq('user_id', user.id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      user
+        ? supabase
+            .from('import_batches')
+            .select(importBatchSelectColumns)
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(12)
+        : Promise.resolve({ data: [], error: null }),
+      user
+        ? supabase.from('subscriptions').select(subscriptionSelectColumns).eq('user_id', user.id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
     ])
 
   const normalizedPostError =
@@ -1113,16 +1124,18 @@ export async function getDashboardState(): Promise<DashboardState> {
   })
   const posts = dailyDataset.effectivePosts
   const scoredEvents = scoreEvents(events, stores, posts)
-  const decisionResult = await supabase.from('user_store_decisions').select(storeDecisionSelectColumns).eq('user_id', user.id)
+  const decisionResult = user
+    ? await supabase.from('user_store_decisions').select(storeDecisionSelectColumns).eq('user_id', user.id)
+    : { data: [], error: null }
   if (decisionResult.error && !isMissingRelationError(decisionResult.error)) {
     return demoDashboardState('demo', decisionResult.error.message)
   }
 
   return {
     mode: 'database',
-    userId: user.id,
-    userEmail: user.email ?? undefined,
-    userDisplayName: userDisplayName(user),
+    userId: user?.id,
+    userEmail: user?.email ?? undefined,
+    userDisplayName: user ? userDisplayName(user) : 'ゲスト利用',
     setupStatus,
     stores,
     events,

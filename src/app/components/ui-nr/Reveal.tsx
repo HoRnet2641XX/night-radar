@@ -12,7 +12,7 @@ export function WordReveal({ text, delay = 0, className = '' }: { text: string; 
         <span key={i} style={{ display: 'inline-block', overflow: 'hidden', paddingBottom: '0.12em', verticalAlign: 'bottom' }}>
           <motion.span
             style={{ display: 'inline-block' }}
-            initial={{ y: '110%' }}
+            initial={false}
             animate={{ y: '0%' }}
             transition={{ duration: 0.9, ease, delay: delay + i * 0.06 }}
           >
@@ -33,7 +33,7 @@ export const softIn: Variants = {
 export function Stagger({ children, delay = 0, gap = 0.06 }: { children: ReactNode; delay?: number; gap?: number }) {
   return (
     <motion.div
-      initial="hidden" animate="show"
+      initial={false} animate="show"
       variants={{ show: { transition: { staggerChildren: gap, delayChildren: delay } } }}
     >
       {children}

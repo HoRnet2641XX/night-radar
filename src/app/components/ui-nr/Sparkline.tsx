@@ -11,7 +11,13 @@ export function Sparkline({ data, w = 120, h = 32, color = 'var(--nr-accent)' }:
   const areaPts = `0,${h} ${pts} ${w},${h}`;
   const id = `sp-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
   return (
-    <svg width={w} height={h} className="overflow-visible">
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      className="h-auto w-full max-w-full overflow-visible"
+      style={{ maxWidth: w }}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.35" />

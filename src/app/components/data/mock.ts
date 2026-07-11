@@ -57,10 +57,29 @@ export type Bar = {
   rankingBasisLabel: string
   excludedUntimestampedCount: number
   genderUnknownCount: number
+  genderStatus: 'measured' | 'partial' | 'unavailable'
+}
+
+export type RadarPostGender = 'female' | 'male' | 'unknown'
+
+export type RadarPost = {
+  id: string
+  storeId: string
+  storeName: string
+  authorName: string
+  gender: RadarPostGender
+  genderLabel: string
+  postedAt?: string
+  postedAtLabel: string
+  body: string
+  sourceUrl?: string
+  isCurrentBusinessDay: boolean
+  hasEmoji: boolean
 }
 
 export type CalendarEventItem = {
   id: string
+  storeId: string
   date: string
   day: number
   title: string
@@ -98,6 +117,7 @@ export type RuntimeMeta = {
   modeLabel: string
   userDisplayName: string
   userEmail?: string
+  authenticated: boolean
   summary: string
 }
 
@@ -154,11 +174,13 @@ const fallbackBars: Bar[] = [
     rankingBasisLabel: '当日顧客投稿数',
     excludedUntimestampedCount: 0,
     genderUnknownCount: 0,
+    genderStatus: 'unavailable',
   },
 ]
 
 export const BARS: Bar[] = fallbackBars
 export const EVENTS: CalendarEventItem[] = []
+export const POSTS: RadarPost[] = []
 export const TICKER: { name: string; signal: number; area: string }[] = tickerFromBars(fallbackBars)
 export const RUNTIME_META: RuntimeMeta = createFallbackMeta()
 
@@ -204,6 +226,7 @@ function createFallbackMeta(): RuntimeMeta {
     planLabel: '無料',
     modeLabel: '確認中',
     userDisplayName: 'Night Radar ユーザー',
+    authenticated: false,
     summary: 'データ接続を確認しています。',
   }
 }

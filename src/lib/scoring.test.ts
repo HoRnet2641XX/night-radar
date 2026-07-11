@@ -23,11 +23,19 @@ import {
   normalizeWatchedSearchText,
   parseExactTerms,
   prioritizeScoredEventsForToday,
+  resolvedNormalizedPostGender,
   scoreBbsSnapshot,
   scoreEvents,
   searchExactBbsTerms,
   summarizeSignals,
 } from './scoring'
+
+it('resolves explicit gender markers in author names without guessing ordinary names', () => {
+  assert.equal(resolvedNormalizedPostGender({ authorName: '尋〜Hiro〜👩', authorGender: '記載なし' }), 'female')
+  assert.equal(resolvedNormalizedPostGender({ authorName: 'くるちゃん👱‍♀️', authorGender: '記載なし' }), 'female')
+  assert.equal(resolvedNormalizedPostGender({ authorName: 'タロウ（男性）', authorGender: '記載なし' }), 'male')
+  assert.equal(resolvedNormalizedPostGender({ authorName: 'あやか', authorGender: '記載なし' }), 'unknown')
+})
 
 describe('Japan calendar dates', () => {
   it('uses the opened calendar date to derive the weekday', () => {

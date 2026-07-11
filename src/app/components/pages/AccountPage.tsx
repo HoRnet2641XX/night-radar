@@ -22,11 +22,11 @@ export function AccountPage() {
           <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>設定</span>
         </motion.div>
         <h1 className="nr-heading text-[34px] sm:text-[40px]" style={{ color: 'var(--nr-text-hi)' }}>
-          <WordReveal text="アカウントとデータ状態" />
+          <WordReveal text="データ状態と利用設定" />
         </h1>
         <motion.p className="text-[14px] mt-4 max-w-[60ch] leading-[1.7]" style={{ color: 'var(--nr-text-mid)' }}
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.5 }}>
-          Xログインの状態と、BBSデータの取得件数・正規化率を確認できます。
+          BBSデータの取得件数・正規化率と、この端末の利用状態を確認できます。
         </motion.p>
       </div>
 
@@ -41,7 +41,7 @@ export function AccountPage() {
           </div>
           <div className="flex-1">
             <div className="text-[16px]" style={{ color: 'var(--nr-text-hi)' }}>{meta.userDisplayName}</div>
-            <div className="text-[11px]" style={{ color: 'var(--nr-text-low)' }}>X認証 · {meta.modeLabel} · {meta.planLabel}プラン</div>
+            <div className="text-[11px]" style={{ color: 'var(--nr-text-low)' }}>{meta.authenticated ? 'アカウント連携済み' : 'ログイン不要で利用中'} · {meta.modeLabel}</div>
           </div>
           <span className="nr-chip">{meta.planLabel}プラン</span>
         </GlassCard>
@@ -55,13 +55,13 @@ export function AccountPage() {
         </div>
         <div className="flex items-center justify-between rounded-xl px-3 py-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--nr-border)' }}>
           <div className="flex flex-col">
-            <span className="text-[13px]" style={{ color: 'var(--nr-text-hi)' }}>{meta.userEmail || 'Xアカウントでログイン中'}</span>
+            <span className="text-[13px]" style={{ color: 'var(--nr-text-hi)' }}>{meta.authenticated ? meta.userEmail || 'アカウント連携済み' : '現在はログインなしで利用できます'}</span>
             <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>最終集計 · {meta.generatedAtLabel} JST</span>
           </div>
-          <button className="nr-chip flex items-center gap-1.5" onClick={signOut}><LogOut size={12} /> ログアウト</button>
+          {meta.authenticated && <button className="nr-chip flex items-center gap-1.5" onClick={signOut}><LogOut size={12} /> ログアウト</button>}
         </div>
         <p className="text-[11px] mt-3 leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>
-          ログアウト後は、X認証から再度ログインできます。
+          ログイン機能は別の用途へ移行中です。店舗比較・検索・予定確認はログインせず利用できます。
         </p>
       </GlassCard>
 

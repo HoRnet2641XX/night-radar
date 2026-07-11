@@ -1,11 +1,13 @@
 import { formatBarName, formatStoreArea, formatStoreSessionLabel } from '@/lib/display'
 import { resolvedStoreMapUrl, resolvedStoreOfficialUrl } from '@/lib/store-catalog'
+import { isStructurallyValidCustomerNormalizedPost, resolvedNormalizedPostGender } from '@/lib/scoring'
 import type { DashboardState, EventInput, StoreDailyInsight, StoreProfile } from '@/lib/types'
-import type { Bar, CalendarEventItem, RuntimeMeta } from './mock'
+import type { Bar, CalendarEventItem, RadarPost, RuntimeMeta } from './mock'
 
 export type NightRadarViewData = {
   bars: Bar[]
   events: CalendarEventItem[]
+  posts: RadarPost[]
   meta: RuntimeMeta
 }
 
@@ -48,9 +50,21 @@ function priceNumber(store: StoreProfile) {
   return Number(normalized) || 0
 }
 
+function relativeScale(value: number, maximum: number) {
+  if (maximum <= 0 || value <= 0) return 0
+  return clamp((value / maximum) * 100)
+}
+
+type BarScales = {
+  posts: number
+  recent: number
+  events: number
+}
+
 function toBar(
   insight: StoreDailyInsight,
   todayEvents: EventInput[] = [],
+  scales: BarScales,
 ): Bar {
   const point = insight.point
   const store = point.store
@@ -105,9 +119,9 @@ function toBar(
       ...todayEvents.map((event) => event.title),
     ].filter((value): value is string => Boolean(value?.trim())),
     price: priceNumber(store),
-    vibe: clamp(postCount),
-    crowd: clamp(storeActivity.recentThreeHourCount * 10),
-    music: clamp(eventCount * 25),
+    vibe: relativeScale(postCount, scales.posts),
+    crowd: relativeScale(storeActivity.recentThreeHourCount, scales.recent),
+    music: relativeScale(eventCount, scales.events),
     service: dataConfidence,
     drinks: femaleRatio ?? 0,
     score: clamp(point.score),
@@ -159,6 +173,12 @@ function toBar(
     rankingBasisLabel: '当日顧客投稿数',
     excludedUntimestampedCount: insight.excludedUntimestampedCount,
     genderUnknownCount: Math.max(0, postCount - storeActivity.genderSampleCount),
+    genderStatus:
+      storeActivity.genderSampleCount === 0 || storeActivity.genderCoverage < 20
+        ? 'unavailable'
+        : storeActivity.genderCoverage < 60
+          ? 'partial'
+          : 'measured',
   }
 }
 
@@ -176,6 +196,7 @@ function toCalendarEvent(event: EventInput, stores: StoreProfile[]): CalendarEve
 
   return {
     id: event.id,
+    storeId: event.storeId,
     date: event.date,
     day: Number(event.date.slice(-2)) || 1,
     title: event.title,
@@ -187,6 +208,65 @@ function toCalendarEvent(event: EventInput, stores: StoreProfile[]): CalendarEve
     startsAt: event.startsAt,
     detail: event.details,
   }
+}
+
+
+function cleanPostBody(value: string) {
+  return value
+    .replace(/^\[\[NR_TARGET_DATE:\d{4}-\d{2}-\d{2}\]\]\s*/u, '')
+    .replace(/^投稿者[:：]\s*[^（(\n]{1,80}[（(](?:女性|女|単女|単独女性|男性|男|単男|単独男性|♀|♂)[）)]\s*/u, '')
+    .trim()
+}
+
+function formatPostTime(value: string | undefined, fallback: string) {
+  const date = validDate(value) ?? validDate(fallback)
+  if (!date) return '時刻未確認'
+  return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+function toRadarPosts(state: DashboardState, bars: Bar[]): RadarPost[] {
+  const storeNames = new Map(bars.map((bar) => [bar.id, bar.name]))
+  const currentPostIds = new Set(state.dailyInsights.flatMap((insight) => insight.rankingPostIds))
+  const seen = new Set<string>()
+
+  return state.bbsNormalizedPosts
+    .filter(isStructurallyValidCustomerNormalizedPost)
+    .filter((post) => {
+      const key = [
+        post.storeId,
+        post.authorName.normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase('ja-JP'),
+        post.postedAt?.slice(0, 16) ?? 'time-unknown',
+        cleanPostBody(post.body).normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase('ja-JP'),
+      ].join(':')
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .map((post) => {
+      const gender = resolvedNormalizedPostGender(post)
+      const body = cleanPostBody(post.body)
+      return {
+        id: post.id,
+        storeId: post.storeId,
+        storeName: storeNames.get(post.storeId) ?? '店舗名未確認',
+        authorName: post.authorName.trim() || '記載なし',
+        gender,
+        genderLabel: gender === 'female' ? '女性' : gender === 'male' ? '男性' : '性別未記載',
+        postedAt: post.postedAt,
+        postedAtLabel: formatPostTime(post.postedAt, post.observedAt),
+        body,
+        sourceUrl: post.sourceUrl,
+        isCurrentBusinessDay: currentPostIds.has(`normalized-${post.id}`),
+        hasEmoji: /\p{Extended_Pictographic}/u.test(`${post.authorName} ${body}`),
+      } satisfies RadarPost
+    })
+    .toSorted((left, right) => new Date(right.postedAt ?? 0).getTime() - new Date(left.postedAt ?? 0).getTime())
 }
 
 function planLabel(plan: DashboardState['subscription']['plan']) {
@@ -206,8 +286,17 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
   const generatedAt = state.setupStatus.generatedAt || new Date().toISOString()
   const todayKey = japanDateKey(generatedAt)
   const sourceEvents = calendarEvents.length ? calendarEvents : state.events
+  const scales: BarScales = {
+    posts: Math.max(1, ...state.dailyInsights.map((insight) => insight.activity.recentPostCount)),
+    recent: Math.max(1, ...state.dailyInsights.map((insight) => insight.activity.recentThreeHourCount)),
+    events: Math.max(1, ...state.dailyInsights.map((insight) => insight.todayEventCount)),
+  }
   const bars = state.dailyInsights
-    .map((insight) => toBar(insight, sourceEvents.filter((event) => event.storeId === insight.store.id && event.date === todayKey)))
+    .map((insight) => toBar(
+      insight,
+      sourceEvents.filter((event) => event.storeId === insight.store.id && event.date === todayKey),
+      scales,
+    ))
     .toSorted((left, right) => left.rank - right.rank)
   const events = sourceEvents
     .map((event) => toCalendarEvent(event, state.stores))
@@ -224,10 +313,12 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
   const timestampCoverageAverage = state.bbsNormalizedPosts.length
     ? clamp((state.bbsNormalizedPosts.filter((post) => Boolean(post.postedAt)).length / state.bbsNormalizedPosts.length) * 100)
     : 0
+  const posts = toRadarPosts(state, bars)
 
   return {
     bars,
     events,
+    posts,
     meta: {
       generatedAt,
       generatedAtLabel: formatGeneratedAt(generatedAt),
@@ -253,6 +344,7 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
       modeLabel: modeLabel(state.mode),
       userDisplayName: state.userDisplayName?.trim() || state.userEmail?.split('@')[0] || 'Night Radar ユーザー',
       userEmail: state.userEmail,
+      authenticated: Boolean(state.userId),
       summary: `当日顧客投稿 ${bars.reduce((sum, bar) => sum + bar.postCount, 0)}件 / 直近3時間 ${recentThreeHourCount}件 / 時刻解析率 ${timestampCoverageAverage}%`,
     },
   }

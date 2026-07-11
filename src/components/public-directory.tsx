@@ -65,7 +65,7 @@ export function PublicShell({
             </Link>
           ))}
         </nav>
-        <Link className={styles.appButton} href="/login?next=/app">
+        <Link className={styles.appButton} href="/app">
           アプリへ
         </Link>
       </header>
@@ -773,7 +773,12 @@ export function StoreDetailView({ detail }: { detail: PublicStoreDetail }) {
           <h2>今日見る理由</h2>
           <ul>
             <li>{summary.insight.rankingReason}</li>
-            <li>女性書き込み: {summary.femalePostCount}件（順位には不使用）</li>
+            <li>
+              女性書き込み:{' '}
+              {summary.insight.activity.genderCoverage < 20
+                ? '判定不可（性別表記が不足）'
+                : `${summary.femalePostCount}件（順位には不使用）`}
+            </li>
             <li>女性率: {summary.womenRatio == null ? '母数不足' : `${summary.womenRatio}%`}</li>
             <li>本日のイベント: {summary.todayEventCount}件</li>
             <li>取得状態: {summary.reliabilityLabel} / 最終更新 {summary.lastUpdatedLabel}</li>

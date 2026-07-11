@@ -1,4 +1,4 @@
-import { motion, useMotionValue, useMotionTemplate } from 'motion/react';
+import { motion } from 'motion/react';
 import { ArrowUpRight, MapPin, TrendingUp, Sparkles, Clock, Users } from 'lucide-react';
 import { GlassCard } from '../ui-nr/GlassCard';
 import { MetricRing } from '../ui-nr/MetricRing';
@@ -8,7 +8,7 @@ import { WordReveal, Stagger, StaggerItem } from '../ui-nr/Reveal';
 import { Ticker } from '../ui-nr/Ticker';
 import { type Bar } from '../data/mock';
 import { useNightRadarData, useNightRadarTicker } from '../data/runtime';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 
 const FILTERS = ['すべて', '営業時間内', '直近3時間', '女性書き込みあり', '初回来店の記述', '複数来店の記述', '予定あり', '集計信頼度80点以上'];
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -24,6 +24,12 @@ function matchesFilter(bar: Bar, filter: string) {
   return true;
 }
 
+function femaleMetricLabel(bar: Bar) {
+  if (bar.genderStatus === 'unavailable') return '判定不可';
+  if (bar.genderStatus === 'partial') return `${bar.femaleCount}件・参考`;
+  return `${bar.femaleCount}件`;
+}
+
 export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void; onNavigate: (tab: 'search' | 'schedule' | 'account') => void }) {
   const { bars, events, meta } = useNightRadarData();
   const ticker = useNightRadarTicker();
@@ -35,28 +41,22 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
   const postMax = Math.max(1, ...bars.map((bar) => bar.postCount));
   const femaleMax = Math.max(1, ...bars.map((bar) => bar.femaleCount));
   const recentMax = Math.max(1, ...bars.map((bar) => bar.recentThreeHourCount));
-
-  const mx = useMotionValue(50); const my = useMotionValue(50);
-  const bg = useMotionTemplate`radial-gradient(600px 300px at ${mx}% ${my}%, rgba(255,106,91,0.10), transparent 60%)`;
-  const heroRef = useRef<HTMLDivElement>(null);
+  const topBar = bars[0];
 
   return (
     <div className="flex flex-col gap-7">
       {/* Ticker */}
       <Ticker items={ticker} />
 
-      {/* Hero — asymmetric editorial */}
-      <motion.div
-        ref={heroRef}
-        onMouseMove={e => {
-          const r = heroRef.current!.getBoundingClientRect();
-          mx.set(((e.clientX - r.left) / r.width) * 100);
-          my.set(((e.clientY - r.top) / r.height) * 100);
-        }}
-        className="relative grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-6 lg:gap-8 items-end pt-2 sm:pt-4 pb-4 sm:pb-6"
+      {/* Hero — measured city signal */}
+      <motion.section
+        className="nr-home-hero relative overflow-hidden rounded-[24px] border border-white/[0.1]"
+        initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease }}
       >
-        <motion.div className="absolute inset-0 pointer-events-none" style={{ background: bg }} />
-        <div className="relative">
+        <div className="nr-home-hero-image" aria-hidden="true" />
+        <div className="nr-home-hero-scan" aria-hidden="true" />
+        <div className="relative z-[2] grid min-h-[260px] grid-cols-1 items-end gap-4 p-5 sm:min-h-[280px] sm:gap-6 sm:p-8 lg:grid-cols-[1.35fr_0.75fr] lg:gap-10">
+          <div>
           <motion.div
             className="flex items-center gap-2 mb-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, ease }}
@@ -64,37 +64,43 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
             <span className="nr-pulse" />
             <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>最終集計 · {meta.generatedAtLabel}（日本時間）</span>
           </motion.div>
-          <h1 className="nr-heading text-[36px] sm:text-[42px] leading-[1.12]" style={{ color: 'var(--nr-text-hi)' }}>
-            <WordReveal text="今夜の候補を、" />
+          <h1 className="nr-heading text-[30px] sm:text-[42px] leading-[1.12]" style={{ color: 'var(--nr-text-hi)' }}>
+            <WordReveal text="今夜の動きを、" />
             <br />
-            <span style={{ color: 'var(--nr-accent)' }}><WordReveal text="直近の投稿で比べる。" delay={0.35} /></span>
+            <span style={{ color: 'var(--nr-accent-soft)' }}><WordReveal text="投稿数で見極める。" delay={0.35} /></span>
           </h1>
           <motion.p
-            className="text-[14px] mt-4 max-w-[60ch] leading-[1.7]"
+            className="mt-4 hidden max-w-[60ch] text-[14px] leading-[1.7] sm:block"
             style={{ color: 'var(--nr-text-mid)' }}
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.7 }}
           >
-            当日顧客投稿数を主順位にし、同数の場合だけ直近3時間と集計信頼度で比べます。性別は順位に使いません。
+            今日の営業時間に入った顧客投稿を集計し、店側の投稿と時刻を判定できないデータは順位から外しています。
           </motion.p>
-        </div>
-        <motion.div
-          className="relative flex flex-col items-start lg:items-end gap-2"
+          </div>
+          <motion.div
+          className="nr-hero-signal-panel flex flex-col items-start gap-2 rounded-2xl p-3 sm:p-4 lg:items-end"
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.5 }}
         >
-          <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>直近3時間に投稿があった店舗</span>
-          <div className="nr-heading text-[56px] sm:text-[64px] leading-none" style={{ color: 'var(--nr-text-hi)' }}>
-            <DigitRoll value={`${activeRecentStores}店`} delay={0.6} />
+          <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日顧客投稿 1位</span>
+          <div className="nr-heading max-w-full text-[24px] leading-tight sm:text-[28px] lg:text-right" style={{ color: 'var(--nr-text-hi)' }}>
+            {topBar?.name ?? '集計中'}
           </div>
-          <div className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>投稿 {meta.recentThreeHourCount}件 / 対象 {bars.length}店</div>
+          <div className="grid w-full grid-cols-3 gap-2 pt-2 text-left">
+            <div><span>当日投稿</span><strong>{topBar?.postCount ?? 0}件</strong></div>
+            <div><span>直近3時間</span><strong>{topBar?.recentThreeHourCount ?? 0}件</strong></div>
+            <div><span>女性判定</span><strong>{topBar ? femaleMetricLabel(topBar) : '確認中'}</strong></div>
+          </div>
           <button
-            className="nr-accent-btn rounded-full px-4 py-2 text-[13px] flex items-center gap-1.5 mt-1"
+            className="nr-accent-btn mt-2 flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px]"
             onClick={() => bars[0] && onOpen(bars[0].id)}
             disabled={!bars.length}
           >
-            当日投稿1位の店舗を見る <ArrowUpRight size={14} />
+            1位の集計を見る <ArrowUpRight size={14} />
           </button>
-        </motion.div>
-      </motion.div>
+          <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{activeRecentStores}店で直近3時間に投稿あり</span>
+          </motion.div>
+        </div>
+      </motion.section>
 
       {/* KPI row */}
       <Stagger delay={0.9} gap={0.08}>
@@ -132,8 +138,12 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
           {visibleBars.slice(0, 3).map((b) => {
             return (
               <StaggerItem key={b.id}>
-                <GlassCard interactive onClick={() => onOpen(b.id)} className="p-4 sm:p-6 nr-focus nr-hairline nr-sheen">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[1.5fr_repeat(4,1fr)_1.6fr] gap-5 xl:gap-6 items-center">
+              <GlassCard interactive onClick={() => onOpen(b.id)} className="nr-rank-card nr-focus nr-hairline nr-sheen p-4 sm:p-5" data-rank={b.rank}>
+                  <div className="grid grid-cols-1 items-center gap-5 sm:grid-cols-2 xl:grid-cols-[64px_minmax(220px,1.35fr)_repeat(3,minmax(92px,0.72fr))_minmax(170px,0.95fr)] xl:gap-4">
+                    <div className="nr-rank-medal sm:col-span-2 xl:col-span-1">
+                      <span>{b.rank}</span>
+                      <small>RANK</small>
+                    </div>
                     <div className="flex flex-col gap-1.5 sm:col-span-2 xl:col-span-1">
                       <div className="flex items-center gap-2">
                         <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日投稿 {b.rank}位</span>
@@ -150,13 +160,12 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
                         <span className="flex items-center gap-1 nr-mono"><Clock size={10} /> {b.businessWindowLabel}</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5 mt-1">
-                        {b.tags.map(t => <span key={t} className="text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{t}</span>)}
+                        {b.tags.slice(0, 3).map(t => <span key={t} className="text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{t}</span>)}
                       </div>
                     </div>
-                    <MetricRing value={b.postCount} max={postMax} label="当日顧客投稿" color="var(--nr-accent)" />
-                    <MetricRing value={b.femaleCount} max={femaleMax} label="女性書き込み" color="var(--nr-accent-2)" />
+                    <MetricRing value={b.postCount} max={postMax} label="当日総書き込み" valueSuffix="件" color="var(--nr-accent)" />
+                    <MetricRing value={b.femaleCount} max={femaleMax} label="女性書き込み" displayValue={femaleMetricLabel(b)} color="var(--nr-accent-2)" />
                     <MetricRing value={b.recentThreeHourCount} max={recentMax} label="直近3時間" color="var(--nr-accent-soft)" />
-                    <MetricRing value={b.dataConfidence} label="集計信頼度" color="var(--nr-accent-deep)" />
                     <div className="flex flex-col gap-2 items-start sm:items-end sm:col-span-2 xl:col-span-1">
                       <div className="flex items-center gap-1.5 nr-mono text-[10px]" style={{ color: 'var(--nr-text-mid)' }}>
                         <TrendingUp size={10} color="var(--nr-accent)" /> 当日顧客投稿の推移

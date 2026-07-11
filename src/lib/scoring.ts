@@ -147,13 +147,27 @@ function normalizeAuthorName(value: string) {
   return normalized && normalized !== '記載なし' ? normalized : ''
 }
 
-function resolvedNormalizedPostGender(post: Pick<BbsNormalizedPost, 'authorName' | 'authorGender'>) {
+export function resolvedNormalizedPostGender(post: Pick<BbsNormalizedPost, 'authorName' | 'authorGender'>) {
   if (femaleAuthorGenderPattern.test(post.authorGender)) return 'female'
   if (maleAuthorGenderPattern.test(post.authorGender)) return 'male'
 
   const author = post.authorName.normalize('NFKC').replace(/\s+/g, '')
-  if (/(?:♀|女性|単女|単独女性)$/.test(author)) return 'female'
-  if (/(?:♂|男性|単男|単独男性)$/.test(author)) return 'male'
+  if (
+    /(?:♀|👩|👧|👱‍♀|🙋‍♀|💃|👭)/u.test(author) ||
+    /[（(](?:女性|女|単女|単独女性)[）)]/u.test(author) ||
+    /^(?:メス|雌)$/u.test(author) ||
+    /(?:女性|単女|単独女性)$/u.test(author)
+  ) {
+    return 'female'
+  }
+  if (
+    /(?:♂|👨|👦|👱‍♂|🙋‍♂|🕺|👬)/u.test(author) ||
+    /[（(](?:男性|男|単男|単独男性)[）)]/u.test(author) ||
+    /^(?:オス|雄)$/u.test(author) ||
+    /(?:男性|単男|単独男性)$/u.test(author)
+  ) {
+    return 'male'
+  }
   return 'unknown'
 }
 

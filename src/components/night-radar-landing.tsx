@@ -162,7 +162,7 @@ export function NightRadarLanding() {
           <span>ナイトレーダー</span>
         </a>
         <div className={styles.headerActions}>
-          <a className={styles.headerCta} href={appHref('/signup?next=/app')}>
+          <a className={styles.headerCta} href={appHref('/app')}>
             β版を試す
           </a>
         </div>
@@ -185,7 +185,7 @@ export function NightRadarLanding() {
               公開BBS、店舗イベント、直近投稿を整理し、候補・比較・見送りを一画面で確認できます。
             </p>
             <div className={styles.heroActions} data-reveal="hero-actions">
-              <a className={styles.primaryButton} href={appHref('/signup?next=/app')}>
+              <a className={styles.primaryButton} href={appHref('/app')}>
                 β版を試す
                 <ArrowRight size={19} weight="bold" aria-hidden="true" />
               </a>
@@ -433,8 +433,8 @@ export function NightRadarLanding() {
             <span className={styles.headingPhrase}>登録後すぐに</span>
             <span className={styles.headingPhrase}>判断材料を確認できます。</span>
           </h2>
-          <p>BBS、月間イベント、注目ワード状況、店舗のランキングをログイン後すぐに確認できます。</p>
-          <a className={styles.primaryButton} href={appHref('/signup?next=/app')}>
+          <p>BBS、月間イベント、注目ワード状況、店舗のランキングをアプリを開いてすぐに確認できます。</p>
+          <a className={styles.primaryButton} href={appHref('/app')}>
             β版を試す
             <ArrowRight size={19} weight="bold" aria-hidden="true" />
           </a>
@@ -449,7 +449,7 @@ export function NightRadarLanding() {
         <nav aria-label="フッターナビゲーション">
           <a href={appHref('/privacy')}>プライバシー</a>
           <a href={appHref('/terms')}>利用規約</a>
-          <a href={appHref('/login?next=/app')}>ログイン</a>
+          <a href={appHref('/app')}>アプリを開く</a>
         </nav>
       </footer>
     </main>

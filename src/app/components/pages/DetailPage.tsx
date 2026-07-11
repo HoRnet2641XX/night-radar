@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { MapPin, Clock, Users, ArrowUpRight, Sparkles, Info } from 'lucide-react';
+import { MapPin, Clock, Users, ArrowUpRight, Sparkles, Info, CalendarDays, ChevronsUpDown, X } from 'lucide-react';
 import { GlassCard } from '../ui-nr/GlassCard';
 import { RadarChart } from '../ui-nr/RadarChart';
 import { Sparkline } from '../ui-nr/Sparkline';
@@ -7,6 +7,8 @@ import { DigitRoll } from '../ui-nr/DigitRoll';
 import { WordReveal, Stagger, StaggerItem } from '../ui-nr/Reveal';
 import { RADAR_KEYS, type Bar } from '../data/mock';
 import { useNightRadarData } from '../data/runtime';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const ease = [0.22, 1, 0.36, 1] as const;
 type BarMetricKey = Extract<keyof Bar, 'vibe' | 'drinks' | 'service' | 'music' | 'crowd'>;
@@ -15,30 +17,61 @@ const detailMetrics: Array<{
   label: string;
   color: string;
   hint: string;
-  unit: string;
 }> = [
-  { k: 'vibe', label: '当日顧客投稿', color: 'var(--nr-accent-2)', hint: '今日の来店日として判定した顧客投稿', unit: '件' },
-  { k: 'drinks', label: '女性書き込み', color: 'var(--nr-accent)', hint: '投稿者の性別を判定できた投稿から集計', unit: '件' },
-  { k: 'service', label: '集計信頼度', color: 'var(--nr-accent-soft)', hint: '取得鮮度・正規化・投稿時刻・件数から算出', unit: '点' },
-  { k: 'music', label: '今日の予定', color: 'var(--nr-accent-deep)', hint: '当日の登録イベント', unit: '件' },
-  { k: 'crowd', label: '直近3時間', color: 'var(--nr-accent)', hint: '現在時刻から3時間以内の投稿', unit: '件' },
+  { k: 'vibe', label: '当日顧客投稿', color: 'var(--nr-accent-2)', hint: '今日の来店日として判定した顧客投稿' },
+  { k: 'drinks', label: '女性書き込み', color: 'var(--nr-accent)', hint: '投稿者の性別を判定できた投稿から集計' },
+  { k: 'service', label: '集計信頼度', color: 'var(--nr-accent-soft)', hint: '取得鮮度・正規化・投稿時刻・件数から算出' },
+  { k: 'music', label: '今日の予定', color: 'var(--nr-accent-deep)', hint: '当日の登録イベント' },
+  { k: 'crowd', label: '直近3時間', color: 'var(--nr-accent)', hint: '現在時刻から3時間以内の投稿' },
 ];
 
+function femaleMetricLabel(bar: Bar) {
+  if (bar.genderStatus === 'unavailable') return '判定不可';
+  if (bar.genderStatus === 'partial') return `${bar.femaleCount}件・参考`;
+  return `${bar.femaleCount}件`;
+}
+
 export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) => void }) {
-  const { bars } = useNightRadarData();
+  const { bars, events } = useNightRadarData();
+  const [compareId, setCompareId] = useState('');
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
   const bar = bars.find(b => b.id === id) ?? bars[0];
+  const barId = bar?.id ?? '';
+  const others = useMemo(() => bars
+    .filter(b => b.id !== barId)
+    .toSorted((left, right) => {
+      const leftUnavailable = left.genderStatus === 'unavailable' ? 1 : 0;
+      const rightUnavailable = right.genderStatus === 'unavailable' ? 1 : 0;
+      return leftUnavailable - rightUnavailable || right.femaleCount - left.femaleCount || left.rank - right.rank;
+    })
+    .slice(0, 8), [barId, bars]);
+  const comparedBar = others.find((item) => item.id === compareId) ?? others[0];
+
+  useEffect(() => {
+    if (!compareModalOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCompareModalOpen(false);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [compareModalOpen]);
+
   if (!bar) {
     return <GlassCard className="p-6 nr-hairline">表示できる店舗データがありません。</GlassCard>;
   }
-  const radarValues = RADAR_KEYS.map(k => {
-    const v = bar[k.key];
-    return v;
-  });
+
+  const radarValues = RADAR_KEYS.map(k => bar[k.key]);
   const radarLabels = RADAR_KEYS.map(k => k.label);
-  const others = bars
-    .filter(b => b.id !== bar.id)
-    .toSorted((left, right) => left.rank - right.rank)
-    .slice(0, 5);
+  const comparisonValues = comparedBar ? RADAR_KEYS.map((key) => comparedBar[key.key]) : undefined;
+  const todayKey = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+  const todayEvents = events.filter((event) => event.storeId === bar.id && event.date === todayKey);
   const hourlyMax = Math.max(0, ...bar.hourly);
   const sourceLink = bar.officialUrl || bar.bbsUrl || bar.mapUrl;
   const sourceLinkLabel = bar.officialUrl
@@ -50,7 +83,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
   return (
     <div className="flex flex-col gap-8">
       {/* Hero */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-6 lg:gap-8 items-end pt-4">
+      <div className="nr-detail-hero grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-6 lg:gap-8 items-end pt-4">
         <div>
           <motion.div className="flex items-center gap-2 mb-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, ease }}>
@@ -60,13 +93,13 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           <h1 className="nr-heading text-[34px] sm:text-[40px] leading-[1.15]" style={{ color: 'var(--nr-text-hi)' }}>
             <WordReveal text={bar.name} />
           </h1>
-          <motion.div className="flex items-center gap-5 mt-4 text-[11px]"
+          <motion.div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 text-[11px]"
             style={{ color: 'var(--nr-text-mid)' }}
             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease, delay: 0.55 }}
           >
             <span className="flex items-center gap-1"><MapPin size={11} /> {bar.area}</span>
             <span className="flex items-center gap-1 nr-mono"><Clock size={11} /> {bar.businessWindowLabel} · 最多 {bar.peakHour}</span>
-            <span className="flex items-center gap-1 nr-mono"><Users size={11} /> 女性 {bar.femaleCount}件 · 投稿 {bar.postCount}件 · 3h {bar.recentThreeHourCount}件</span>
+            <span className="flex items-center gap-1 nr-mono"><Users size={11} /> 女性 {femaleMetricLabel(bar)} · 総投稿 {bar.postCount}件 · 3h {bar.recentThreeHourCount}件</span>
           </motion.div>
           <motion.div className="flex flex-wrap gap-1.5 mt-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }}
@@ -75,7 +108,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           </motion.div>
         </div>
         <motion.div
-          className="flex flex-col items-start lg:items-end gap-2"
+          className="nr-detail-total flex flex-col items-start lg:items-end gap-2"
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.4 }}
         >
           <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>当日顧客投稿</span>
@@ -117,58 +150,97 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
         </GlassCard>
       </motion.div>
 
-      {/* Radar + Metric grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-4">
-        <GlassCard className="p-6 flex flex-col items-center relative overflow-hidden nr-hairline">
-          <div className="nr-mono text-[12px] mb-2" style={{ color: 'var(--nr-text-mid)' }}>店舗比較指数 · 0〜100</div>
-          <RadarChart values={radarValues} labels={radarLabels} size={340} color="var(--nr-accent)" />
-          <div className="flex items-center gap-2 mt-2 nr-mono text-[10px]">
-            <span className="w-2 h-2 rounded-full" style={{ background: 'var(--nr-accent)' }} />
-            <span style={{ color: 'var(--nr-text-mid)' }}>投稿100件・直近10件・予定4件を上限100で換算</span>
-            <span className="w-2 h-2 rounded-full ml-4" style={{ background: 'rgba(255,255,255,0.2)' }} />
-            <span style={{ color: 'var(--nr-text-mid)' }}>{bar.dataConfidenceLabel}</span>
-          </div>
-          <p className="text-[12px] mt-4 text-center max-w-[320px] leading-relaxed" style={{ color: 'var(--nr-text-mid)' }}>{bar.note}</p>
-        </GlassCard>
+      {/* Radar, facts and comparison */}
+      <button type="button" className="nr-secondary-btn flex w-full items-center justify-between xl:hidden" onClick={() => setCompareModalOpen(true)}>
+        <span><span className="block text-[10px]" style={{ color: 'var(--nr-text-low)' }}>比較中</span>{comparedBar?.name ?? '比較店舗を選ぶ'}</span>
+        <span className="flex items-center gap-1"><ChevronsUpDown size={14} /> 比較店舗を選ぶ</span>
+      </button>
 
-        <Stagger delay={0.15} gap={0.06}>
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            {detailMetrics.map((m) => {
-              const val = bar[m.k];
-              const displayValue = m.k === 'vibe'
-                ? bar.postCount
-                : m.k === 'drinks'
-                  ? bar.femaleCount
-                : m.k === 'music'
-                  ? bar.eventCount
-                  : m.k === 'crowd'
-                    ? bar.recentThreeHourCount
-                    : m.k === 'service'
-                      ? bar.dataConfidence
-                      : val;
-              return (
-                <StaggerItem key={m.k}>
-                  <GlassCard className="p-4 flex flex-col gap-2 nr-focus nr-hairline">
-                    <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>{m.label}</span>
-                    <div className="flex items-baseline gap-1">
-                      <span className="nr-heading text-[28px]" style={{ color: 'var(--nr-text-hi)' }}>
-                        <DigitRoll value={`${displayValue}${m.unit}`} />
-                      </span>
-                    </div>
-                    <div className="h-[3px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                      <motion.div
-                        initial={{ width: 0 }} animate={{ width: `${Math.min(100, val)}%` }}
-                        transition={{ duration: 1.2, ease, delay: 0.4 }}
-                        style={{ height: '100%', background: m.color, boxShadow: `0 0 8px ${m.color}` }}
-                      />
-                    </div>
-                    <span className="text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{m.hint}</span>
-                  </GlassCard>
-                </StaggerItem>
-              );
-            })}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(300px,0.9fr)_minmax(0,1fr)]">
+            <GlassCard className="nr-hairline relative flex min-w-0 flex-col items-center overflow-hidden p-5">
+              <div className="nr-mono mb-1 text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>当日の店舗比較指数 · 0〜100</div>
+              <RadarChart values={radarValues} comparisonValues={comparisonValues} labels={radarLabels} size={330} color="var(--nr-accent)" />
+              <div className="mt-1 flex flex-wrap justify-center gap-x-4 gap-y-2 nr-mono text-[10px]">
+                <span className="flex items-center gap-1.5" style={{ color: 'var(--nr-text-mid)' }}><i className="h-0.5 w-5" style={{ background: 'var(--nr-accent)' }} />{bar.name}</span>
+                {comparedBar && <span className="flex items-center gap-1.5" style={{ color: 'var(--nr-text-mid)' }}><i className="h-0 w-5 border-t border-dashed border-[#9BC9E8]" />{comparedBar.name}</span>}
+              </div>
+              <p className="mt-4 max-w-[360px] text-center text-[11px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>
+                投稿・直近3時間・予定は当日の最大店舗を100として換算。女性比率と集計信頼度は実測値です。件数そのものに上限はありません。
+              </p>
+            </GlassCard>
+
+            <Stagger delay={0.15} gap={0.06}>
+              <div className="grid h-full grid-cols-2 gap-3">
+                {detailMetrics.map((m) => {
+                  const val = bar[m.k];
+                  const displayValue = m.k === 'vibe'
+                    ? `${bar.postCount}件`
+                    : m.k === 'drinks'
+                      ? femaleMetricLabel(bar)
+                      : m.k === 'music'
+                        ? `${bar.eventCount}件`
+                        : m.k === 'crowd'
+                          ? `${bar.recentThreeHourCount}件`
+                          : `${bar.dataConfidence}点`;
+                  return (
+                    <StaggerItem key={m.k}>
+                      <GlassCard className="nr-focus nr-hairline flex h-full min-h-[128px] flex-col gap-2 p-4">
+                        <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>{m.label}</span>
+                        <span className="nr-heading text-[24px] sm:text-[28px]" style={{ color: 'var(--nr-text-hi)' }}><DigitRoll value={displayValue} /></span>
+                        <div className="h-[3px] overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                          <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, val)}%` }} transition={{ duration: 1.2, ease, delay: 0.4 }} style={{ height: '100%', background: m.color }} />
+                        </div>
+                        <span className="text-[10px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>{m.hint}</span>
+                      </GlassCard>
+                    </StaggerItem>
+                  );
+                })}
+              </div>
+            </Stagger>
           </div>
-        </Stagger>
+
+          <GlassCard className="nr-hairline p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="nr-mono flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--nr-text-mid)' }}><CalendarDays size={12} /> 店舗イベント</div>
+                <h3 className="nr-heading mt-1 text-[19px]" style={{ color: 'var(--nr-text-hi)' }}>今日の予定 {todayEvents.length}件</h3>
+              </div>
+              {bar.officialUrl && <a href={bar.officialUrl} target="_blank" rel="noreferrer" className="nr-chip">公式で確認 <ArrowUpRight size={11} /></a>}
+            </div>
+            {todayEvents.length ? (
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {todayEvents.map((event) => (
+                  <a key={event.id} href={event.sourceUrl || bar.officialUrl} target="_blank" rel="noreferrer" className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-3 transition-colors hover:bg-white/[0.05]">
+                    <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-accent-soft)' }}>{event.startsAt ? `${event.startsAt} · ` : ''}{event.session === 'day' ? '朝・昼' : '夜'} · {event.tag}</span>
+                    <span className="mt-1 block text-[13px] leading-relaxed" style={{ color: 'var(--nr-text-hi)' }}>{event.title}</span>
+                  </a>
+                ))}
+              </div>
+            ) : <p className="mt-4 text-[12px]" style={{ color: 'var(--nr-text-low)' }}>今日の公式イベントは登録されていません。</p>}
+          </GlassCard>
+        </div>
+
+        <aside className="hidden xl:block">
+          <GlassCard className="nr-hairline sticky top-5 p-3">
+            <div className="px-2 pb-3 pt-1">
+              <div className="nr-mono text-[10px]" style={{ color: 'var(--nr-accent-soft)' }}>比較候補</div>
+              <h2 className="nr-heading mt-1 text-[17px]" style={{ color: 'var(--nr-text-hi)' }}>女性書き込み数が多い店舗</h2>
+              <p className="mt-1 text-[10px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>選ぶとレーダーへ点線で重ねます。判定率が低い店舗は参考値です。</p>
+            </div>
+            <div className="grid max-h-[560px] gap-1 overflow-y-auto pr-1">
+              {others.map((item, index) => (
+                <button key={item.id} type="button" className="nr-compare-option" data-active={comparedBar?.id === item.id} onClick={() => setCompareId(item.id)}>
+                  <span className="nr-compare-rank">{index + 1}</span>
+                  <span className="min-w-0 flex-1"><strong>{item.name}</strong><small>総投稿 {item.postCount}件 · 判定 {item.genderCoverage}%</small></span>
+                  <span className="text-right"><strong>{femaleMetricLabel(item)}</strong><small>女性</small></span>
+                </button>
+              ))}
+            </div>
+            {comparedBar && <button type="button" className="nr-secondary-btn mt-3 flex w-full" onClick={() => onOpen(comparedBar.id)}>{comparedBar.name}の詳細を開く</button>}
+          </GlassCard>
+        </aside>
       </div>
 
       {/* Hourly heatmap + trend */}
@@ -224,38 +296,37 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
         </GlassCard>
       </div>
 
-      {/* Comparison list */}
-      <div>
-        <div className="flex items-baseline justify-between mb-4">
-          <div className="flex items-baseline gap-3">
-            <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>比較候補</span>
-            <h2 className="nr-heading text-[22px]" style={{ color: 'var(--nr-text-hi)' }}>女性書き込み数が多い店舗</h2>
-          </div>
-          <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>同じ集計条件で比較</span>
+      {compareModalOpen && typeof document !== 'undefined' && createPortal((
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm xl:hidden" role="presentation" onMouseDown={() => setCompareModalOpen(false)}>
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="compare-store-title"
+            className="nr-modal-panel flex max-h-[min(82dvh,720px)] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl"
+            initial={{ opacity: 0, scale: 0.97, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-white/[0.08] p-5">
+              <div>
+                <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-accent-soft)' }}>レーダー比較</span>
+                <h2 id="compare-store-title" className="nr-heading mt-1 text-[20px]" style={{ color: 'var(--nr-text-hi)' }}>比較する店舗を選ぶ</h2>
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--nr-text-low)' }}>女性書き込み数の多い順です。未判定が多い店舗は参考表示になります。</p>
+              </div>
+              <button type="button" className="nr-chip grid !p-2 place-items-center" aria-label="閉じる" onClick={() => setCompareModalOpen(false)}><X size={16} /></button>
+            </div>
+            <div className="grid gap-2 overflow-y-auto p-3">
+              {others.map((item, index) => (
+                <button key={item.id} type="button" className="nr-compare-option" data-active={comparedBar?.id === item.id} onClick={() => { setCompareId(item.id); setCompareModalOpen(false); }}>
+                  <span className="nr-compare-rank">{index + 1}</span>
+                  <span className="min-w-0 flex-1"><strong>{item.name}</strong><small>総投稿 {item.postCount}件 · 性別判定 {item.genderCoverage}%</small></span>
+                  <span className="text-right"><strong>{femaleMetricLabel(item)}</strong><small>女性</small></span>
+                </button>
+              ))}
+            </div>
+          </motion.div>
         </div>
-        <GlassCard className="p-2 nr-hairline">
-          {others.map((o, i) => {
-            return (
-              <motion.button key={o.id}
-                type="button"
-                onClick={() => onOpen(o.id)}
-                initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 * i, duration: 0.6, ease }}
-                className="w-full text-left grid grid-cols-2 md:grid-cols-[1.6fr_repeat(4,1fr)_auto] gap-3 items-center px-4 py-4 rounded-xl hover:bg-white/[0.03] transition-colors"
-              >
-                <div>
-                  <div className="text-[13px]" style={{ color: 'var(--nr-text-hi)' }}>{o.name}</div>
-                  <div className="text-[11px]" style={{ color: 'var(--nr-text-low)' }}>{o.area}</div>
-                </div>
-                <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>女性書き込み</span><br /><span className="nr-mono text-[14px]">{o.femaleCount}件</span></div>
-                <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>直近3時間</span><br /><span className="nr-mono text-[14px]">{o.recentThreeHourCount}件</span></div>
-                <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>今日の予定</span><br /><span className="nr-mono text-[14px]">{o.eventCount}件</span></div>
-                <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>集計信頼度</span><br /><span className="nr-mono text-[14px]">{o.dataConfidence}点</span></div>
-                <span className="nr-chip">店舗詳細</span>
-              </motion.button>
-            );
-          })}
-        </GlassCard>
-      </div>
+      ), document.body)}
     </div>
   );
 }

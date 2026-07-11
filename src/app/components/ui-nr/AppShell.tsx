@@ -90,7 +90,7 @@ export function AppShell({ tab, onTab, children }: { tab: TabKey; onTab: (t: Tab
           <AnimatePresence mode="wait">
             <motion.div
               key={tab}
-              initial={{ opacity: 0, y: 14, filter: 'blur(6px)' }}
+              initial={false}
               animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
               exit={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
               transition={{ duration: 0.55, ease }}
