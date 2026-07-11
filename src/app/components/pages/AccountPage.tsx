@@ -69,8 +69,8 @@ export function AccountPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[
             { icon: Activity, title: 'BBS巡回元', sub: '有効な取得対象', meta: `${RUNTIME_META.sourceCount}件` },
-            { icon: CheckCircle2, title: 'データ信頼度80%以上', sub: '取得鮮度・正規化・投稿者名・性別・件数から算出', meta: `${RUNTIME_META.highConfidenceCount}店` },
-            { icon: Database, title: '書き込み時刻を解析', sub: '営業分の集計に使える投稿の割合', meta: `${RUNTIME_META.timestampCoverageAverage}%` },
+            { icon: CheckCircle2, title: '集計信頼度80点以上', sub: '取得鮮度・正規化・投稿時刻・件数から算出', meta: `${RUNTIME_META.highConfidenceCount}店` },
+            { icon: Database, title: '書き込み時刻を解析', sub: '当日営業分の順位に使える投稿の割合', meta: `${RUNTIME_META.timestampCoverageAverage}%・解析保留 ${RUNTIME_META.excludedUntimestampedCount}件` },
           ].map((c, i) => (
             <StaggerItem key={i}>
               <GlassCard className="p-4 flex flex-col gap-2 nr-hairline">
@@ -86,7 +86,7 @@ export function AccountPage() {
 
       <GlassCard className="p-4 nr-hairline">
         <div className="text-[12px] leading-relaxed" style={{ color: 'var(--nr-text-mid)' }}>
-          データ信頼度は、取得鮮度25%、正規化20%、書き込み時刻20%、投稿者名10%、性別15%、営業分の投稿件数10%の加重値です。投稿内容の事実性を保証する数値ではありません。
+          集計信頼度は、取得鮮度30点、正規化20点、書き込み時刻35点、当日営業分の件数15点を上限に算出します。性別はランキングと集計信頼度に使用しません。投稿内容の事実性を保証する数値ではありません。
         </div>
       </GlassCard>
 

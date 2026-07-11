@@ -16,9 +16,9 @@ const detailMetrics: Array<{
   hint: string;
   unit: string;
 }> = [
-  { k: 'vibe', label: '直近営業分', color: 'var(--nr-accent-2)', hint: '直近の営業時間帯に確認した投稿', unit: '件' },
+  { k: 'vibe', label: '当日営業分', color: 'var(--nr-accent-2)', hint: '対象の営業時間帯に確認できた顧客投稿', unit: '件' },
   { k: 'drinks', label: '女性書き込み', color: 'var(--nr-accent)', hint: '投稿者の性別を判定できた投稿から集計', unit: '件' },
-  { k: 'service', label: 'データ信頼度', color: 'var(--nr-accent-soft)', hint: '取得鮮度・正規化・時刻・投稿者名・性別・件数の加重値', unit: '%' },
+  { k: 'service', label: '集計信頼度', color: 'var(--nr-accent-soft)', hint: '取得鮮度・正規化・投稿時刻・件数から算出', unit: '%' },
   { k: 'music', label: '今日の予定', color: 'var(--nr-accent-deep)', hint: '当日の登録イベント', unit: '件' },
   { k: 'crowd', label: '直近3時間', color: 'var(--nr-accent)', hint: '現在時刻から3時間以内の投稿', unit: '件' },
 ];
@@ -35,11 +35,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
   const radarLabels = RADAR_KEYS.map(k => k.label);
   const others = BARS
     .filter(b => b.id !== bar.id)
-    .toSorted((left, right) =>
-      right.femaleCount - left.femaleCount ||
-      right.recentThreeHourCount - left.recentThreeHourCount ||
-      right.dataConfidence - left.dataConfidence,
-    )
+    .toSorted((left, right) => left.rank - right.rank)
     .slice(0, 5);
   const hourlyMax = Math.max(0, ...bar.hourly);
   const sourceLink = bar.officialUrl || bar.bbsUrl || bar.mapUrl;
@@ -57,7 +53,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           <motion.div className="flex items-center gap-2 mb-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, ease }}>
             <span className="nr-pulse" />
-            <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>店舗詳細 · 直近営業分</span>
+            <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>店舗詳細 · 当日投稿 {bar.rank}位</span>
           </motion.div>
           <h1 className="nr-heading text-[34px] sm:text-[40px] leading-[1.15]" style={{ color: 'var(--nr-text-hi)' }}>
             <WordReveal text={bar.name} />
@@ -67,7 +63,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease, delay: 0.55 }}
           >
             <span className="flex items-center gap-1"><MapPin size={11} /> {bar.area}</span>
-            <span className="flex items-center gap-1 nr-mono"><Clock size={11} /> {bar.sessionLabel} · 最多 {bar.peakHour}</span>
+            <span className="flex items-center gap-1 nr-mono"><Clock size={11} /> {bar.businessWindowLabel} · 最多 {bar.peakHour}</span>
             <span className="flex items-center gap-1 nr-mono"><Users size={11} /> 女性 {bar.femaleCount}件 · 投稿 {bar.postCount}件 · 3h {bar.recentThreeHourCount}件</span>
           </motion.div>
           <motion.div className="flex flex-wrap gap-1.5 mt-4"
@@ -80,12 +76,12 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           className="flex flex-col items-start lg:items-end gap-2"
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.4 }}
         >
-          <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>女性書き込み</span>
+          <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>当日営業分の顧客投稿</span>
           <div className="nr-heading text-[56px] sm:text-[64px] leading-none" style={{ color: 'var(--nr-accent)' }}>
-            <DigitRoll value={`${bar.femaleCount}件`} delay={0.55} />
+            <DigitRoll value={`${bar.postCount}件`} delay={0.55} />
           </div>
           <span className="nr-mono px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1 nr-delta-up">
-            <Sparkles size={11} />女性・初回・複数 {bar.signalCount}件
+            <Sparkles size={11} />当日投稿 {bar.rank}位 · 直近3時間 {bar.recentThreeHourCount}件
           </span>
           {sourceLink ? (
             <a href={sourceLink} target="_blank" rel="noreferrer" className="nr-accent-btn rounded-full px-4 py-2 text-[13px] flex items-center gap-1.5 mt-1">
@@ -114,7 +110,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
             </div>
           </div>
           <div className="nr-mono text-[11px] flex items-center gap-1 md:max-w-[280px]" style={{ color: 'var(--nr-text-mid)' }}>
-            <Info size={11} /> 時刻解析 {bar.timestampCoverage}% · 名前判定 {bar.authorCoverage}% · 性別判定 {bar.genderCoverage}%
+            <Info size={11} /> 時刻解析 {bar.timestampCoverage}% · 解析保留 {bar.excludedUntimestampedCount}件は順位に不使用 · 性別判定 {bar.genderCoverage}%
           </div>
         </GlassCard>
       </motion.div>
@@ -126,7 +122,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           <RadarChart values={radarValues} labels={radarLabels} size={340} color="var(--nr-accent)" />
           <div className="flex items-center gap-2 mt-2 nr-mono text-[10px]">
             <span className="w-2 h-2 rounded-full" style={{ background: 'var(--nr-accent)' }} />
-            <span style={{ color: 'var(--nr-text-mid)' }}>直近営業分</span>
+            <span style={{ color: 'var(--nr-text-mid)' }}>当日営業分</span>
             <span className="w-2 h-2 rounded-full ml-4" style={{ background: 'rgba(255,255,255,0.2)' }} />
             <span style={{ color: 'var(--nr-text-mid)' }}>{bar.dataConfidenceLabel}</span>
           </div>
@@ -213,7 +209,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
         </GlassCard>
 
         <GlassCard className="p-5 flex flex-col gap-3 nr-hairline">
-          <div className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>直近営業分の推移</div>
+          <div className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>当日営業分の推移</div>
           <h3 className="nr-heading text-[20px]" style={{ color: 'var(--nr-text-hi)' }}>投稿数の時間変化</h3>
           <div className="flex-1 flex items-end">
             <Sparkline data={bar.trend} w={360} h={140} color="var(--nr-accent)" />
@@ -251,7 +247,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
                 <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>女性書き込み</span><br /><span className="nr-mono text-[14px]">{o.femaleCount}件</span></div>
                 <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>直近3時間</span><br /><span className="nr-mono text-[14px]">{o.recentThreeHourCount}件</span></div>
                 <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>今日の予定</span><br /><span className="nr-mono text-[14px]">{o.eventCount}件</span></div>
-                <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>データ信頼度</span><br /><span className="nr-mono text-[14px]">{o.dataConfidence}%</span></div>
+                <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>集計信頼度</span><br /><span className="nr-mono text-[14px]">{o.dataConfidence}点</span></div>
                 <span className="nr-chip">店舗詳細</span>
               </motion.button>
             );

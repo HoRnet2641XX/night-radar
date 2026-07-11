@@ -5,7 +5,7 @@ import { WordReveal } from '../ui-nr/Reveal';
 import { BARS, type Bar } from '../data/mock';
 import { useState } from 'react';
 
-const CATEGORIES = ['すべて', '営業時間内', '直近3時間', '女性書き込みあり', '初回来店の記述', '複数来店の記述', '予定あり', 'データ信頼度80%以上'];
+const CATEGORIES = ['すべて', '営業時間内', '直近3時間', '女性書き込みあり', '初回来店の記述', '複数来店の記述', '予定あり', '集計信頼度80点以上'];
 const ease = [0.22, 1, 0.36, 1] as const;
 
 function matchesCategory(bar: Bar, category: string) {
@@ -15,7 +15,7 @@ function matchesCategory(bar: Bar, category: string) {
   if (category === '初回来店の記述') return bar.firstVisitCount > 0;
   if (category === '複数来店の記述') return bar.groupCount > 0;
   if (category === '予定あり') return bar.eventCount > 0;
-  if (category === 'データ信頼度80%以上') return bar.dataConfidence >= 80;
+  if (category === '集計信頼度80点以上') return bar.dataConfidence >= 80;
   return true;
 }
 
@@ -28,10 +28,9 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
       .some((value) => value.toLocaleLowerCase('ja-JP').includes(normalizedQuery));
     return matchesQuery && matchesCategory(bar, category);
   }).toSorted((left, right) =>
-    right.femaleCount - left.femaleCount ||
-    right.recentThreeHourCount - left.recentThreeHourCount ||
-    right.dataConfidence - left.dataConfidence ||
-    right.postCount - left.postCount,
+    category === '女性書き込みあり'
+      ? right.femaleCount - left.femaleCount || left.rank - right.rank
+      : left.rank - right.rank,
   );
   return (
     <div className="flex flex-col gap-8">
@@ -90,7 +89,9 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
           <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>検索結果</span>
           <h2 className="nr-heading text-[22px]" style={{ color: 'var(--nr-text-hi)' }}>該当 <span style={{ color: 'var(--nr-accent)' }}>{filtered.length}</span> 件</h2>
         </div>
-        <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>並び順 · 女性書き込み</span>
+        <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>
+          並び順 · {category === '女性書き込みあり' ? '女性書き込み' : '当日営業分の顧客投稿'}
+        </span>
       </div>
 
       <GlassCard className="p-2 nr-hairline">
@@ -106,16 +107,16 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
                 <span className="nr-pulse" style={{ width: 5, height: 5 }} />{b.businessStatusLabel}
               </span>
               <div className="min-w-0">
-                <div className="text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>{b.name}</div>
+                <div className="text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>{b.rank}位 · {b.name}</div>
                 <div className="text-[11px] flex items-center gap-1" style={{ color: 'var(--nr-text-low)' }}>
-                  <MapPin size={10} /> {b.area} · 営業分 {b.postCount}件
+                  <MapPin size={10} /> {b.area} · 当日営業分 {b.postCount}件
                 </div>
               </div>
               <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>女性書き込み</span><br /><span className="nr-mono text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>{b.femaleCount}件</span></div>
               <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>直近3時間</span><br /><span className="nr-mono text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>{b.recentThreeHourCount}件</span></div>
               <div><span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-low)' }}>今日の予定</span><br /><span className="nr-mono text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>{b.eventCount}件</span></div>
               <span className="nr-mono px-1.5 py-0.5 rounded-full text-[10px] flex items-center gap-1 nr-delta-up">
-                <Activity size={10} />信頼度 {b.dataConfidence}%
+                <Activity size={10} />集計 {b.dataConfidence}点
               </span>
               <span className="nr-chip">詳細を見る</span>
             </motion.button>

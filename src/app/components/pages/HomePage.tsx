@@ -9,7 +9,7 @@ import { Ticker } from '../ui-nr/Ticker';
 import { BARS, EVENTS, RUNTIME_META, TICKER, type Bar } from '../data/mock';
 import { useRef, useState } from 'react';
 
-const FILTERS = ['すべて', '営業時間内', '直近3時間', '女性書き込みあり', '初回来店の記述', '複数来店の記述', '予定あり', 'データ信頼度80%以上'];
+const FILTERS = ['すべて', '営業時間内', '直近3時間', '女性書き込みあり', '初回来店の記述', '複数来店の記述', '予定あり', '集計信頼度80点以上'];
 const ease = [0.22, 1, 0.36, 1] as const;
 
 function matchesFilter(bar: Bar, filter: string) {
@@ -19,7 +19,7 @@ function matchesFilter(bar: Bar, filter: string) {
   if (filter === '初回来店の記述') return bar.firstVisitCount > 0;
   if (filter === '複数来店の記述') return bar.groupCount > 0;
   if (filter === '予定あり') return bar.eventCount > 0;
-  if (filter === 'データ信頼度80%以上') return bar.dataConfidence >= 80;
+  if (filter === '集計信頼度80点以上') return bar.dataConfidence >= 80;
   return true;
 }
 
@@ -71,7 +71,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
             style={{ color: 'var(--nr-text-mid)' }}
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.7 }}
           >
-            直近の営業時間帯に確認できたBBS投稿を、女性書き込み数、直近3時間の投稿、予定、取得状態で比べます。
+            当日営業分の顧客投稿数を主順位にし、同数の場合だけ直近3時間と集計信頼度で比べます。性別は順位に使いません。
           </motion.p>
         </div>
         <motion.div
@@ -97,7 +97,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
       <Stagger delay={0.9} gap={0.08}>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            { label: '直近営業分', value: RUNTIME_META.postCount, suffix: '件', hint: 'BBS投稿' },
+            { label: '当日営業分', value: RUNTIME_META.postCount, suffix: '件', hint: '顧客投稿のみ' },
             { label: '直近3時間', value: RUNTIME_META.recentThreeHourCount, suffix: '件', hint: 'BBS投稿' },
             { label: '女性書き込み', value: totalFemale, suffix: '件', hint: '性別判定済み' },
             { label: '今日の予定', value: RUNTIME_META.todayEventCount, suffix: '件', hint: '公式URL登録済み' },
@@ -126,25 +126,25 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
       {/* Bar cards */}
       <Stagger delay={0.2} gap={0.09}>
         <div className="flex flex-col gap-3">
-          {visibleBars.slice(0, 3).map((b, idx) => {
+          {visibleBars.slice(0, 3).map((b) => {
             return (
               <StaggerItem key={b.id}>
                 <GlassCard interactive onClick={() => onOpen(b.id)} className="p-4 sm:p-6 nr-focus nr-hairline nr-sheen">
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[1.5fr_repeat(4,1fr)_1.6fr] gap-5 xl:gap-6 items-center">
                     <div className="flex flex-col gap-1.5 sm:col-span-2 xl:col-span-1">
                       <div className="flex items-center gap-2">
-                        <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>{idx + 1}位</span>
+                        <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日投稿 {b.rank}位</span>
                         <span className="nr-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,106,91,0.10)', color: 'var(--nr-accent-soft)' }}>
                           {b.businessStatusLabel}
                         </span>
                         <span className="nr-mono ml-auto px-1.5 py-0.5 rounded-full text-[10px] flex items-center gap-1 nr-delta-up">
-                          <Sparkles size={10} />女性・初回・複数 {b.signalCount}件
+                          <Sparkles size={10} />順位根拠 {b.postCount}件
                         </span>
                       </div>
                       <h3 className="nr-heading text-[26px] leading-[1.05]" style={{ color: 'var(--nr-text-hi)' }}>{b.name}</h3>
                       <div className="flex items-center gap-4 text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>
                         <span className="flex items-center gap-1"><MapPin size={10} /> {b.area}</span>
-                        <span className="flex items-center gap-1 nr-mono"><Clock size={10} /> {b.sessionLabel}</span>
+                        <span className="flex items-center gap-1 nr-mono"><Clock size={10} /> {b.businessWindowLabel}</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5 mt-1">
                         {b.tags.map(t => <span key={t} className="text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{t}</span>)}
@@ -153,7 +153,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
                     <MetricRing value={b.postCount} max={postMax} label="営業分投稿" color="var(--nr-accent)" />
                     <MetricRing value={b.femaleCount} max={femaleMax} label="女性書き込み" color="var(--nr-accent-2)" />
                     <MetricRing value={b.recentThreeHourCount} max={recentMax} label="直近3時間" color="var(--nr-accent-soft)" />
-                    <MetricRing value={b.dataConfidence} valueSuffix="%" label="データ信頼度" color="var(--nr-accent-deep)" />
+                    <MetricRing value={b.dataConfidence} label="集計信頼度" color="var(--nr-accent-deep)" />
                     <div className="flex flex-col gap-2 items-start sm:items-end sm:col-span-2 xl:col-span-1">
                       <div className="flex items-center gap-1.5 nr-mono text-[10px]" style={{ color: 'var(--nr-text-mid)' }}>
                         <TrendingUp size={10} color="var(--nr-accent)" /> 営業分の投稿推移

@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { User } from '@supabase/supabase-js'
+import { buildDailyStoreDataset } from '../daily-store-insights'
 import { events as demoEvents, posts as demoPosts, stores as demoStores, storeSituations, wordCategories } from '../demo-data'
 import { highestAudienceForPlan, normalizePlan, planLimitMessage, planLimits, planRank } from '../plans'
 import { collectPagedRows } from '../pagination'
+import { mergeOfficialEvents } from '../official-events'
 import {
-  buildEffectiveBbsPostRecords,
   buildSearchableBbsRecords,
   extractNormalizedBbsPostsFromText,
   filterPostsForStoreBusinessWindows,
@@ -111,21 +112,32 @@ function isoHoursAgo(hours: number) {
 }
 
 function demoDashboardState(mode: RuntimeMode = 'demo', connectionNote?: string): DashboardState {
-  const scoredEvents = scoreEvents(demoEvents, demoStores, demoPosts)
+  const setupStatus = getServiceSetupStatus()
+  const dailyDataset = buildDailyStoreDataset({
+    stores: demoStores,
+    events: demoEvents,
+    rawPosts: demoPosts,
+    sources: [],
+    snapshots: [],
+    normalizedPosts: [],
+    referenceAt: setupStatus.generatedAt,
+  })
+  const scoredEvents = scoreEvents(demoEvents, demoStores, dailyDataset.effectivePosts)
 
   return {
     mode,
     connectionNote,
-    setupStatus: getServiceSetupStatus(),
+    setupStatus,
     stores: demoStores,
     events: demoEvents,
-    posts: demoPosts,
+    posts: dailyDataset.effectivePosts,
     scoredEvents,
     situations: storeSituations,
     bbsSources: [],
     crawlRuns: [],
     bbsSnapshots: [],
     bbsNormalizedPosts: [],
+    dailyInsights: dailyDataset.insights,
     storeDecisions: {},
     exactTerms: defaultExactTerms,
     wordBookmarks: [],
@@ -1059,7 +1071,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     if (!fallbackSnapshotResult.error) snapshotRows = fallbackSnapshotResult.data ?? snapshotRows
   }
 
-  const events = (eventResult.data ?? []).map(toEvent)
+  const events = mergeOfficialEvents((eventResult.data ?? []).map(toEvent))
   const rawPosts = (postResult.data ?? []).map(toPost)
   const seenContextStores = new Set<string>()
   const businessContextPosts = (snapshotContextResult.data ?? [])
@@ -1070,7 +1082,18 @@ export async function getDashboardState(): Promise<DashboardState> {
       return true
     })
   const bbsNormalizedPosts = normalizedPostResult.error ? [] : (normalizedPostResult.data ?? []).map(toBbsNormalizedPost)
-  const posts = buildEffectiveBbsPostRecords(rawPosts, bbsNormalizedPosts)
+  const setupStatus = getServiceSetupStatus()
+  const dailyDataset = buildDailyStoreDataset({
+    stores,
+    events,
+    rawPosts,
+    sources: (sourceResult.data ?? []).map(toBbsSource),
+    snapshots: snapshotRows.map(toBbsSnapshot),
+    normalizedPosts: bbsNormalizedPosts,
+    businessContextPosts,
+    referenceAt: setupStatus.generatedAt,
+  })
+  const posts = dailyDataset.effectivePosts
   const scoredEvents = scoreEvents(events, stores, posts)
   const decisionResult = await supabase.from('user_store_decisions').select(storeDecisionSelectColumns).eq('user_id', user.id)
   if (decisionResult.error && !isMissingRelationError(decisionResult.error)) {
@@ -1082,7 +1105,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     userId: user.id,
     userEmail: user.email ?? undefined,
     userDisplayName: userDisplayName(user),
-    setupStatus: getServiceSetupStatus(),
+    setupStatus,
     stores,
     events,
     posts,
@@ -1093,6 +1116,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     crawlRuns: (crawlResult.data ?? []).map(toCrawlRun),
     bbsSnapshots: snapshotRows.map(toBbsSnapshot),
     bbsNormalizedPosts,
+    dailyInsights: dailyDataset.insights,
     storeDecisions: storeDecisionRowsToState(decisionResult.error ? [] : decisionResult.data),
     exactTerms: exactRowsToState(termResult.data),
     wordBookmarks: (bookmarkResult.data ?? []).map(toWordBookmark),

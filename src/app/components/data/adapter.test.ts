@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { buildDailyStoreDataset } from '@/lib/daily-store-insights'
 import { normalizedBbsPostsToPostRecords } from '@/lib/scoring'
 import type { BbsNormalizedPost, DashboardState, EventInput, StoreProfile } from '@/lib/types'
 import { adaptDashboardToBars } from './adapter'
@@ -99,6 +100,7 @@ const state: DashboardState = {
   crawlRuns: [],
   bbsSnapshots: [],
   bbsNormalizedPosts: normalizedPosts,
+  dailyInsights: [],
   storeDecisions: {},
   exactTerms: {
     popularSingleMale: '',
@@ -121,8 +123,22 @@ const state: DashboardState = {
   wordCategories: [],
 }
 
+function withDailyInsights(input: DashboardState, events = input.events): DashboardState {
+  const dataset = buildDailyStoreDataset({
+    stores: input.stores,
+    events,
+    rawPosts: input.posts,
+    sources: input.bbsSources,
+    snapshots: input.bbsSnapshots,
+    normalizedPosts: input.bbsNormalizedPosts,
+    businessContextPosts: input.businessContextPosts,
+    referenceAt: input.setupStatus.generatedAt,
+  })
+  return { ...input, events, posts: dataset.effectivePosts, dailyInsights: dataset.insights }
+}
+
 test('adapter maps current business-window data without reservation placeholders', () => {
-  const result = adaptDashboardToBars(state, [event])
+  const result = adaptDashboardToBars(withDailyInsights(state), [event])
   const bar = result.bars[0]
 
   assert.equal(result.meta.postCount, 2)
@@ -163,7 +179,7 @@ test('adapter ranks by all current business-window posts before female count', (
     contentKey: `total-key-${index}`,
   }))
   const allNormalized = [...normalizedPosts, ...activePosts]
-  const result = adaptDashboardToBars({
+  const result = adaptDashboardToBars(withDailyInsights({
     ...state,
     stores: [store, activeStore],
     posts: normalizedBbsPostsToPostRecords(allNormalized),
@@ -176,7 +192,7 @@ test('adapter ranks by all current business-window posts before female count', (
         storeId: activeStore.id,
       },
     ],
-  })
+  }))
 
   assert.equal(result.bars[0].id, activeStore.id)
   assert.equal(result.bars[0].postCount, 3)
@@ -195,11 +211,11 @@ test('adapter excludes posts whose original writing time could not be parsed', (
     contentKey: 'time-unknown-key',
   }
   const allNormalized = [...normalizedPosts, withoutPostedAt]
-  const result = adaptDashboardToBars({
+  const result = adaptDashboardToBars(withDailyInsights({
     ...state,
     posts: normalizedBbsPostsToPostRecords(allNormalized),
     bbsNormalizedPosts: allNormalized,
-  }, [event])
+  }), [event])
 
   assert.equal(result.meta.postCount, 2)
   assert.equal(result.bars[0].femaleCount, 1)
@@ -207,13 +223,13 @@ test('adapter excludes posts whose original writing time could not be parsed', (
 })
 
 test('adapter does not assign confidence without a source or measured posts', () => {
-  const result = adaptDashboardToBars({
+  const result = adaptDashboardToBars(withDailyInsights({
     ...state,
     events: [],
     posts: [],
     bbsSources: [],
     bbsNormalizedPosts: [],
-  })
+  }))
 
   assert.equal(result.bars[0].dataConfidence, 0)
   assert.equal(result.bars[0].reliability, 'unknown')

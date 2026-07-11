@@ -143,6 +143,67 @@ export type StoreRadarPoint = {
   verdict: string
 }
 
+export type StoreActivityMetrics = {
+  recentPostCount: number
+  recentThreeHourCount: number
+  recentThreeHourFemaleCount: number
+  femalePostCount: number
+  malePostCount: number
+  genderSampleCount: number
+  womenRatio: number | null
+  firstVisitCount: number
+  groupVisitCount: number
+  attentionPostCount: number
+  uniqueAuthorCount: number
+  repeatAuthorRatio: number | null
+  normalizedCoverage: number
+  timestampCoverage: number
+  authorCoverage: number
+  genderCoverage: number
+}
+
+export type StoreDataReliability = 'fresh' | 'stale' | 'blocked' | 'unknown'
+
+export type StoreBusinessWindowSummary = {
+  label: string
+  startsAt: string
+  endsAt: string
+  source: 'bbs' | 'profile' | 'fallback'
+  active: boolean
+}
+
+export type StoreDailyInsight = {
+  generatedAt: string
+  store: StoreProfile
+  point: StoreRadarPoint
+  source?: BbsSource
+  activity: StoreActivityMetrics
+  rankingPostIds: string[]
+  hourlyCounts: number[]
+  hourLabels: string[]
+  peakHour: string
+  businessWindows: StoreBusinessWindowSummary[]
+  businessWindowLabel: string
+  isOpenNow: boolean
+  todayEventCount: number
+  upcomingEventCount: number
+  weekendEventCount: number
+  heatScore: number
+  rank: number
+  rankingBasis: 'business_customer_posts'
+  rankingReason: string
+  reliability: StoreDataReliability
+  reliabilityLabel: string
+  lastSuccessfulAt?: string
+  lastAttemptAt?: string
+  freshnessMinutes: number | null
+  freshnessLabel: string
+  dataConfidence: number
+  dataConfidenceLabel: string
+  genderConfidence: number
+  excludedUntimestampedCount: number
+}
+
 export type WatchedWordHit = {
   id: string
   label: string
@@ -320,6 +381,7 @@ export type DashboardState = {
   crawlRuns: CrawlRun[]
   bbsSnapshots: BbsSnapshot[]
   bbsNormalizedPosts: BbsNormalizedPost[]
+  dailyInsights: StoreDailyInsight[]
   storeDecisions: Record<string, StoreDecisionState>
   exactTerms: ExactTermState
   wordBookmarks: WordBookmark[]

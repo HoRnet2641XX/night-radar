@@ -9,6 +9,7 @@ import type {
   PrMetrics,
   ScoredEvent,
   SignalTone,
+  StoreActivityMetrics,
   StoreBbsAnalytics,
   StoreRadarPoint,
   StoreProfile,
@@ -141,35 +142,26 @@ export function filterPostsWithinHours(posts: PostRecord[], referenceAt: string 
   })
 }
 
-export type StoreActivityMetrics = {
-  recentPostCount: number
-  recentThreeHourCount: number
-  recentThreeHourFemaleCount: number
-  femalePostCount: number
-  malePostCount: number
-  genderSampleCount: number
-  womenRatio: number | null
-  firstVisitCount: number
-  groupVisitCount: number
-  attentionPostCount: number
-  uniqueAuthorCount: number
-  repeatAuthorRatio: number | null
-  normalizedCoverage: number
-  timestampCoverage: number
-  authorCoverage: number
-  genderCoverage: number
-}
-
 function normalizeAuthorName(value: string) {
   const normalized = value.normalize('NFKC').replace(/\s+/g, '').toLowerCase()
   return normalized && normalized !== '記載なし' ? normalized : ''
 }
 
+function resolvedNormalizedPostGender(post: Pick<BbsNormalizedPost, 'authorName' | 'authorGender'>) {
+  if (femaleAuthorGenderPattern.test(post.authorGender)) return 'female'
+  if (maleAuthorGenderPattern.test(post.authorGender)) return 'male'
+
+  const author = post.authorName.normalize('NFKC').replace(/\s+/g, '')
+  if (/(?:♀|女性|単女|単独女性)$/.test(author)) return 'female'
+  if (/(?:♂|男性|単男|単独男性)$/.test(author)) return 'male'
+  return 'unknown'
+}
+
 function postGenderCounts(posts: PostRecord[], normalizedPosts: BbsNormalizedPost[]) {
   if (normalizedPosts.length) {
     return {
-      female: normalizedPosts.filter((post) => femaleAuthorGenderPattern.test(post.authorGender)).length,
-      male: normalizedPosts.filter((post) => maleAuthorGenderPattern.test(post.authorGender)).length,
+      female: normalizedPosts.filter((post) => resolvedNormalizedPostGender(post) === 'female').length,
+      male: normalizedPosts.filter((post) => resolvedNormalizedPostGender(post) === 'male').length,
     }
   }
 
@@ -226,7 +218,7 @@ export function buildStoreActivityMetrics(input: {
     attentionPostCount: businessPosts.filter((post) => {
       const normalizedPost = normalizedByEffectivePostId.get(post.id)
       const isFemale = normalizedPost
-        ? femaleAuthorGenderPattern.test(normalizedPost.authorGender)
+        ? resolvedNormalizedPostGender(normalizedPost) === 'female'
         : femalePostAuthorPattern.test(post.body)
       return isFemale || firstVisitRecordPattern.test(post.body) || groupVisitRecordPattern.test(post.body)
     }).length,
@@ -1026,7 +1018,9 @@ export function extractNormalizedBbsPostsFromText(value: string, observedAt: str
     const articleNo = parseBbsArticleNo(block)
     const entry = extractCanonicalAuthorEntry(block) ?? extractWatchedAuthorEntries(block)[0] ?? null
     const authorName = entry?.name?.trim() || '記載なし'
-    const authorGender = entry?.gender || '記載なし'
+    const parsedGender = entry?.gender || '記載なし'
+    const inferredGender = resolvedNormalizedPostGender({ authorName, authorGender: parsedGender })
+    const authorGender = inferredGender === 'female' ? '女性' : inferredGender === 'male' ? '男性' : parsedGender
     const body = cleanNormalizedBbsPostBody(block, entry, articleNo)
     const postedAt = parseBbsPostedAt(block, observedAt)
 

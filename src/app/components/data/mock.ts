@@ -2,6 +2,7 @@ export type DataReliability = 'fresh' | 'stale' | 'blocked' | 'unknown'
 
 export type Bar = {
   id: string
+  rank: number
   name: string
   area: string
   tags: string[]
@@ -43,6 +44,7 @@ export type Bar = {
   dataConfidenceLabel: string
   isWithinBusinessHours: boolean
   businessStatusLabel: string
+  businessWindowLabel: string
   freshnessMinutes: number | null
   freshnessLabel: string
   postCount: number
@@ -51,6 +53,9 @@ export type Bar = {
   sourceUpdatedAt?: string
   reliability: DataReliability
   reliabilityLabel: string
+  rankingBasisLabel: string
+  excludedUntimestampedCount: number
+  genderUnknownCount: number
 }
 
 export type CalendarEventItem = {
@@ -83,6 +88,9 @@ export type RuntimeMeta = {
   highConfidenceCount: number
   normalizedCoverageAverage: number
   timestampCoverageAverage: number
+  rankingMetricLabel: string
+  businessWindowSummary: string
+  excludedUntimestampedCount: number
   bookmarkCount: number
   notificationCount: number
   planLabel: string
@@ -98,6 +106,7 @@ const emptyHours = ['18', '19', '20', '21', '22', '23', '00', '01', '02', '03', 
 const fallbackBars: Bar[] = [
   {
     id: 'retreat-bar',
+    rank: 1,
     name: 'bar RETREAT BAR',
     area: '都内',
     tags: ['データ接続待ち', '営業時間確認'],
@@ -133,12 +142,16 @@ const fallbackBars: Bar[] = [
     dataConfidenceLabel: '観測中',
     isWithinBusinessHours: false,
     businessStatusLabel: '営業時間確認',
+    businessWindowLabel: '営業時間を確認中',
     freshnessMinutes: null,
     freshnessLabel: '未確認',
     postCount: 0,
     snapshotCount: 0,
     reliability: 'unknown',
     reliabilityLabel: '未確認',
+    rankingBasisLabel: '当日営業分の顧客投稿数',
+    excludedUntimestampedCount: 0,
+    genderUnknownCount: 0,
   },
 ]
 
@@ -150,7 +163,7 @@ export let RUNTIME_META: RuntimeMeta = createFallbackMeta()
 export const RADAR_KEYS = [
   { key: 'vibe', label: '営業分投稿' },
   { key: 'drinks', label: '女性比率' },
-  { key: 'service', label: 'データ信頼度' },
+  { key: 'service', label: '集計信頼度' },
   { key: 'music', label: '今日の予定' },
   { key: 'crowd', label: '直近3時間' },
 ] as const
@@ -181,6 +194,9 @@ function createFallbackMeta(): RuntimeMeta {
     highConfidenceCount: 0,
     normalizedCoverageAverage: 0,
     timestampCoverageAverage: 0,
+    rankingMetricLabel: '当日営業分の顧客投稿数',
+    businessWindowSummary: '営業時間を確認中',
+    excludedUntimestampedCount: 0,
     bookmarkCount: 0,
     notificationCount: 0,
     planLabel: '無料',

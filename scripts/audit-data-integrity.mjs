@@ -1,10 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
-import {
-  buildStoreActivityMetrics,
-  filterPostsForStoreBusinessWindows,
-  inferStoreBusinessWindows,
-  normalizedBbsPostsToPostRecords,
-} from '../src/lib/scoring.ts'
+import { buildDailyStoreDataset, DAILY_INSIGHT_CONTRACT_VERSION } from '../src/lib/daily-store-insights.ts'
+import { mergeOfficialEvents } from '../src/lib/official-events.ts'
 
 const PAGE_SIZE = 1000
 const RECENT_HOURS = 48
@@ -98,6 +94,58 @@ function toNormalizedPost(row) {
   }
 }
 
+function toSource(row) {
+  return {
+    id: row.id,
+    storeId: row.store_id,
+    label: row.label || 'BBS',
+    url: row.url,
+    parserType: row.parser_type === 'body' ? 'body' : 'auto',
+    active: row.active !== false,
+    crawlIntervalMinutes: Number(row.crawl_interval_minutes ?? 5),
+    lastFetchedAt: row.last_fetched_at || undefined,
+    lastStatus: row.last_status || 'pending',
+    lastMessage: row.last_message || undefined,
+  }
+}
+
+function toSnapshot(row) {
+  const metrics = row.metrics ?? {}
+  return {
+    id: row.id,
+    sourceId: row.source_id || undefined,
+    storeId: row.store_id,
+    url: row.url,
+    extractedText: row.extracted_text || '',
+    metrics: {
+      femaleOnly: Number(metrics.femaleOnly ?? 0),
+      firstVisit: Number(metrics.firstVisit ?? 0),
+      comeback: Number(metrics.comeback ?? 0),
+      groupVisit: Number(metrics.groupVisit ?? 0),
+      emoji: Number(metrics.emoji ?? 0),
+      totalSignals: Number(metrics.totalSignals ?? 0),
+      textLength: Number(metrics.textLength ?? 0),
+    },
+    radarScore: Number(row.radar_score ?? 0),
+    capturedAt: row.captured_at,
+  }
+}
+
+function toEvent(row) {
+  return {
+    id: row.id,
+    storeId: row.store_id,
+    date: row.date_label,
+    weekday: row.weekday || '',
+    startsAt: row.starts_at || '19:00',
+    session: row.session === 'day' ? 'day' : 'night',
+    category: row.category || '未分類',
+    title: row.title || '',
+    details: row.details || undefined,
+    sourceUrl: row.source_url || undefined,
+  }
+}
+
 async function main() {
   const db = createDatabaseClient()
   const now = new Date()
@@ -106,21 +154,22 @@ async function main() {
   const todayKey = japanDateKey(now)
   const monthKey = todayKey.slice(0, 7)
   const nextMonth = nextMonthKey(monthKey)
+  const afterNextMonth = nextMonthKey(nextMonth)
 
   const [storeRows, sourceRows, normalizedRows, snapshotRows, eventRows, crawlRows] = await Promise.all([
     collectRows(() => db.from('stores').select('*').order('created_at', { ascending: true }).order('id', { ascending: true })),
     collectRows(() => db.from('bbs_sources').select('*').eq('active', true).order('created_at', { ascending: true }).order('id', { ascending: true })),
     collectRows(() => db.from('bbs_normalized_posts').select('*').gte('observed_at', recentThreshold).order('observed_at', { ascending: false }).order('id', { ascending: false })),
-    collectRows(() => db.from('bbs_snapshots').select('id,source_id,store_id,url,extracted_text,captured_at').gte('captured_at', recentThreshold).order('captured_at', { ascending: false }).order('id', { ascending: false })),
-    collectRows(() => db.from('events').select('*').gte('date_label', `${monthKey}-01`).lt('date_label', `${nextMonth}-01`).order('date_label', { ascending: true }).order('id', { ascending: true })),
+    collectRows(() => db.from('bbs_snapshots').select('id,source_id,store_id,url,extracted_text,metrics,radar_score,captured_at').gte('captured_at', recentThreshold).order('captured_at', { ascending: false }).order('id', { ascending: false })),
+    collectRows(() => db.from('events').select('*').gte('date_label', `${monthKey}-01`).lt('date_label', `${afterNextMonth}-01`).order('date_label', { ascending: true }).order('id', { ascending: true })),
     collectRows(() => db.from('crawl_runs').select('id,source_id,store_id,status,message,fetched_at').gte('fetched_at', recentThreshold).order('fetched_at', { ascending: false }).order('id', { ascending: false })),
   ])
 
   const stores = storeRows.map(toStore)
   const storeIds = new Set(stores.map((store) => store.id))
   const normalizedPosts = normalizedRows.map(toNormalizedPost)
+  const events = mergeOfficialEvents(eventRows.map(toEvent))
   const timestampedNormalizedPosts = normalizedPosts.filter((post) => Boolean(post.postedAt))
-  const effectivePosts = normalizedBbsPostsToPostRecords(timestampedNormalizedPosts)
   const latestContextByStore = new Map()
   for (const snapshot of snapshotRows) {
     if (!latestContextByStore.has(snapshot.store_id) && snapshot.extracted_text?.trim()) {
@@ -135,39 +184,34 @@ async function main() {
       })
     }
   }
-  const contextPosts = [...effectivePosts, ...latestContextByStore.values()]
-  const businessPosts = filterPostsForStoreBusinessWindows(effectivePosts, stores, referenceAt, [], contextPosts)
+  const dataset = buildDailyStoreDataset({
+    stores,
+    events,
+    rawPosts: [],
+    sources: sourceRows.map(toSource),
+    snapshots: snapshotRows.map(toSnapshot),
+    normalizedPosts,
+    businessContextPosts: [...latestContextByStore.values()],
+    referenceAt,
+  })
+  const businessPosts = dataset.businessPosts
   const latestRunBySource = new Map()
   for (const run of crawlRows) if (!latestRunBySource.has(run.source_id)) latestRunBySource.set(run.source_id, run)
 
-  const storeAudit = stores.map((store) => {
-    const metrics = buildStoreActivityMetrics({
-      storeId: store.id,
-      businessPosts,
-      normalizedPosts,
-      referenceAt,
-    })
-    const windows = inferStoreBusinessWindows(
-      store,
-      referenceAt,
-      contextPosts.filter((post) => post.storeId === store.id).map((post) => post.body),
-    )
-    return {
-      id: store.id,
-      name: store.name,
-      businessPosts: metrics.recentPostCount,
-      femalePosts: metrics.femalePostCount,
-      recentThreeHours: metrics.recentThreeHourCount,
-      authorCoverage: metrics.authorCoverage,
-      genderCoverage: metrics.genderCoverage,
-      businessWindows: windows.map((window) => `${window.label} ${window.startHour}:${String(window.startMinute).padStart(2, '0')}-${window.endHour}:${String(window.endMinute).padStart(2, '0')} (${window.source})`),
-    }
-  }).sort(
-    (left, right) =>
-      right.businessPosts - left.businessPosts ||
-      right.recentThreeHours - left.recentThreeHours ||
-      right.femalePosts - left.femalePosts,
-  )
+  const storeAudit = dataset.insights.map((insight) => ({
+    rank: insight.rank,
+    id: insight.store.id,
+    name: insight.store.name,
+    businessPosts: insight.activity.recentPostCount,
+    femalePosts: insight.activity.femalePostCount,
+    recentThreeHours: insight.activity.recentThreeHourCount,
+    authorCoverage: insight.activity.authorCoverage,
+    genderCoverage: insight.activity.genderCoverage,
+    dataConfidence: insight.dataConfidence,
+    reliability: insight.reliability,
+    excludedUntimestamped: insight.excludedUntimestampedCount,
+    businessWindows: insight.businessWindows.map((window) => `${window.label} ${window.startsAt}-${window.endsAt} (${window.source})`),
+  }))
 
   const sourceAudit = sourceRows.map((source) => {
     const latestRun = latestRunBySource.get(source.id)
@@ -204,6 +248,7 @@ async function main() {
 
   console.log(JSON.stringify({
     auditedAt: referenceAt,
+    contractVersion: DAILY_INSIGHT_CONTRACT_VERSION,
     window: `直近${RECENT_HOURS}時間`,
     summary: {
       stores: stores.length,
@@ -217,8 +262,8 @@ async function main() {
       authorCoverage: percent(namedPosts, normalizedRows.length),
       genderCoverage: percent(genderedPosts, normalizedRows.length),
       snapshots: snapshotRows.length,
-      currentMonthEvents: eventRows.length,
-      todayEvents: eventRows.filter((row) => row.date_label === todayKey).length,
+      currentMonthEvents: events.filter((event) => event.date.startsWith(monthKey)).length,
+      todayEvents: events.filter((event) => event.date === todayKey).length,
       normalizedDuplicateCount,
       eventDuplicateCount,
       orphanEventCount,

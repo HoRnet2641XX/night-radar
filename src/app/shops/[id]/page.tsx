@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { PublicShell, StoreDetailView } from '@/components/public-directory'
-import { formatPublicStoreName, getPublicDirectoryState, storeDetailPath } from '@/lib/public-directory'
+import { formatPublicStoreName, getPublicDirectoryState, getPublicStoreDetail, storeDetailPath } from '@/lib/public-directory'
 
 export const revalidate = 120
 
@@ -24,13 +24,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function StorePage({ params }: PageProps) {
   const { id } = await params
-  const state = await getPublicDirectoryState()
-  const summary = state.summaries.find((item) => item.store.id === id)
-  if (!summary) notFound()
+  const detail = await getPublicStoreDetail(id)
+  if (!detail) notFound()
 
   return (
     <PublicShell current="shops">
-      <StoreDetailView summary={summary} />
+      <StoreDetailView detail={detail} />
     </PublicShell>
   )
 }

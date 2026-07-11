@@ -1,22 +1,6 @@
 import { formatBarName, formatStoreArea, formatStoreSessionLabel } from '@/lib/display'
-import {
-  buildStoreActivityMetrics,
-  buildStoreRadarPoints,
-  filterPostsForStoreBusinessWindows,
-  filterSnapshotsForStoreBusinessWindows,
-  inferStoreBusinessWindows,
-  type StoreActivityMetrics,
-} from '@/lib/scoring'
-import type {
-  BbsNormalizedPost,
-  BbsSource,
-  DashboardState,
-  EventInput,
-  PostRecord,
-  StoreProfile,
-  StoreRadarPoint,
-} from '@/lib/types'
-import type { Bar, CalendarEventItem, DataReliability, RuntimeMeta } from './mock'
+import type { DashboardState, EventInput, StoreDailyInsight, StoreProfile } from '@/lib/types'
+import type { Bar, CalendarEventItem, RuntimeMeta } from './mock'
 
 export type NightRadarViewData = {
   bars: Bar[]
@@ -53,68 +37,6 @@ function formatGeneratedAt(value: string) {
   }).format(validDate(value) ?? new Date())
 }
 
-function statusForSource(source: BbsSource | undefined, referenceAt: string): DataReliability {
-  if (!source) return 'unknown'
-  if (source.lastStatus === 'blocked' || source.lastStatus === 'failed') return 'blocked'
-  if (!source.lastFetchedAt) return 'unknown'
-
-  const reference = validDate(referenceAt)
-  const fetched = validDate(source.lastFetchedAt)
-  if (!reference || !fetched) return 'unknown'
-  return reference.getTime() - fetched.getTime() > 3 * 60 * 60 * 1000 ? 'stale' : 'fresh'
-}
-
-function sourceLabel(reliability: DataReliability) {
-  if (reliability === 'fresh') return '取得済み'
-  if (reliability === 'stale') return '更新古め'
-  if (reliability === 'blocked') return '取得不可'
-  return '未確認'
-}
-
-function sourceUrlForStore(sources: BbsSource[], storeId: string) {
-  return sources.find((source) => source.storeId === storeId && source.active)?.url
-}
-
-function sourceAgeMinutes(lastSuccessfulAt: string | undefined, referenceAt: string) {
-  const reference = validDate(referenceAt)
-  const fetched = validDate(lastSuccessfulAt)
-  if (!reference || !fetched) return null
-  return Math.max(0, Math.round((reference.getTime() - fetched.getTime()) / 60_000))
-}
-
-function freshnessLabel(minutes: number | null) {
-  if (minutes === null) return '未確認'
-  if (minutes < 60) return `${minutes}分前`
-  if (minutes < 180) return `${Math.floor(minutes / 60)}時間前`
-  return `${Math.floor(minutes / 60)}時間以上前`
-}
-
-function confidenceForBar(activity: StoreActivityMetrics, reliability: DataReliability) {
-  const sourcePart = reliability === 'fresh' ? 25 : reliability === 'stale' ? 12 : 0
-  const normalizedPart = activity.normalizedCoverage * 0.2
-  const timestampPart = activity.timestampCoverage * 0.2
-  const authorPart = activity.authorCoverage * 0.1
-  const genderPart = activity.genderCoverage * 0.15
-  const volumePart = Math.min(10, activity.recentPostCount * 2)
-  return clamp(sourcePart + normalizedPart + timestampPart + authorPart + genderPart + volumePart)
-}
-
-function confidenceLabel(value: number) {
-  if (value >= 80) return 'データ信頼度 高'
-  if (value >= 60) return 'データ信頼度 中'
-  return 'データ信頼度 低'
-}
-
-function businessStatus(store: StoreProfile, referenceAt: string, posts: PostRecord[]) {
-  const reference = validDate(referenceAt)
-  if (!reference) return { active: false, label: '営業時間確認' }
-  const windows = inferStoreBusinessWindows(store, referenceAt, posts.map((post) => post.body))
-  const referenceTime = reference.getTime()
-  const active = windows.some((window) => window.start <= referenceTime && referenceTime <= window.end)
-  const basis = windows.some((window) => window.source === 'bbs') ? 'BBS' : windows.some((window) => window.source === 'profile') ? '登録値' : '推定'
-  return { active, label: active ? `営業時間内（${basis}）` : `営業時間外（${basis}）` }
-}
-
 function priceNumber(store: StoreProfile) {
   const note = store.priceNote ?? ''
   const matched = note.match(/([0-9０-９][0-9０-９,，]*)\s*円/)
@@ -125,114 +47,39 @@ function priceNumber(store: StoreProfile) {
   return Number(normalized) || 0
 }
 
-function eventCountForToday(events: EventInput[], storeId: string, todayKey: string) {
-  return events.filter((event) => event.storeId === storeId && event.date === todayKey).length
-}
-
-function startHourForStore(store: StoreProfile, referenceAt: string, contextPosts: PostRecord[]) {
-  const inferredWindow = inferStoreBusinessWindows(store, referenceAt, contextPosts.map((post) => post.body))[0]
-  if (inferredWindow) return inferredWindow.startHour
-  const source = store.hasNight ? store.openingHourNight : store.openingHourDay
-  const match = source.match(/([01]?\d|2[0-3])[:：](\d{2})/)
-  return match ? Number(match[1]) : store.hasNight ? 19 : 13
-}
-
-function japanHour(value: string) {
-  const date = validDate(value)
-  if (!date) return null
-  return Number(
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Asia/Tokyo',
-      hour: '2-digit',
-      hourCycle: 'h23',
-    }).format(date),
-  )
-}
-
-function hourlyActivity(store: StoreProfile, posts: PostRecord[], referenceAt: string, contextPosts: PostRecord[]) {
-  const startHour = startHourForStore(store, referenceAt, contextPosts)
-  const hourLabels = Array.from({ length: 12 }, (_, index) => String((startHour + index) % 24).padStart(2, '0'))
-  const hourly = Array.from({ length: hourLabels.length }, () => 0)
-
-  posts.forEach((post) => {
-    const hour = japanHour(post.postedAt)
-    if (hour === null) return
-    const offset = (hour - startHour + 24) % 24
-    if (offset < hourly.length) hourly[offset] += 1
-  })
-
-  const peakCount = Math.max(...hourly)
-  const peakIndex = peakCount > 0 ? hourly.indexOf(peakCount) : 0
-
-  return {
-    hourly,
-    hourLabels,
-    peakHour: `${hourLabels[peakIndex]}:00`,
-  }
-}
-
-function barReason(args: {
-  eventCount: number
-  femaleCount: number
-  femaleRatio: number | null
-  postCount: number
-  recentThreeHourCount: number
-  confidenceLabel: string
-  freshnessLabel: string
-}) {
-  const reasons = [
-    args.postCount > 0 ? `直近営業分 ${args.postCount}件` : '直近営業分は未検出',
-    args.recentThreeHourCount > 0 ? `直近3時間 ${args.recentThreeHourCount}件` : '直近3時間は動きなし',
-    args.femaleCount > 0 ? `女性書き込み ${args.femaleCount}件` : '女性書き込みは未検出',
-    args.femaleRatio === null ? '女性率は母数不足' : `女性率 ${args.femaleRatio}%`,
-    args.eventCount > 0 ? `予定 ${args.eventCount}件` : '予定なし',
-    `${args.confidenceLabel} / ${args.freshnessLabel}`,
-  ]
-  return reasons.join(' / ')
-}
-
 function toBar(
-  point: StoreRadarPoint,
-  posts: PostRecord[],
-  normalizedPosts: BbsNormalizedPost[],
-  businessContextPosts: PostRecord[],
-  events: EventInput[],
-  sources: BbsSource[],
-  todayKey: string,
-  generatedAt: string,
+  insight: StoreDailyInsight,
 ): Bar {
+  const point = insight.point
   const store = point.store
-  const storePosts = posts.filter((post) => post.storeId === store.id)
-  const storeContextPosts = businessContextPosts.filter((post) => post.storeId === store.id)
-  const source = sources.find((item) => item.storeId === store.id && item.active)
-  const reliability = statusForSource(source, generatedAt)
-  const storeActivity = buildStoreActivityMetrics({
-    storeId: store.id,
-    businessPosts: storePosts,
-    normalizedPosts,
-    referenceAt: generatedAt,
-  })
+  const source = insight.source
+  const reliability = insight.reliability
+  const storeActivity = insight.activity
   const femaleCount = storeActivity.femalePostCount
   const femaleRatio = storeActivity.womenRatio
   const firstVisitCount = storeActivity.firstVisitCount
   const groupCount = storeActivity.groupVisitCount
-  const eventCount = eventCountForToday(events, store.id, todayKey)
-  const postCount = storePosts.length
-  const hourly = hourlyActivity(store, storePosts, generatedAt, storeContextPosts)
+  const eventCount = insight.todayEventCount
+  const postCount = storeActivity.recentPostCount
+  const hourly = {
+    hourly: insight.hourlyCounts,
+    hourLabels: insight.hourLabels,
+    peakHour: insight.peakHour,
+  }
   const signalCount = storeActivity.attentionPostCount
-  const reliabilityLabel = sourceLabel(reliability)
-  const ageMinutes = sourceAgeMinutes(point.lastCapturedAt, generatedAt)
-  const ageLabel = freshnessLabel(ageMinutes)
-  const dataConfidence = confidenceForBar(storeActivity, reliability)
-  const dataConfidenceLabel = confidenceLabel(dataConfidence)
-  const status = businessStatus(store, generatedAt, storeContextPosts)
+  const reliabilityLabel = insight.reliabilityLabel
+  const ageMinutes = insight.freshnessMinutes
+  const ageLabel = insight.freshnessLabel
+  const dataConfidence = insight.dataConfidence
+  const dataConfidenceLabel = insight.dataConfidenceLabel
+  const businessStatusLabel = insight.isOpenNow ? '営業時間内' : '営業時間外'
 
   return {
     id: store.id,
     name: formatBarName(store.name),
     area: formatStoreArea(store.area),
     tags: [
-      status.label,
+      businessStatusLabel,
       dataConfidenceLabel,
       femaleCount > 0 ? `女性 ${femaleCount}件` : '',
       storeActivity.recentThreeHourCount > 0 ? `直近3時間 ${storeActivity.recentThreeHourCount}件` : '',
@@ -249,22 +96,15 @@ function toBar(
     hourly: hourly.hourly,
     hourLabels: hourly.hourLabels,
     note:
-      femaleCount > 0
-        ? `女性書き込み${femaleCount}件。書き込み時刻の解析率${storeActivity.timestampCoverage}%、性別の判定率${storeActivity.genderCoverage}%です。`
-        : `女性の書き込みは未検出です。書き込み時刻の解析率は${storeActivity.timestampCoverage}%です。`,
+      `当日営業分の顧客投稿${postCount}件。時刻解析率${storeActivity.timestampCoverage}%、性別判定率${storeActivity.genderCoverage}%です。` +
+      (insight.excludedUntimestampedCount > 0
+        ? ` 解析保留レコード${insight.excludedUntimestampedCount}件は順位に使用していません。`
+        : ''),
     signalCount,
-    reason: barReason({
-      eventCount,
-      femaleCount,
-      femaleRatio,
-      postCount,
-      recentThreeHourCount: storeActivity.recentThreeHourCount,
-      confidenceLabel: dataConfidenceLabel,
-      freshnessLabel: ageLabel,
-    }),
+    reason: insight.rankingReason,
     peakHour: hourly.peakHour,
     officialUrl: store.officialUrl,
-    bbsUrl: sourceUrlForStore(sources, store.id),
+    bbsUrl: source?.url,
     mapUrl: store.mapUrl,
     phone: store.phone,
     priceNote: store.priceNote,
@@ -285,16 +125,21 @@ function toBar(
     genderCoverage: storeActivity.genderCoverage,
     dataConfidence,
     dataConfidenceLabel,
-    isWithinBusinessHours: status.active,
-    businessStatusLabel: status.label,
+    isWithinBusinessHours: insight.isOpenNow,
+    businessStatusLabel,
+    businessWindowLabel: insight.businessWindowLabel,
     freshnessMinutes: ageMinutes,
     freshnessLabel: ageLabel,
     postCount,
     snapshotCount: point.snapshotCount,
-    lastCapturedAt: point.lastCapturedAt,
-    sourceUpdatedAt: source?.lastFetchedAt,
+    lastCapturedAt: insight.lastSuccessfulAt,
+    sourceUpdatedAt: insight.lastAttemptAt,
     reliability,
     reliabilityLabel,
+    rank: insight.rank,
+    rankingBasisLabel: '当日営業分の顧客投稿数',
+    excludedUntimestampedCount: insight.excludedUntimestampedCount,
+    genderUnknownCount: Math.max(0, postCount - storeActivity.genderSampleCount),
   }
 }
 
@@ -341,30 +186,8 @@ function modeLabel(mode: DashboardState['mode']) {
 export function adaptDashboardToBars(state: DashboardState, calendarEvents: EventInput[] = []): NightRadarViewData {
   const generatedAt = state.setupStatus.generatedAt || new Date().toISOString()
   const todayKey = japanDateKey(generatedAt)
-  const businessContextPosts = [...state.posts, ...(state.businessContextPosts ?? [])]
-  const confirmedNormalizedIds = new Set(
-    state.bbsNormalizedPosts.filter((post) => Boolean(post.postedAt)).map((post) => `normalized-${post.id}`),
-  )
-  const countablePosts = state.posts.filter((post) => post.source !== 'scrape' || confirmedNormalizedIds.has(post.id))
-  const posts = filterPostsForStoreBusinessWindows(countablePosts, state.stores, generatedAt, state.bbsSnapshots, businessContextPosts)
-  const snapshots = filterSnapshotsForStoreBusinessWindows(state.bbsSnapshots, state.stores, generatedAt, businessContextPosts)
-  const points = buildStoreRadarPoints(state.stores, posts, snapshots)
   const sourceEvents = calendarEvents.length ? calendarEvents : state.events
-  const bars = points
-    .map((point) => toBar(point, posts, state.bbsNormalizedPosts, businessContextPosts, sourceEvents, state.bbsSources, todayKey, generatedAt))
-    .toSorted((left, right) => {
-      const postDelta = right.postCount - left.postCount
-      if (postDelta) return postDelta
-      const recentDelta = right.recentThreeHourCount - left.recentThreeHourCount
-      if (recentDelta) return recentDelta
-      const femaleDelta = right.femaleCount - left.femaleCount
-      if (femaleDelta) return femaleDelta
-      const confidenceDelta = right.dataConfidence - left.dataConfidence
-      if (confidenceDelta) return confidenceDelta
-      const scoreDelta = right.score - left.score
-      if (scoreDelta) return scoreDelta
-      return left.name.localeCompare(right.name, 'ja')
-    })
+  const bars = state.dailyInsights.map(toBar).toSorted((left, right) => left.rank - right.rank)
   const events = sourceEvents
     .map((event) => toCalendarEvent(event, state.stores))
     .toSorted((left, right) => left.date.localeCompare(right.date) || (left.startsAt ?? '').localeCompare(right.startsAt ?? ''))
@@ -393,20 +216,23 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
       freshCount,
       staleCount,
       sourceCount: state.bbsSources.filter((source) => source.active).length,
-      postCount: posts.length,
+      postCount: bars.reduce((sum, bar) => sum + bar.postCount, 0),
       recentThreeHourCount,
       eventCount: events.length,
       todayEventCount,
       highConfidenceCount: bars.filter((bar) => bar.dataConfidence >= 80).length,
       normalizedCoverageAverage,
       timestampCoverageAverage,
+      rankingMetricLabel: '当日営業分の顧客投稿数',
+      businessWindowSummary: bars[0]?.businessWindowLabel ?? '営業時間を確認中',
+      excludedUntimestampedCount: bars.reduce((sum, bar) => sum + bar.excludedUntimestampedCount, 0),
       bookmarkCount: state.wordBookmarks.length,
       notificationCount: state.notificationJobs.filter((job) => job.status === 'queued').length,
       planLabel: planLabel(state.subscription.plan),
       modeLabel: modeLabel(state.mode),
       userDisplayName: state.userDisplayName?.trim() || state.userEmail?.split('@')[0] || 'Night Radar ユーザー',
       userEmail: state.userEmail,
-      summary: `直近営業分 ${posts.length}件 / 直近3時間 ${recentThreeHourCount}件 / 正規化率 ${normalizedCoverageAverage}%`,
+      summary: `当日営業分 ${bars.reduce((sum, bar) => sum + bar.postCount, 0)}件 / 直近3時間 ${recentThreeHourCount}件 / 時刻解析率 ${timestampCoverageAverage}%`,
     },
   }
 }
