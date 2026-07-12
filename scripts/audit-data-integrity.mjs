@@ -6,7 +6,7 @@ import {
   isStructurallyValidCustomerNormalizedPost,
   normalizedBbsPostIdentityMaterial,
 } from '../src/lib/scoring.ts'
-import { resolvedStoreArea, resolvedStoreMapUrl, resolvedStoreOfficialUrl } from '../src/lib/store-catalog.ts'
+import { resolvedStoreMapUrl, resolvedStoreMetadata, resolvedStoreOfficialUrl } from '../src/lib/store-catalog.ts'
 
 const PAGE_SIZE = 1000
 const RECENT_HOURS = 48
@@ -60,10 +60,10 @@ function duplicateCount(rows, keyForRow) {
 }
 
 function toStore(row) {
-  return {
+  return resolvedStoreMetadata({
     id: row.id,
     name: row.name,
-    area: resolvedStoreArea(row.id, row.area || '未設定'),
+    area: row.area || '未設定',
     address: row.address || undefined,
     nearestStation: row.nearest_station || undefined,
     phone: row.phone || undefined,
@@ -80,7 +80,7 @@ function toStore(row) {
     strongEvents: row.strong_events ?? [],
     weakEvents: row.weak_events ?? [],
     trustSeed: Number(row.trust_seed ?? 60),
-  }
+  })
 }
 
 function semanticPostKey(row) {

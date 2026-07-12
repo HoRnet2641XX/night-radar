@@ -65,7 +65,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
             <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>最終集計 · {meta.generatedAtLabel}（日本時間）</span>
           </motion.div>
           <h1 className="nr-heading text-[30px] sm:text-[42px] leading-[1.12]" style={{ color: 'var(--nr-text-hi)' }}>
-            <WordReveal text="今夜の動きを、" />
+            <WordReveal text="今日の行き先を、" />
             <br />
             <span style={{ color: 'var(--nr-accent-soft)' }}><WordReveal text="投稿数で見極める。" delay={0.35} /></span>
           </h1>
@@ -74,7 +74,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
             style={{ color: 'var(--nr-text-mid)' }}
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.7 }}
           >
-            今日の営業時間に入った顧客投稿を集計し、店側の投稿と時刻を判定できないデータは順位から外しています。
+            今日の来店分として判定できた顧客投稿を集計し、店側の投稿と時刻を判定できないデータは順位から外しています。
           </motion.p>
           </div>
           <motion.div

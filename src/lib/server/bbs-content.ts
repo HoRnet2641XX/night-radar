@@ -271,6 +271,34 @@ export function extractNeoReaderContent(value: string) {
   return [...new Set(posts)].join('\n')
 }
 
+function extractLegacyContributorPosts($: cheerio.CheerioAPI) {
+  const posts: string[] = []
+
+  $('dl.contributor').each((_, element) => {
+    const contributor = $(element)
+    const nameBlock = contributor.children('.name_block').first().length
+      ? contributor.children('.name_block').first()
+      : contributor.find('.name_block').first()
+    const detail = contributor.children('dl').first().length
+      ? contributor.children('dl').first()
+      : contributor
+    const author = nameBlock.find('.name').first().text()
+    const gender = compactText(nameBlock.find('.sex').first().text()).replace(/^[（(]|[）)]$/g, '')
+    const body = detail.find('.text').first().text()
+    const date = detail.find('.time_block .date').first().text()
+    const articleNo = detail.find('.time_block .number').first().text().match(/\d+/)?.[0]
+    const post = canonicalPost({
+      author: [author, gender ? `（${gender}）` : ''].filter(Boolean).join(''),
+      body,
+      date,
+      articleNo,
+    })
+    if (post) posts.push(post)
+  })
+
+  return posts
+}
+
 function extractDatedArticlePosts($: cheerio.CheerioAPI) {
   const posts: string[] = []
   const text = compactText($('body').text())
@@ -519,9 +547,12 @@ export function extractBbsPageContent(html: string, urlValue: string) {
   const $ = cheerio.load(html)
   const pageUrl = new URL(urlValue)
   const sangoPosts = extractSangoPosts($, pageUrl)
+  const legacyContributorPosts = extractLegacyContributorPosts($)
   const canonicalPosts = sangoPosts.length
     ? sangoPosts
-    : [
+    : legacyContributorPosts.length
+      ? legacyContributorPosts
+      : [
         ...extractWordPressComments($),
         ...extractBbPressReplies($),
         ...extractMessageCards($),

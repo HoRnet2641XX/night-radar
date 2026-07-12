@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Activity, Clock3, MapPin, MessageSquareText, Search, Smile, Store, UserRound, X } from 'lucide-react';
+import { Activity, BookmarkCheck, BookmarkPlus, Clock3, MapPin, MessageSquareText, Search, Smile, Star, Store, UserRound, X } from 'lucide-react';
 import { matchesStoreSearch } from '@/lib/store-search';
 import { GlassCard } from '../ui-nr/GlassCard';
 import { WordReveal } from '../ui-nr/Reveal';
 import { type Bar, type RadarPost, type RadarPostGender } from '../data/mock';
 import { useNightRadarData } from '../data/runtime';
+import { useLocalPreferences } from '../data/local-preferences';
 
-const STORE_CATEGORIES = ['すべて', '営業時間内', '直近3時間', '女性書き込みあり', '初回来店の記述', '複数来店の記述', '予定あり', '集計信頼度80点以上'];
+const STORE_CATEGORIES = ['すべて', '保存した候補', '営業時間内', '直近3時間', '女性書き込みあり', '初回来店の記述', '複数来店の記述', '予定あり', '集計信頼度80点以上'];
 const POST_SCOPES = [
   { key: 'all', label: '名前・本文' },
   { key: 'name', label: '名前' },
@@ -88,6 +89,7 @@ function PostRow({ post, onOpen }: { post: RadarPost; onOpen: (id: string) => vo
 
 export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
   const { bars, posts } = useNightRadarData();
+  const { savedWords, candidateStoreIds, toggleWord, toggleCandidateStore } = useLocalPreferences();
   const [mode, setMode] = useState<'posts' | 'stores'>('posts');
   const [q, setQ] = useState('');
   const [category, setCategory] = useState('すべて');
@@ -98,12 +100,13 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
 
   const filteredBars = useMemo(() => bars.filter((bar) => {
     const matchesQuery = matchesStoreSearch(q, bar.searchKeywords);
-    return matchesQuery && matchesCategory(bar, category);
+    const matchesSaved = category !== '保存した候補' || candidateStoreIds.includes(bar.id);
+    return matchesQuery && matchesSaved && matchesCategory(bar, category);
   }).toSorted((left, right) =>
     category === '女性書き込みあり'
       ? right.femaleCount - left.femaleCount || left.rank - right.rank
       : left.rank - right.rank,
-  ), [bars, category, q]);
+  ), [bars, candidateStoreIds, category, q]);
 
   const filteredPosts = useMemo(() => posts.filter((post) => {
     if (postWindow === 'today' && !post.isCurrentBusinessDay) return false;
@@ -115,6 +118,8 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
   }), [postGender, postScope, postWindow, posts, q]);
 
   const activeCount = mode === 'posts' ? filteredPosts.length : filteredBars.length;
+  const normalizedQuery = normalizeSearchText(q);
+  const queryIsSaved = Boolean(normalizedQuery) && savedWords.some((word) => normalizeSearchText(word) === normalizedQuery);
   const reset = () => {
     setQ('');
     setCategory('すべて');
@@ -166,12 +171,36 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
           {q && <button type="button" aria-label="検索語を消す" onClick={() => setQ('')} className="nr-chip grid !p-2 place-items-center"><X size={14} /></button>}
         </div>
 
+        {mode === 'posts' && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" className="nr-secondary-btn flex items-center gap-1.5" disabled={!normalizedQuery} data-active={queryIsSaved} onClick={() => toggleWord(q)}>
+              {queryIsSaved ? <BookmarkCheck size={13} /> : <BookmarkPlus size={13} />}
+              {queryIsSaved ? 'この端末の保存から外す' : 'この検索語を端末に保存'}
+            </button>
+            <span className="text-[10px]" style={{ color: 'var(--nr-text-low)' }}>アカウント不要・この端末だけに保存されます</span>
+          </div>
+        )}
+
+        {mode === 'posts' && savedWords.length > 0 && (
+          <div className="mt-4 border-t border-white/[0.07] pt-3">
+            <div className="nr-mono mb-2 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>保存した検索語</div>
+            <div className="flex flex-wrap gap-2">
+              {savedWords.map((word) => (
+                <span key={word} className="inline-flex overflow-hidden rounded-full border border-white/[0.1] bg-white/[0.025]">
+                  <button type="button" className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--nr-text-hi)' }} onClick={() => setQ(word)}>{word}</button>
+                  <button type="button" className="grid place-items-center border-l border-white/[0.08] px-2" aria-label={`${word}を保存から外す`} onClick={() => toggleWord(word)}><X size={11} /></button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {mode === 'posts' ? (
           <div className="mt-4 grid gap-4">
             <div>
               <div className="nr-mono mb-2 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>取得期間</div>
               <div className="flex flex-wrap gap-2">
-                <button type="button" className="nr-chip" data-active={postWindow === 'today'} onClick={() => setPostWindow('today')}>今日の営業分</button>
+                <button type="button" className="nr-chip" data-active={postWindow === 'today'} onClick={() => setPostWindow('today')}>今日の来店分</button>
                 <button type="button" className="nr-chip" data-active={postWindow === 'recent'} onClick={() => setPostWindow('recent')}>直近48時間</button>
               </div>
             </div>
@@ -223,19 +252,25 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
         </div>
       ) : (
         <GlassCard className="nr-hairline p-2">
-          {filteredBars.map((bar, index) => (
-            <motion.button key={bar.id} type="button" initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(index, 12) * 0.04, duration: 0.5, ease }} onClick={() => onOpen(bar.id)} className="grid w-full grid-cols-2 items-center gap-3 rounded-xl px-4 py-4 text-left transition-colors hover:bg-white/[0.04] md:grid-cols-[auto_1.6fr_1fr_1fr_1fr_auto] md:gap-4">
-              <span className="nr-mono flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px]" style={{ background: 'rgba(255,106,91,0.10)', color: 'var(--nr-accent-soft)' }}><span className="nr-pulse" style={{ width: 5, height: 5 }} />{bar.businessStatusLabel}</span>
-              <div className="min-w-0">
-                <div className="text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>{bar.rank}位 · {bar.name}</div>
-                <div className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--nr-text-low)' }}><MapPin size={10} /> {bar.area}</div>
-              </div>
-              <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>当日総書き込み</span><br /><span className="nr-mono text-[14px]">{bar.postCount}件</span></div>
-              <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>女性書き込み</span><br /><span className="nr-mono text-[14px]">{femaleValue(bar)}</span></div>
-              <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>今日の予定</span><br /><span className="nr-mono text-[14px]">{bar.eventCount}件</span></div>
-              <span className="nr-chip"><Activity size={10} />店舗詳細</span>
-            </motion.button>
-          ))}
+          {filteredBars.map((bar, index) => {
+            const saved = candidateStoreIds.includes(bar.id);
+            return (
+              <motion.article key={bar.id} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(index, 12) * 0.04, duration: 0.5, ease }} className="flex items-stretch gap-1 rounded-xl transition-colors hover:bg-white/[0.04]">
+                <button type="button" onClick={() => onOpen(bar.id)} className="grid min-w-0 flex-1 grid-cols-2 items-center gap-3 px-4 py-4 text-left md:grid-cols-[auto_1.6fr_1fr_1fr_1fr_auto] md:gap-4">
+                  <span className="nr-mono flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px]" style={{ background: 'rgba(255,106,91,0.10)', color: 'var(--nr-accent-soft)' }}><span className="nr-pulse" style={{ width: 5, height: 5 }} />{bar.businessStatusLabel}</span>
+                  <div className="min-w-0">
+                    <div className="text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>{bar.rank}位 · {bar.name}</div>
+                    <div className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--nr-text-low)' }}><MapPin size={10} /> {bar.area}</div>
+                  </div>
+                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>当日総書き込み</span><br /><span className="nr-mono text-[14px]">{bar.postCount}件</span></div>
+                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>女性書き込み</span><br /><span className="nr-mono text-[14px]">{femaleValue(bar)}</span></div>
+                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>今日の予定</span><br /><span className="nr-mono text-[14px]">{bar.eventCount}件</span></div>
+                  <span className="nr-chip"><Activity size={10} />店舗詳細</span>
+                </button>
+                <button type="button" className="nr-chip my-3 mr-3 grid min-w-10 place-items-center !px-2" data-active={saved} aria-label={saved ? `${bar.name}を候補から外す` : `${bar.name}を候補に保存`} aria-pressed={saved} onClick={() => toggleCandidateStore(bar.id)}><Star size={14} fill={saved ? 'currentColor' : 'none'} /></button>
+              </motion.article>
+            );
+          })}
           {filteredBars.length === 0 && <div className="px-5 py-8 text-center text-[13px]" style={{ color: 'var(--nr-text-mid)' }}>一致する店舗はありません。条件を外して再度確認してください。</div>}
         </GlassCard>
       )}

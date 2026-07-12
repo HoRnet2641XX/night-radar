@@ -20,6 +20,7 @@ import {
   filterPostsWithinHours,
   filterSnapshotsForBusinessDay,
   filterSnapshotsForStoreBusinessWindows,
+  inferStoreBusinessWindows,
   normalizeWatchedSearchText,
   parseExactTerms,
   prioritizeScoredEventsForToday,
@@ -537,6 +538,40 @@ describe('BBS radar signals', () => {
     )
   })
 
+  it('uses the upcoming same-date session after the previous night has closed', () => {
+    const store: StoreProfile = {
+      ...stores[0],
+      id: 'upcoming-night-store',
+      hasDaytime: false,
+      hasNight: true,
+      openingHourDay: '',
+      openingHourNight: '19:00',
+    }
+
+    const windows = inferStoreBusinessWindows(store, '2026-07-12T03:00:00.000Z')
+
+    assert.equal(windows.length, 1)
+    assert.equal(new Date(windows[0].start).toISOString(), '2026-07-12T10:00:00.000Z')
+    assert.equal(new Date(windows[0].end).toISOString(), '2026-07-12T20:00:00.000Z')
+  })
+
+  it('uses the next same-date session between daytime and night sessions', () => {
+    const store: StoreProfile = {
+      ...stores[0],
+      id: 'split-session-store',
+      hasDaytime: true,
+      hasNight: true,
+      openingHourDay: '13:00',
+      openingHourNight: '20:00',
+    }
+
+    const windows = inferStoreBusinessWindows(store, '2026-07-12T10:30:00.000Z')
+
+    assert.equal(windows.length, 1)
+    assert.equal(windows[0].label, '夜部')
+    assert.equal(new Date(windows[0].start).toISOString(), '2026-07-12T11:00:00.000Z')
+  })
+
   it('prefers irregular BBS schedule text such as morning sessions over the store defaults', () => {
     const store: StoreProfile = {
       ...stores[0],
@@ -725,6 +760,25 @@ describe('BBS radar signals', () => {
     assert.equal(post.authorGender, '女性')
     assert.equal(post.body, '夜ちょこっと行きます')
     assert.equal(post.postedAt, '2026-07-10T07:31:00.000Z')
+  })
+
+  it('repairs legacy contributor rows without a gender marker', () => {
+    const [post] = extractNormalizedBbsPostsFromText(
+      [
+        '[[NR_POST]]',
+        '投稿者： たんたん🍥 今から行きます！ 投稿日：',
+        '明日12日',
+        '投稿日： 2026/07/11(Sat) 23:33:09',
+        '記事番号： 2445',
+        '[[/NR_POST]]',
+      ].join('\n'),
+      '2026-07-12T03:00:00.000Z',
+    )
+
+    assert.equal(post.authorName, 'たんたん🍥')
+    assert.equal(post.authorGender, '記載なし')
+    assert.equal(post.body, '今から行きます！')
+    assert.equal(post.articleNo, '2445')
   })
 
   it('does not accept a future visit date as the original posting time', () => {

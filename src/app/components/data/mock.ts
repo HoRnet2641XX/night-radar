@@ -5,6 +5,8 @@ export type Bar = {
   rank: number
   name: string
   area: string
+  address?: string
+  nearestStation?: string
   tags: string[]
   searchKeywords: string[]
   price: number

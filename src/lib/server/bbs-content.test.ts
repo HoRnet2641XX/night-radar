@@ -160,6 +160,39 @@ test('normalizes dated article cards', () => {
   assert.equal(posts[0].postedAt, '2026-07-09T01:58:00.000Z')
 })
 
+test('normalizes legacy contributor boards without mixing body text into the author', () => {
+  const page = extractBbsPageContent(
+    `<html><body><dl class="block_all">
+      <dt class="title">明日12日</dt>
+      <dd><dl class="contributor">
+        <dt class="name_block"><span class="name_text">投稿者：</span><span class="name">たんたん🍥</span><span class="sex"></span></dt>
+        <dl><div class="text">今から行きます！</div><div class="time_block">
+          <span class="date_text">投稿日：</span><span class="date">2026/07/11(Sat) 23:33:09</span>
+          <span class="number_text">記事番号：</span><span class="number">2445</span>
+        </div></dl>
+      </dl></dd>
+      <dt class="title">Re: 明日12日</dt>
+      <dd><dl class="contributor">
+        <dt class="name_block"><span class="name_text">投稿者：</span><span class="name">みなとの</span><span class="sex">(女性)</span></dt>
+        <dl><div class="text">昼から夕方までに伺います。</div><div class="time_block">
+          <span class="date_text">投稿日：</span><span class="date">2026/07/12(Sun) 02:17:06</span>
+          <span class="number_text">記事番号：</span><span class="number">2448</span>
+        </div></dl>
+      </dl></dd>
+    </dl></body></html>`,
+    'https://www.barspear.com/bbs/',
+  )
+  const posts = extractNormalizedBbsPostsFromText(page.extractedText, '2026-07-12T03:00:00.000Z')
+
+  assert.equal(posts.length, 2)
+  assert.equal(posts[0].articleNo, '2445')
+  assert.equal(posts[0].authorName, 'たんたん🍥')
+  assert.equal(posts[0].body, '今から行きます！')
+  assert.equal(posts[1].authorName, 'みなとの')
+  assert.equal(posts[1].authorGender, '女性')
+  assert.equal(posts[1].body, '昼から夕方までに伺います。')
+})
+
 test('normalizes YYBBS customer posts and excludes Silent Moon staff posts', () => {
   const page = extractBbsPageContent(
     `<html><body>

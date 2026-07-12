@@ -1,13 +1,16 @@
 import { motion } from 'motion/react';
 import { GlassCard } from '../ui-nr/GlassCard';
 import { WordReveal, Stagger, StaggerItem } from '../ui-nr/Reveal';
-import { LogOut, Shield, Activity, Database, CheckCircle2, FileText } from 'lucide-react';
+import { LogOut, Shield, Activity, Database, CheckCircle2, FileText, Bookmark, Trash2, X } from 'lucide-react';
 import { useNightRadarData } from '../data/runtime';
+import { useLocalPreferences } from '../data/local-preferences';
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
 export function AccountPage() {
-  const { meta } = useNightRadarData();
+  const { meta, bars } = useNightRadarData();
+  const { savedWords, candidateStoreIds, toggleWord, toggleCandidateStore, clearPreferences } = useLocalPreferences();
+  const candidateBars = candidateStoreIds.map((id) => bars.find((bar) => bar.id === id)).filter(Boolean);
   async function signOut() {
     await fetch('/api/auth/signout', { method: 'POST' });
     window.location.assign('/');
@@ -63,6 +66,32 @@ export function AccountPage() {
         <p className="text-[11px] mt-3 leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>
           ログイン機能は別の用途へ移行中です。店舗比較・検索・予定確認はログインせず利用できます。
         </p>
+      </GlassCard>
+
+      <GlassCard className="p-5 nr-hairline">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2"><Bookmark size={14} color="var(--nr-accent)" /><span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>この端末の保存</span></div>
+            <p className="mt-2 text-[11px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>検索語と店舗候補はアカウントではなく、このブラウザに保存されます。</p>
+          </div>
+          {(savedWords.length > 0 || candidateBars.length > 0) && <button type="button" className="nr-chip flex items-center gap-1.5" onClick={clearPreferences}><Trash2 size={11} /> すべて削除</button>}
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div>
+            <div className="nr-mono mb-2 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>保存した検索語 · {savedWords.length}件</div>
+            <div className="flex flex-wrap gap-2">
+              {savedWords.map((word) => <button key={word} type="button" className="nr-chip" onClick={() => toggleWord(word)}>{word}<X size={10} /></button>)}
+              {savedWords.length === 0 && <span className="text-[11px]" style={{ color: 'var(--nr-text-low)' }}>まだ保存されていません。</span>}
+            </div>
+          </div>
+          <div>
+            <div className="nr-mono mb-2 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>店舗候補 · {candidateBars.length}店</div>
+            <div className="flex flex-wrap gap-2">
+              {candidateBars.map((bar) => bar && <button key={bar.id} type="button" className="nr-chip" onClick={() => toggleCandidateStore(bar.id)}>{bar.name}<X size={10} /></button>)}
+              {candidateBars.length === 0 && <span className="text-[11px]" style={{ color: 'var(--nr-text-low)' }}>まだ保存されていません。</span>}
+            </div>
+          </div>
+        </div>
       </GlassCard>
 
       {/* Data status */}

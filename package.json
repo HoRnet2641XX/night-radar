@@ -14,6 +14,7 @@
     "bbs:backfill:normalized": "node --env-file=.env.local --import tsx scripts/backfill-normalized-bbs-posts.mjs",
     "audit:data": "node --env-file=.env.local --import tsx scripts/audit-data-integrity.mjs",
     "audit:sources": "node --env-file=.env.local --import tsx scripts/probe-bbs-sources.mjs",
+    "stores:sync:metadata": "node --env-file=.env.local --import tsx scripts/sync-verified-store-metadata.mjs",
     "maintenance:dedupe-posts": "node --env-file=.env.local --import tsx scripts/dedupe-normalized-bbs-posts.mjs",
     "refresh:sources": "node --env-file=.env.local --import tsx scripts/refresh-all-bbs-sources.mjs",
     "start": "next start"

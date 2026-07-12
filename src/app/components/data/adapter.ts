@@ -98,6 +98,8 @@ function toBar(
     id: store.id,
     name: formattedName,
     area,
+    address: store.address,
+    nearestStation: store.nearestStation,
     tags: [
       businessStatusLabel,
       dataConfidenceLabel,

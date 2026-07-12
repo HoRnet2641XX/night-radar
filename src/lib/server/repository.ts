@@ -5,7 +5,7 @@ import { events as demoEvents, posts as demoPosts, stores as demoStores, storeSi
 import { highestAudienceForPlan, normalizePlan, planLimitMessage, planLimits, planRank } from '../plans'
 import { collectPagedRows } from '../pagination'
 import { mergeOfficialEvents } from '../official-events'
-import { resolvedStoreArea } from '../store-catalog'
+import { resolvedStoreMetadata } from '../store-catalog'
 import {
   buildSearchableBbsRecords,
   extractNormalizedBbsPostsFromText,
@@ -212,10 +212,10 @@ function stringArrayField(row: DbRow, key: string) {
 
 function toStore(row: DbRow): StoreProfile {
   const id = stringField(row, 'id')
-  return {
+  return resolvedStoreMetadata({
     id,
     name: stringField(row, 'name'),
-    area: resolvedStoreArea(id, stringField(row, 'area', '未設定')),
+    area: stringField(row, 'area', '未設定'),
     address: optionalStringField(row, 'address'),
     nearestStation: optionalStringField(row, 'nearest_station'),
     phone: optionalStringField(row, 'phone'),
@@ -232,7 +232,7 @@ function toStore(row: DbRow): StoreProfile {
     strongEvents: stringArrayField(row, 'strong_events'),
     weakEvents: stringArrayField(row, 'weak_events'),
     trustSeed: numberField(row, 'trust_seed', 60),
-  }
+  })
 }
 
 function toStoreRow(store: StoreProfile, ownerId: string) {

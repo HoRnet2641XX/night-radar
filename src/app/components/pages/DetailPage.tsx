@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { MapPin, Clock, Users, ArrowUpRight, Sparkles, Info, CalendarDays, ChevronsUpDown, X } from 'lucide-react';
+import { MapPin, Clock, Users, ArrowUpRight, Sparkles, Info, CalendarDays, ChevronsUpDown, X, Phone, WalletCards, Navigation, BookmarkCheck, BookmarkPlus } from 'lucide-react';
 import { GlassCard } from '../ui-nr/GlassCard';
 import { RadarChart } from '../ui-nr/RadarChart';
 import { Sparkline } from '../ui-nr/Sparkline';
@@ -9,6 +9,7 @@ import { RADAR_KEYS, type Bar } from '../data/mock';
 import { useNightRadarData } from '../data/runtime';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocalPreferences } from '../data/local-preferences';
 
 const ease = [0.22, 1, 0.36, 1] as const;
 type BarMetricKey = Extract<keyof Bar, 'vibe' | 'drinks' | 'service' | 'music' | 'crowd'>;
@@ -33,6 +34,7 @@ function femaleMetricLabel(bar: Bar) {
 
 export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) => void }) {
   const { bars, events } = useNightRadarData();
+  const { candidateStoreIds, toggleCandidateStore } = useLocalPreferences();
   const [compareId, setCompareId] = useState('');
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const bar = bars.find(b => b.id === id) ?? bars[0];
@@ -79,6 +81,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
     : bar.bbsUrl
       ? 'BBSを開く'
       : '地図を開く';
+  const isCandidate = candidateStoreIds.includes(bar.id);
 
   return (
     <div className="flex flex-col gap-8">
@@ -125,6 +128,10 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           ) : (
             <button disabled className="nr-accent-btn rounded-full px-4 py-2 text-[13px] flex items-center gap-1.5 mt-1">店舗情報は未登録</button>
           )}
+          <button type="button" className="nr-secondary-btn flex items-center gap-1.5" data-active={isCandidate} aria-pressed={isCandidate} onClick={() => toggleCandidateStore(bar.id)}>
+            {isCandidate ? <BookmarkCheck size={14} /> : <BookmarkPlus size={14} />}
+            {isCandidate ? '候補から外す' : 'この端末の候補に保存'}
+          </button>
         </motion.div>
       </div>
 
@@ -149,6 +156,37 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           </div>
         </GlassCard>
       </motion.div>
+
+      <GlassCard className="nr-hairline p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>店舗情報</div>
+            <h2 className="nr-heading mt-1 text-[20px]" style={{ color: 'var(--nr-text-hi)' }}>行く前の確認</h2>
+          </div>
+          <span className="text-[10px]" style={{ color: 'var(--nr-text-low)' }}>料金・営業内容は変更される場合があります。来店前に公式情報をご確認ください。</span>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
+            <span className="nr-mono flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--nr-text-low)' }}><Navigation size={11} /> アクセス</span>
+            <strong className="mt-1.5 block text-[12px] leading-relaxed" style={{ color: 'var(--nr-text-hi)' }}>{bar.nearestStation || bar.area}</strong>
+            {bar.address && <span className="mt-1 block text-[10px] leading-relaxed" style={{ color: 'var(--nr-text-mid)' }}>{bar.address}</span>}
+          </div>
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
+            <span className="nr-mono flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--nr-text-low)' }}><WalletCards size={11} /> 料金目安</span>
+            <strong className="mt-1.5 block text-[12px] leading-relaxed" style={{ color: 'var(--nr-text-hi)' }}>{bar.priceNote || '公式情報を確認中'}</strong>
+          </div>
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
+            <span className="nr-mono flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--nr-text-low)' }}><Phone size={11} /> 電話</span>
+            {bar.phone
+              ? <a href={`tel:${bar.phone.replace(/[^0-9+]/g, '')}`} className="mt-1.5 block text-[13px] font-semibold" style={{ color: 'var(--nr-text-hi)' }}>{bar.phone}</a>
+              : <strong className="mt-1.5 block text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>公式情報を確認中</strong>}
+          </div>
+          <div className="flex min-h-[88px] flex-col gap-2 rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
+            {bar.officialUrl && <a href={bar.officialUrl} target="_blank" rel="noreferrer" className="nr-secondary-btn flex w-full items-center justify-between">公式サイト <ArrowUpRight size={13} /></a>}
+            {bar.mapUrl && <a href={bar.mapUrl} target="_blank" rel="noreferrer" className="nr-secondary-btn flex w-full items-center justify-between">地図を開く <ArrowUpRight size={13} /></a>}
+          </div>
+        </div>
+      </GlassCard>
 
       {/* Radar, facts and comparison */}
       <button type="button" className="nr-secondary-btn flex w-full items-center justify-between xl:hidden" onClick={() => setCompareModalOpen(true)}>

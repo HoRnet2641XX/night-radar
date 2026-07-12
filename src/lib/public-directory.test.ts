@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { filterPublicStores, publicConditions, sortByRanking, type PublicStoreSummary } from './public-directory'
-import { resolvedStoreArea } from './store-catalog'
+import { resolvedStoreArea, resolvedStoreMetadata } from './store-catalog'
+import type { StoreProfile } from './types'
 
 function storeSummary(input: {
   id: string
@@ -102,6 +103,33 @@ test('public store search ignores width and whitespace and includes event titles
 test('store area fallback never exposes generic seed values as verified locations', () => {
   assert.equal(resolvedStoreArea('retreat-bar', '都内'), '新宿')
   assert.equal(resolvedStoreArea('unknown-store', '未設定'), 'エリア未確認')
+})
+
+test('verified store metadata fills missing public details without replacing stored values', () => {
+  const base = {
+    id: 'neo',
+    name: 'Neo',
+    area: '未設定',
+    tags: [],
+    hasDaytime: true,
+    hasNight: true,
+    openingHourDay: '12:00',
+    openingHourNight: '18:00',
+    prStructure: '未分類',
+    strongDays: [],
+    strongEvents: [],
+    weakEvents: [],
+    trustSeed: 60,
+  } satisfies StoreProfile
+  const resolved = resolvedStoreMetadata(base)
+
+  assert.equal(resolved.area, '錦糸町')
+  assert.equal(resolved.officialUrl, 'https://neo-nk.com/')
+  assert.equal(resolved.phone, '070-3274-3828')
+  assert.match(resolved.mapUrl ?? '', /google\.com\/maps/)
+
+  const stored = resolvedStoreMetadata({ ...base, phone: '03-0000-0000' })
+  assert.equal(stored.phone, '03-0000-0000')
 })
 
 test('area filters include district labels and do not expose conditions without data', () => {

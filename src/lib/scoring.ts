@@ -463,6 +463,23 @@ export function inferStoreBusinessWindows(
   const activeWindows = windows.filter((window) => window.start <= futureTolerance && referenceTime <= window.end)
   if (activeWindows.length) return activeWindows
 
+  const startsOnReferenceDate = (window: StoreBusinessWindow) => {
+    const startParts = japanDateParts(new Date(window.start))
+    return startParts.year === baseParts.year && startParts.month === baseParts.month && startParts.day === baseParts.day
+  }
+  const referenceDateWindows = windows.filter(startsOnReferenceDate)
+  const upcomingReferenceDateWindows = referenceDateWindows.filter((window) => window.start > referenceTime)
+  if (upcomingReferenceDateWindows.length) {
+    const nextStart = Math.min(...upcomingReferenceDateWindows.map((window) => window.start))
+    return upcomingReferenceDateWindows.filter((window) => window.start === nextStart)
+  }
+
+  const completedReferenceDateWindows = referenceDateWindows.filter((window) => window.start <= referenceTime)
+  if (completedReferenceDateWindows.length) {
+    const latestStart = Math.max(...completedReferenceDateWindows.map((window) => window.start))
+    return completedReferenceDateWindows.filter((window) => window.start === latestStart)
+  }
+
   const startedWindows = windows.filter((window) => window.start <= futureTolerance)
   if (startedWindows.length) {
     const latestStart = Math.max(...startedWindows.map((window) => window.start))
@@ -1026,7 +1043,11 @@ function parseBbsPostedAt(value: string, observedAt: string) {
 
 function cleanNormalizedBbsPostBody(block: string, entry: WatchedAuthorEntry | null, articleNo?: string) {
   const authorName = entry?.name ? entry.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : ''
-  const genderToken = entry?.gender && entry.gender !== '記載なし' ? entry.gender.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : ''
+  const genderToken = entry?.gender && entry.gender !== '記載なし'
+    ? entry.gender === '複数'
+      ? '(?:複数|カップル|ペア)'
+      : entry.gender.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    : ''
   let body = entry?.body?.trim() || block
 
   body = body
@@ -1058,15 +1079,22 @@ function cleanNormalizedBbsPostBody(block: string, entry: WatchedAuthorEntry | n
 function extractCanonicalAuthorEntry(block: string): WatchedAuthorEntry | null {
   const rawAuthor = block.match(/^投稿者[:：]\s*(.+)$/m)?.[1]?.trim()
   if (!rawAuthor) return null
-  const genderMatch = rawAuthor.match(new RegExp(`^(.{1,80}?)\\s*[（(]\\s*(${watchedGenderToken})\\s*[）)]\\s*(.*)$`, 'i'))
+  const hasTrailingDateLabel = /\s*(?:投稿日|投稿日時?|書き込み日時?)[:：]?\s*$/i.test(rawAuthor)
+  const authorWithoutDateLabel = rawAuthor.replace(/\s*(?:投稿日|投稿日時?|書き込み日時?)[:：]?\s*$/i, '').trim()
+  const genderMatch = authorWithoutDateLabel.match(new RegExp(`^(.{1,80}?)\\s*[（(]\\s*(${watchedGenderToken})\\s*[）)]\\s*(.*)$`, 'i'))
+  const legacyInlineMatch = !genderMatch && hasTrailingDateLabel
+    ? authorWithoutDateLabel.match(/^(\S{1,40})\s+(.{2,})$/u)
+    : null
   const contentStart = genderMatch
     ? -1
-    : rawAuthor.search(
+    : authorWithoutDateLabel.search(
         /\s(?=初めて|はじめて|久しぶり|今日|本日|明日|朝|昼|夜|行き|行く|伺|お邪魔|予定|よろしく|誰か|どなた|女性です|男性です|単男です|単女です|[0-9０-９]{1,2}\s*(?:時|:))/,
       )
-  const name = cleanAuthorNameText(genderMatch?.[1] ?? (contentStart >= 0 ? rawAuthor.slice(0, contentStart) : rawAuthor))
+  const name = cleanAuthorNameText(
+    genderMatch?.[1] ?? legacyInlineMatch?.[1] ?? (contentStart >= 0 ? authorWithoutDateLabel.slice(0, contentStart) : authorWithoutDateLabel),
+  )
   const gender = normalizeWatchedGender(genderMatch?.[2] ?? '')
-  const body = (genderMatch?.[3] ?? (contentStart >= 0 ? rawAuthor.slice(contentStart) : ''))
+  const body = (genderMatch?.[3] ?? legacyInlineMatch?.[2] ?? (contentStart >= 0 ? authorWithoutDateLabel.slice(contentStart) : ''))
     .replace(/\s*(?:投稿日|投稿日時?|書き込み日時?)[:：]?\s*$/i, '')
     .replace(/\s+/g, ' ')
     .trim()

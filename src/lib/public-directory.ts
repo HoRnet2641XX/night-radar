@@ -7,7 +7,7 @@ import { mergeOfficialEvents } from './official-events'
 import { collectPagedRows } from './pagination'
 import { PUBLIC_DIRECTORY_CACHE_TAG } from './public-directory-cache'
 import { isStructurallyValidCustomerNormalizedPost } from './scoring'
-import { resolvedStoreArea, resolvedStoreMapUrl, resolvedStoreOfficialUrl } from './store-catalog'
+import { resolvedStoreMapUrl, resolvedStoreMetadata, resolvedStoreOfficialUrl } from './store-catalog'
 import { matchesStoreSearch } from './store-search'
 import { createSupabaseAdminClient } from './supabase/server'
 import type {
@@ -177,10 +177,10 @@ function stringArrayField(row: DbRow, key: string) {
 
 function toStore(row: DbRow): StoreProfile {
   const id = stringField(row, 'id')
-  return {
+  return resolvedStoreMetadata({
     id,
     name: stringField(row, 'name'),
-    area: resolvedStoreArea(id, stringField(row, 'area', '未設定')),
+    area: stringField(row, 'area', '未設定'),
     address: optionalStringField(row, 'address'),
     nearestStation: optionalStringField(row, 'nearest_station'),
     phone: optionalStringField(row, 'phone'),
@@ -197,7 +197,7 @@ function toStore(row: DbRow): StoreProfile {
     strongEvents: stringArrayField(row, 'strong_events'),
     weakEvents: stringArrayField(row, 'weak_events'),
     trustSeed: numberField(row, 'trust_seed', 60),
-  }
+  })
 }
 
 function toEvent(row: DbRow): EventInput {
