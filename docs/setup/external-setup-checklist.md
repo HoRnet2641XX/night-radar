@@ -101,7 +101,7 @@ Dashboard: https://vercel.com/dashboard
    - `BASIC_AUTH_PASSWORD`
 4. Cron保護用に `CRON_SECRET` を設定する。
 5. 5分おきBBS巡回は外部Cronで `/api/cron/crawl` を叩く。
-6. 1日1回の品質監査は外部Cronで `/api/cron/audit` を叩く。
+6. 1日1回の品質監査は `vercel.json` で毎朝6:30（JST）に設定済み。Vercel本番デプロイ後にCron一覧へ表示されることを確認する。
 7. 解析急減や品質異常をSlack/Discordへ送る場合は `OPERATION_ALERT_WEBHOOK_URL` を設定する。
 
 Vercel Hobbyでは高頻度Cronが制限されるため、5分おき運用は外部Cron推奨。Vercel Cronで運用したい場合はPro以上にしてから `vercel.json` にCron設定を追加する。
