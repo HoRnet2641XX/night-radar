@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { auditDataQuality } from './data-quality-audit'
+import { auditDataQuality, nextMonthKey } from './data-quality-audit'
+
+test('next month keys are independent of the server time zone', () => {
+  assert.equal(nextMonthKey('2026-07'), '2026-08')
+  assert.equal(nextMonthKey('2026-12'), '2027-01')
+})
 
 const referenceAt = '2026-07-13T12:00:00.000Z'
 

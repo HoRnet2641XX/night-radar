@@ -58,6 +58,16 @@ export type DataQualityAuditInput = {
 
 const weekdayLabels = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜']
 
+export function nextMonthKey(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number)
+  if (!year || !monthNumber || monthNumber < 1 || monthNumber > 12) {
+    throw new Error(`Invalid month key: ${month}`)
+  }
+  return monthNumber === 12
+    ? `${year + 1}-01`
+    : `${year}-${String(monthNumber + 1).padStart(2, '0')}`
+}
+
 function percent(numerator: number, denominator: number) {
   return denominator ? Math.round((numerator / denominator) * 100) : 0
 }

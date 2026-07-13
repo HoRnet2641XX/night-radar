@@ -1,7 +1,7 @@
 import { collectPagedRows } from '@/lib/pagination'
 import { officialEventCoverageForMonth } from '@/lib/official-event-coverage'
 import { getCronAuthorizationError } from '@/lib/server/cron-auth'
-import { auditDataQuality } from '@/lib/server/data-quality-audit'
+import { auditDataQuality, nextMonthKey } from '@/lib/server/data-quality-audit'
 import { dispatchOperationalAlert } from '@/lib/server/notifications'
 import { createSupabaseAdminClient } from '@/lib/supabase/server'
 
@@ -34,9 +34,7 @@ export async function GET(request: Request) {
   const now = new Date()
   const month = japanDateKey(now).slice(0, 7)
   const observedAfter = new Date(now.getTime() - 48 * 60 * 60 * 1_000).toISOString()
-  const nextMonthDate = new Date(`${month}-01T00:00:00+09:00`)
-  nextMonthDate.setMonth(nextMonthDate.getMonth() + 1)
-  const nextMonth = japanDateKey(nextMonthDate).slice(0, 7)
+  const nextMonth = nextMonthKey(month)
 
   const [storesResult, sourcesResult, postsResult, eventsResult] = await Promise.all([
     collectPagedRows<Row, { message: string }>((from, to) =>
