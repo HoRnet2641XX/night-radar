@@ -72,12 +72,14 @@ function percent(numerator: number, denominator: number) {
   return denominator ? Math.round((numerator / denominator) * 100) : 0
 }
 
-function eventTitleWeekdayMismatch(event: AuditEventRow) {
+export function eventTitleWeekdayMismatch(event: AuditEventRow) {
   const title = event.title ?? ''
   const explicitWeekdays = [...title.matchAll(/([日月火水木金土])曜日/g)].map((match) => `${match[1]}曜`)
   if (!explicitWeekdays.length || title.includes('祝日')) return false
-  const date = new Date(`${event.date_label}T00:00:00+09:00`)
-  return Number.isNaN(date.getTime()) || !explicitWeekdays.includes(weekdayLabels[date.getDay()])
+  const match = event.date_label.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return true
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
+  return Number.isNaN(date.getTime()) || !explicitWeekdays.includes(weekdayLabels[date.getUTCDay()])
 }
 
 function toPost(row: AuditPostRow): BbsNormalizedPost {

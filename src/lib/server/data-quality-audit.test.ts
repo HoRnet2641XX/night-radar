@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { auditDataQuality, nextMonthKey } from './data-quality-audit'
+import { auditDataQuality, eventTitleWeekdayMismatch, nextMonthKey } from './data-quality-audit'
 
 test('next month keys are independent of the server time zone', () => {
   assert.equal(nextMonthKey('2026-07'), '2026-08')
   assert.equal(nextMonthKey('2026-12'), '2027-01')
+})
+
+test('event weekdays are derived from the calendar date, not the server time zone', () => {
+  assert.equal(eventTitleWeekdayMismatch({ id: 'event-a', store_id: 'store-a', date_label: '2026-07-13', title: '月曜日イベント' }), false)
+  assert.equal(eventTitleWeekdayMismatch({ id: 'event-b', store_id: 'store-a', date_label: '2026-07-13', title: '火曜日イベント' }), true)
 })
 
 const referenceAt = '2026-07-13T12:00:00.000Z'
