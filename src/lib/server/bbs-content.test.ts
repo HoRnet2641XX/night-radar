@@ -324,6 +324,23 @@ test('discovers latest topic details and BBS iframe pages', () => {
   ])
 })
 
+test('skips obvious forum spam and continues to customer topics', () => {
+  const page = extractBbsPageContent(
+    `<html><body><ul>
+      <li><a class="bbp-topic-permalink" href="/forums/topic/%d0%b1%d1%83%d1%85/">Бухгалтерские услуги онлайн</a><div>Наши [url=https://spam.example]</div></li>
+      <li><a class="bbp-topic-permalink" href="/forums/topic/%d0%bf%d0%bb%d0%b0%d1%82/">платежный агент услуги</a></li>
+      <li><a class="bbp-topic-permalink" href="/forums/topic/customer-300/">初めてです</a><div>今夜伺います</div></li>
+      <li><a class="bbp-topic-permalink" href="/forums/topic/customer-299/">今から</a><div>これから向かいます</div></li>
+    </ul></body></html>`,
+    'https://example.com/forums/forum/bbs/',
+  )
+
+  assert.deepEqual(page.supplementalUrls, [
+    'https://example.com/forums/topic/customer-300/',
+    'https://example.com/forums/topic/customer-299/',
+  ])
+})
+
 test('discovers latest Rara thread details', () => {
   const page = extractBbsPageContent(
     `<html><body>

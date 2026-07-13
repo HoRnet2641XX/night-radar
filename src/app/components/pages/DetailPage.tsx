@@ -33,7 +33,7 @@ function femaleMetricLabel(bar: Bar) {
 }
 
 export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) => void }) {
-  const { bars, events } = useNightRadarData();
+  const { bars, events, meta } = useNightRadarData();
   const { candidateStoreIds, toggleCandidateStore } = useLocalPreferences();
   const [compareId, setCompareId] = useState('');
   const [compareModalOpen, setCompareModalOpen] = useState(false);
@@ -70,10 +70,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
   const radarValues = RADAR_KEYS.map(k => bar[k.key]);
   const radarLabels = RADAR_KEYS.map(k => k.label);
   const comparisonValues = comparedBar ? RADAR_KEYS.map((key) => comparedBar[key.key]) : undefined;
-  const todayKey = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date());
-  const todayEvents = events.filter((event) => event.storeId === bar.id && event.date === todayKey);
+  const todayEvents = events.filter((event) => event.storeId === bar.id && event.date === meta.todayKey);
   const hourlyMax = Math.max(0, ...bar.hourly);
   const sourceLink = bar.officialUrl || bar.bbsUrl || bar.mapUrl;
   const sourceLinkLabel = bar.officialUrl
@@ -218,7 +215,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
                     : m.k === 'drinks'
                       ? femaleMetricLabel(bar)
                       : m.k === 'music'
-                        ? `${bar.eventCount}件`
+                        ? bar.eventStatus === 'unverified' ? '未確認' : `${bar.eventCount}件`
                         : m.k === 'crowd'
                           ? `${bar.recentThreeHourCount}件`
                           : `${bar.dataConfidence}点`;
@@ -256,7 +253,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
                   </a>
                 ))}
               </div>
-            ) : <p className="mt-4 text-[12px]" style={{ color: 'var(--nr-text-low)' }}>今日の公式イベントは登録されていません。</p>}
+            ) : <p className="mt-4 text-[12px]" style={{ color: 'var(--nr-text-low)' }}>{bar.eventStatus === 'unverified' ? 'この店舗の公式予定は未確認です。予定なしとは判定していません。' : '今日の公式イベントはありません。'}</p>}
           </GlassCard>
         </div>
 

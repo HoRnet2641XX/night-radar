@@ -75,7 +75,7 @@ function PostRow({ post, onOpen }: { post: RadarPost; onOpen: (id: string) => vo
       </p>
       <div className="mt-3 flex items-center justify-between gap-3">
         <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>
-          {post.isCurrentBusinessDay ? '今日の集計対象' : '直近48時間の取得分'}
+          {post.isCurrentBusinessDay ? '当営業日の集計対象' : '直近48時間の取得分'}
         </span>
         {longBody && (
           <button type="button" className="nr-chip !py-1" onClick={() => setExpanded((value) => !value)}>
@@ -200,7 +200,7 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
             <div>
               <div className="nr-mono mb-2 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>取得期間</div>
               <div className="flex flex-wrap gap-2">
-                <button type="button" className="nr-chip" data-active={postWindow === 'today'} onClick={() => setPostWindow('today')}>今日の来店分</button>
+                <button type="button" className="nr-chip" data-active={postWindow === 'today'} onClick={() => setPostWindow('today')}>当営業日の来店分</button>
                 <button type="button" className="nr-chip" data-active={postWindow === 'recent'} onClick={() => setPostWindow('recent')}>直近48時間</button>
               </div>
             </div>
@@ -264,7 +264,7 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
                   </div>
                   <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>当日総書き込み</span><br /><span className="nr-mono text-[14px]">{bar.postCount}件</span></div>
                   <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>女性書き込み</span><br /><span className="nr-mono text-[14px]">{femaleValue(bar)}</span></div>
-                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>今日の予定</span><br /><span className="nr-mono text-[14px]">{bar.eventCount}件</span></div>
+                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>今日の予定</span><br /><span className="nr-mono text-[14px]">{bar.eventStatus === 'unverified' ? '未確認' : `${bar.eventCount}件`}</span></div>
                   <span className="nr-chip"><Activity size={10} />店舗詳細</span>
                 </button>
                 <button type="button" className="nr-chip my-3 mr-3 grid min-w-10 place-items-center !px-2" data-active={saved} aria-label={saved ? `${bar.name}を候補から外す` : `${bar.name}を候補に保存`} aria-pressed={saved} onClick={() => toggleCandidateStore(bar.id)}><Star size={14} fill={saved ? 'currentColor' : 'none'} /></button>

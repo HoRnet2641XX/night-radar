@@ -21,8 +21,13 @@ import {
   filterSnapshotsForBusinessDay,
   filterSnapshotsForStoreBusinessWindows,
   inferStoreBusinessWindows,
+  isExplicitlyEmptyBbsText,
+  isSuspiciousNormalizedPostDrop,
+  isStructurallyValidCustomerNormalizedPost,
   normalizeWatchedSearchText,
+  normalizedBbsParseStatus,
   parseExactTerms,
+  postDecisionDateKey,
   prioritizeScoredEventsForToday,
   resolvedNormalizedPostGender,
   scoreBbsSnapshot,
@@ -36,6 +41,41 @@ it('resolves explicit gender markers in author names without guessing ordinary n
   assert.equal(resolvedNormalizedPostGender({ authorName: 'くるちゃん👱‍♀️', authorGender: '記載なし' }), 'female')
   assert.equal(resolvedNormalizedPostGender({ authorName: 'タロウ（男性）', authorGender: '記載なし' }), 'male')
   assert.equal(resolvedNormalizedPostGender({ authorName: 'あやか', authorGender: '記載なし' }), 'unknown')
+})
+
+it('distinguishes an empty board from a parser that rejected every extracted post', () => {
+  assert.equal(normalizedBbsParseStatus(0, 0), 'empty')
+  assert.equal(normalizedBbsParseStatus(0, 0, true), 'failed')
+  assert.equal(normalizedBbsParseStatus(4, 0), 'failed')
+  assert.equal(normalizedBbsParseStatus(4, 3), 'ok')
+  assert.equal(isExplicitlyEmptyBbsText('本日のご来店予告: 0 人'), true)
+  assert.equal(isExplicitlyEmptyBbsText('来店予告 (0)'), true)
+  assert.equal(isExplicitlyEmptyBbsText('来店予告を書き込む'), false)
+})
+
+it('detects a sudden parser-count drop without flagging normal small-board changes', () => {
+  assert.equal(isSuspiciousNormalizedPostDrop(7, 30), true)
+  assert.equal(isSuspiciousNormalizedPostDrop(11, 30), false)
+  assert.equal(isSuspiciousNormalizedPostDrop(2, 7), false)
+  assert.equal(isSuspiciousNormalizedPostDrop(0, 30), false)
+  assert.equal(isSuspiciousNormalizedPostDrop(10, 40, { maximumRatio: 0.25 }), true)
+})
+
+it('keeps today wording on the active business date after midnight and ignores duration-like day numbers', () => {
+  const base = {
+    id: 'after-midnight',
+    storeId: 'agreeable',
+    source: 'scrape' as const,
+    postedAt: '2026-07-12T18:55:00.000Z',
+    keywords: [],
+  }
+  assert.equal(postDecisionDateKey({ ...base, body: '本日行きます。' }), '2026-07-12')
+  assert.equal(postDecisionDateKey({ ...base, body: '2日ぶりに今日行きます。' }), '2026-07-12')
+  assert.equal(postDecisionDateKey({ ...base, body: '1日中遊べそうなので今夜伺います。' }), '2026-07-12')
+  assert.equal(postDecisionDateKey({ ...base, body: '13日のお昼に行きます。' }), '2026-07-13')
+  assert.equal(postDecisionDateKey({ ...base, body: '2-3人で今夜伺います。' }), '2026-07-12')
+  assert.equal(postDecisionDateKey({ ...base, body: '19-23時ごろ滞在予定です。' }), '2026-07-12')
+  assert.equal(postDecisionDateKey({ ...base, body: '7/13に伺います。' }), '2026-07-13')
 })
 
 describe('Japan calendar dates', () => {
@@ -692,6 +732,34 @@ describe('BBS radar signals', () => {
     assert.doesNotMatch(extracted, /登録手数料無料/)
   })
 
+  it('excludes store-authored Ogikubo announcements and relative-time-only legacy rows', () => {
+    assert.equal(isStructurallyValidCustomerNormalizedPost({
+      storeId: 'ogikubo-himitsu-club',
+      authorName: '荻窪秘密俱楽部',
+      body: '本日日曜日のイベントをご案内します。',
+    }), false)
+    assert.equal(isStructurallyValidCustomerNormalizedPost({
+      storeId: 'ogikubo-himitsu-club',
+      authorName: 'ヨンヨン',
+      body: '1 2 1時間、 35分前',
+    }), false)
+    assert.equal(isStructurallyValidCustomerNormalizedPost({
+      storeId: 'ogikubo-himitsu-club',
+      authorName: 'ヨンヨン',
+      body: '1時間後に伺います。',
+    }), true)
+    assert.equal(isStructurallyValidCustomerNormalizedPost({
+      storeId: 'ogikubo-himitsu-club',
+      authorName: 'SWIFT_yopn',
+      body: '（♂） SWIFT перевод по ссылке [url=https://example.invalid/]подробнее[/url]',
+    }), false)
+    assert.equal(isStructurallyValidCustomerNormalizedPost({
+      storeId: 'ogikubo-himitsu-club',
+      authorName: 'visitor',
+      body: 'Если вам нужна профессиональная поддержка, обратитесь к специалистам.',
+    }), false)
+  })
+
   it('searchable snapshot records only keep customer BBS text', () => {
     const searchableRecords = buildSearchableBbsRecords(
       [],
@@ -923,6 +991,62 @@ describe('BBS radar signals', () => {
 
     assert.equal(effective.length, 1)
     assert.equal(effective[0].id, 'normalized-semantic-new')
+  })
+
+  it('deduplicates a no-article post when a later parser pass adds a short body fragment', () => {
+    const oldPost: BbsNormalizedPost = {
+      id: 'filt-old-body',
+      sourceId: 'source-filt',
+      storeId: 'filt-shibuya',
+      authorName: '同じ投稿者',
+      authorGender: '女性',
+      postedAt: '2026-07-12T04:15:00.000Z',
+      observedAt: '2026-07-12T04:20:00.000Z',
+      body: '昨日行けなかったので、今日行きます',
+      bodyHash: 'old-body-hash',
+      contentKey: 'old-body-key',
+    }
+    const reparsedPost: BbsNormalizedPost = {
+      ...oldPost,
+      id: 'filt-new-body',
+      observedAt: '2026-07-12T04:30:00.000Z',
+      body: '昨日行けなかったので、今日昼行きます',
+      bodyHash: 'new-body-hash',
+      contentKey: 'new-body-key',
+    }
+
+    const effective = buildEffectiveBbsPostRecords([], [oldPost, reparsedPost])
+
+    assert.equal(effective.length, 1)
+    assert.equal(effective[0].id, 'normalized-filt-new-body')
+  })
+
+  it('keeps distinct article-numbered posts even when their author, time, and body are similar', () => {
+    const first: BbsNormalizedPost = {
+      id: 'article-first',
+      sourceId: 'source-articles',
+      storeId: 'bar-canelo',
+      articleNo: '70001',
+      authorName: '同じ投稿者',
+      authorGender: '女性',
+      postedAt: '2026-07-12T04:15:00.000Z',
+      observedAt: '2026-07-12T04:20:00.000Z',
+      body: '今日行きます',
+      bodyHash: 'article-first-hash',
+      contentKey: 'article:70001',
+    }
+    const second: BbsNormalizedPost = {
+      ...first,
+      id: 'article-second',
+      articleNo: '70002',
+      observedAt: '2026-07-12T04:30:00.000Z',
+      bodyHash: 'article-second-hash',
+      contentKey: 'article:70002',
+    }
+
+    const effective = buildEffectiveBbsPostRecords([], [first, second])
+
+    assert.equal(effective.length, 2)
   })
 
   it('detects watched female-focused signals', () => {

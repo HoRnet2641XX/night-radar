@@ -2,6 +2,7 @@ import {
   buildEffectiveBbsPostRecords,
   buildStoreActivityMetrics,
   buildStoreRadarPoints,
+  decisionDateKeyInJapan,
   filterPostsForDecisionDate,
   filterSnapshotsForBusinessDay,
   inferStoreBusinessWindows,
@@ -20,7 +21,7 @@ import type {
   StoreRadarPoint,
 } from './types'
 
-export const DAILY_INSIGHT_CONTRACT_VERSION = '2026-07-11.2'
+export const DAILY_INSIGHT_CONTRACT_VERSION = '2026-07-13.2'
 
 export type DailyStoreDataset = {
   generatedAt: string
@@ -78,8 +79,9 @@ function japanDateKey(value: string | Date) {
   }).format(date)
 }
 
-function upcomingJapanDateKeys(referenceAt: string, days = 7) {
-  const reference = new Date(referenceAt)
+function upcomingJapanDateKeys(baseDateKey: string, days = 7) {
+  const [year, month, day] = baseDateKey.split('-').map(Number)
+  const reference = new Date(Date.UTC(year, month - 1, day, 12))
   return new Set(
     Array.from({ length: days }, (_, index) => japanDateKey(new Date(reference.getTime() + index * 24 * 60 * 60 * 1000))),
   )
@@ -266,8 +268,8 @@ export function rankDailyStoreInsights(insights: StoreDailyInsight[]) {
 export function buildDailyStoreDataset(input: BuildDailyStoreDatasetInput): DailyStoreDataset {
   const generatedAt = input.referenceAt ?? new Date().toISOString()
   const referenceTime = validTime(generatedAt) ?? Date.now()
-  const todayKey = japanDateKey(generatedAt)
-  const upcomingKeys = upcomingJapanDateKeys(generatedAt)
+  const todayKey = decisionDateKeyInJapan(generatedAt) ?? japanDateKey(generatedAt)
+  const upcomingKeys = upcomingJapanDateKeys(todayKey)
   const effectivePosts = buildEffectiveBbsPostRecords(input.rawPosts, input.normalizedPosts)
   const businessContextPosts = input.businessContextPosts ?? []
   const businessPosts = filterPostsForDecisionDate(effectivePosts, generatedAt)

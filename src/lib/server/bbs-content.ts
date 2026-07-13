@@ -11,6 +11,11 @@ function compactText(value: string) {
   return value.replace(/\s+/g, ' ').trim()
 }
 
+function isObviousSpamTopicText(value: string) {
+  const cyrillicCharacters = value.match(/\p{Script=Cyrillic}/gu)?.length ?? 0
+  return cyrillicCharacters >= 8 || /\[url=|https?:\/\/|\bwww\./i.test(value)
+}
+
 function cleanAuthor(value: string) {
   return compactText(value)
     .replace(/\s*より[:：]?\s*$/, '')
@@ -508,9 +513,19 @@ function discoverSupplementalUrls($: cheerio.CheerioAPI, pageUrl: URL) {
     })
   }
   if (isForumIndex) {
-    $('a[href]').each((_, element) => {
+    $('a.bbp-topic-permalink[href]').each((_, element) => {
       const href = $(element).attr('href')
-      if (href && /\/forums\/topic\//i.test(href)) add(href)
+      if (!href || !/\/forums\/topic\//i.test(href)) return
+      const topicRow = $(element).closest('ul[id^="bbp-topic-"]').first()
+      const topicText = compactText(
+        topicRow.text()
+        || $(element).attr('title')
+        || $(element).closest('li').text()
+        || $(element).parent().text()
+        || $(element).text(),
+      )
+      if (isObviousSpamTopicText(topicText)) return
+      add(href)
     })
   }
 

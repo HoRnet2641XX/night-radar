@@ -7,7 +7,7 @@
     "dev": "next dev --webpack -p 3010",
     "build": "next build --webpack",
     "lint": "eslint .",
-    "test": "node --import tsx --test src/lib/csv.test.ts src/lib/pagination.test.ts src/lib/scoring.test.ts src/lib/daily-store-insights.test.ts src/lib/public-directory.test.ts src/lib/text.test.ts src/lib/server/bbs-content.test.ts src/app/components/data/adapter.test.ts",
+    "test": "node --import tsx --test src/lib/csv.test.ts src/lib/pagination.test.ts src/lib/scoring.test.ts src/lib/daily-store-insights.test.ts src/lib/official-events.test.ts src/lib/public-directory.test.ts src/lib/text.test.ts src/lib/server/bbs-content.test.ts src/app/components/data/adapter.test.ts",
     "check:ready": "node scripts/check-local-readiness.mjs",
     "catalog:upsert:bbs": "node scripts/upsert-bbs-sources.mjs",
     "catalog:upsert:events": "node scripts/upsert-official-events.mjs",
@@ -16,6 +16,7 @@
     "audit:sources": "node --env-file=.env.local --import tsx scripts/probe-bbs-sources.mjs",
     "stores:sync:metadata": "node --env-file=.env.local --import tsx scripts/sync-verified-store-metadata.mjs",
     "maintenance:dedupe-posts": "node --env-file=.env.local --import tsx scripts/dedupe-normalized-bbs-posts.mjs",
+    "maintenance:quarantine-posts": "node --env-file=.env.local --import tsx scripts/quarantine-invalid-bbs-posts.mjs",
     "refresh:sources": "node --env-file=.env.local --import tsx scripts/refresh-all-bbs-sources.mjs",
     "start": "next start"
   },
@@ -55,12 +56,10 @@
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.6.0",
+    "postcss": "^8.5.16",
     "tailwindcss": "^4.3.2",
     "tsx": "^4.22.4",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2"
-  },
-  "overrides": {
-    "postcss": "8.5.15"
   }
 }

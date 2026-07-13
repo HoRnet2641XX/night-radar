@@ -139,6 +139,14 @@ const verifiedStoreMetadata: Record<string, VerifiedStoreMetadata> = {
     officialUrl: 'https://land2021.com/',
     priceNote: '入店料金 男性6,000円〜 / 女性1,000円（入会金別）',
   },
+  'mille-feuille': {
+    area: '渋谷',
+    address: '東京都渋谷区道玄坂1-15-7 セントラル道玄坂4F',
+    nearestStation: '渋谷駅・道玄坂上',
+    phone: '03-4335-8080',
+    officialUrl: 'https://www.millefeuillesby.com/',
+    priceNote: '入場料 男性10,000円〜 / 女性2,000円（BBS割引あり・入会金別）',
+  },
   neo: {
     area: '錦糸町',
     address: '東京都墨田区江東橋4-20-1 平山ビル3F',

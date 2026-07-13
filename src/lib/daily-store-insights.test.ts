@@ -88,7 +88,7 @@ test('daily insight contract ranks all customer posts and exposes one shared bas
     referenceAt,
   })
 
-  assert.equal(DAILY_INSIGHT_CONTRACT_VERSION, '2026-07-11.2')
+  assert.equal(DAILY_INSIGHT_CONTRACT_VERSION, '2026-07-13.2')
   assert.equal(dataset.insights[0].store.id, 'total-posts')
   assert.equal(dataset.insights[0].rank, 1)
   assert.equal(dataset.insights[0].activity.recentPostCount, 3)
@@ -129,6 +129,36 @@ test('daily insight contract includes pre-opening posts assigned to today and ex
   ])
 })
 
+test('daily insight contract resolves Japanese day and weekday visit expressions without counting reschedules', () => {
+  const target = store('japanese-date-store')
+  const rows = [
+    { ...post({ id: 'day-night', storeId: target.id, postedAt: '2026-07-11T08:00:00.000Z', authorName: '夜指定' }), body: '12夜に伺います。' },
+    { ...post({ id: 'day-lunch', storeId: target.id, postedAt: '2026-07-11T08:05:00.000Z', authorName: '昼指定' }), body: '12日のお昼に行きます。' },
+    { ...post({ id: 'weekday', storeId: target.id, postedAt: '2026-07-11T08:10:00.000Z', authorName: '曜日指定' }), body: '日曜日に行く予定です。' },
+    { ...post({ id: 'tomorrow-weekday', storeId: target.id, postedAt: '2026-07-11T08:15:00.000Z', authorName: '曜日併記' }), body: '明日（日曜）に伺います。' },
+    { ...post({ id: 'last-weekday', storeId: target.id, postedAt: '2026-07-11T08:20:00.000Z', authorName: '最終曜日' }), body: '土曜は行けなかったので、日曜に行きます。' },
+    { ...post({ id: 'rescheduled', storeId: target.id, postedAt: '2026-07-12T00:10:00.000Z', authorName: '日程変更' }), body: '本日は急遽リスケします。' },
+  ]
+  const dataset = buildDailyStoreDataset({
+    stores: [target],
+    events: [],
+    rawPosts: [],
+    sources: [source(target.id)],
+    snapshots: [],
+    normalizedPosts: rows,
+    referenceAt: '2026-07-12T12:00:00.000Z',
+  })
+
+  assert.equal(dataset.insights[0].activity.recentPostCount, 5)
+  assert.deepEqual(dataset.insights[0].rankingPostIds.toSorted(), [
+    'normalized-day-lunch',
+    'normalized-day-night',
+    'normalized-last-weekday',
+    'normalized-tomorrow-weekday',
+    'normalized-weekday',
+  ])
+})
+
 test('daily insight contract separates crawl failure from the last successful data', () => {
   const target = store('blocked-store')
   const dataset = buildDailyStoreDataset({
@@ -145,5 +175,50 @@ test('daily insight contract separates crawl failure from the last successful da
 
   assert.equal(dataset.insights[0].reliability, 'blocked')
   assert.match(dataset.insights[0].reliabilityLabel, /直前データを使用/)
+  assert.ok(dataset.insights[0].dataConfidence < 80)
   assert.equal(dataset.insights[0].activity.recentPostCount, 1)
+})
+
+test('daily insight contract keeps after-midnight posts and events on the active night business date', () => {
+  const target = store('after-midnight-store')
+  const activeNightEvent = {
+    id: 'active-night-event',
+    storeId: target.id,
+    date: '2026-07-12',
+    weekday: '日曜',
+    startsAt: '19:00',
+    session: 'night' as const,
+    category: 'イベント',
+    title: '日曜夜イベント',
+  }
+  const nextCalendarEvent = {
+    ...activeNightEvent,
+    id: 'next-calendar-event',
+    date: '2026-07-13',
+    weekday: '月曜',
+    title: '月曜夜イベント',
+  }
+  const afterMidnightPost = {
+    ...post({
+      id: 'after-midnight-today',
+      storeId: target.id,
+      postedAt: '2026-07-12T18:55:00.000Z',
+      authorName: '深夜投稿',
+    }),
+    body: '本日伺います。',
+  }
+  const dataset = buildDailyStoreDataset({
+    stores: [target],
+    events: [activeNightEvent, nextCalendarEvent],
+    rawPosts: [],
+    sources: [source(target.id)],
+    snapshots: [],
+    normalizedPosts: [afterMidnightPost],
+    referenceAt: '2026-07-12T19:10:00.000Z',
+  })
+
+  assert.equal(dataset.todayKey, '2026-07-12')
+  assert.equal(dataset.insights[0].activity.recentPostCount, 1)
+  assert.equal(dataset.insights[0].todayEventCount, 1)
+  assert.equal(dataset.insights[0].upcomingEventCount, 2)
 })

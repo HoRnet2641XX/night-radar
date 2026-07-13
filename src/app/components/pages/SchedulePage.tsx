@@ -53,6 +53,7 @@ export function SchedulePage() {
   const nightCount = monthEvents.filter((event) => event.session === 'night').length;
   const featuredCount = monthEvents.filter((event) => ['BINGO', '月1', '誕生日'].includes(event.tag)).length;
   const sourcedCount = monthEvents.filter((event) => event.sourceUrl).length;
+  const coveredStoreCount = new Set(monthEvents.map((event) => event.storeId)).size;
 
   function moveMonth(delta: number) {
     const nextMonth = shiftMonth(visibleMonth, delta);
@@ -80,7 +81,7 @@ export function SchedulePage() {
             style={{ color: 'var(--nr-text-mid)' }}
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.7 }}
           >
-            登録済みイベントを、朝・昼・夜、BINGO、月1、誕生日で絞り込めます。店舗名やイベント名でも検索できます。
+            公式予定を確認できた{coveredStoreCount}店舗分を、朝・昼・夜、BINGO、月1、誕生日で絞り込めます。未登録店舗は「予定なし」ではなく未確認です。
           </motion.p>
         </div>
         <motion.div className="flex items-center gap-2 justify-start lg:justify-end"

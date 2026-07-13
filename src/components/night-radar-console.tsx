@@ -50,6 +50,7 @@ import {
   type WatchedTemplateKey,
 } from '@/lib/scoring'
 import { formatBarName, formatStoreArea, formatStoreSessionLabel } from '@/lib/display'
+import { usePwaInstall } from '@/hooks/use-pwa-install'
 import type {
   BbsSnapshot,
   BbsSource,
@@ -82,10 +83,6 @@ type SourceHealth = { ok: number; stale: number; blocked: number; failed: number
 type MetricTone = 'good' | 'warn' | 'muted'
 type DecisionMetric = { label: string; value: string; tone?: MetricTone }
 type DecisionStoreKind = 'go' | 'maybe' | 'skip'
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
-}
 type GenderPostRanking = {
   store: StoreProfile
   rank: number
@@ -126,9 +123,6 @@ const exactTermLabels = {
   popularSingleFemale: '人気単独女性',
   negativePerson: '不人気・苦手',
 } as const
-const installReminderStorageKey = 'night-radar-install-reminder-dismissed-at'
-const installReminderIntervalMs = 1000 * 60 * 60 * 24 * 7
-
 const bodyScrollLockState = {
   count: 0,
   overflow: '',
@@ -325,9 +319,13 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   })
   const [showFirstGuide, setShowFirstGuide] = useState(false)
   const [busy, setBusy] = useState('')
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
-  const [showInstallReminder, setShowInstallReminder] = useState(false)
-  const [showInstallGuide, setShowInstallGuide] = useState(false)
+  const {
+    canInstall,
+    dismiss: dismissInstallReminder,
+    install: startInstallFlow,
+    showGuide: showInstallGuide,
+    showReminder: showInstallReminder,
+  } = usePwaInstall()
 
   useEffect(() => {
     window.localStorage.setItem(storeDecisionStorageKey, JSON.stringify(storeDecisions))
@@ -343,31 +341,6 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
     const guideTimer = window.setTimeout(() => setShowFirstGuide(true), 0)
     return () => window.clearTimeout(guideTimer)
   }, [firstGuideStorageKey, isSignedIn])
-
-  useEffect(() => {
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as Navigator & { standalone?: boolean }).standalone === true
-    if (isStandalone) return
-
-    const dismissedAt = Number(window.localStorage.getItem(installReminderStorageKey) ?? 0)
-    const reminderTimer =
-      !dismissedAt || Date.now() - dismissedAt > installReminderIntervalMs
-        ? window.setTimeout(() => setShowInstallReminder(true), 0)
-        : undefined
-
-    const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault()
-      setInstallPrompt(event as BeforeInstallPromptEvent)
-      setShowInstallReminder(true)
-    }
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-    return () => {
-      if (reminderTimer) window.clearTimeout(reminderTimer)
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-    }
-  }, [])
 
   const todayOrderedScoredEvents = useMemo(() => prioritizeScoredEventsForToday(scoredEvents), [scoredEvents])
   const summary = useMemo(() => summarizeSignals(scoredEvents), [scoredEvents])
@@ -583,31 +556,6 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
   function navigateByKey(target: NavKey) {
     const item = navItems.find((navItem) => navItem.key === target) ?? navItems[0]
     navigateTo(item)
-  }
-
-  function dismissInstallReminder() {
-    window.localStorage.setItem(installReminderStorageKey, String(Date.now()))
-    setShowInstallReminder(false)
-    setShowInstallGuide(false)
-  }
-
-  async function startInstallFlow() {
-    if (!installPrompt) {
-      setShowInstallGuide(true)
-      return
-    }
-
-    await installPrompt.prompt()
-    const choice = await installPrompt.userChoice
-    if (choice.outcome === 'accepted') {
-      window.localStorage.setItem(installReminderStorageKey, String(Date.now()))
-      setShowInstallReminder(false)
-      setShowInstallGuide(false)
-      setInstallPrompt(null)
-      return
-    }
-
-    dismissInstallReminder()
   }
 
   function closeFirstGuide() {
@@ -862,7 +810,7 @@ export function NightRadarConsole({ calendarEvents: initialCalendarEvents, initi
 
         {showInstallReminder ? (
           <InstallReminderCard
-            canInstall={Boolean(installPrompt)}
+            canInstall={canInstall}
             showGuide={showInstallGuide}
             onDismiss={dismissInstallReminder}
             onInstall={startInstallFlow}

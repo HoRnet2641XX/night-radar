@@ -20,6 +20,7 @@ import {
   type RankingKind,
 } from '@/lib/public-directory'
 import type { PublicGuide } from '@/lib/public-guides'
+import { decisionDateKeyInJapan } from '@/lib/scoring'
 import styles from './public-directory.module.css'
 
 export function JsonLd({ data }: { data: unknown }) {
@@ -678,7 +679,7 @@ export function RankingView({ kind, state }: { kind: RankingKind; state: PublicD
 
 export function StoreDetailView({ detail }: { detail: PublicStoreDetail }) {
   const { summary } = detail
-  const todayKey = new Intl.DateTimeFormat('sv-SE', {
+  const todayKey = decisionDateKeyInJapan(summary.insight.generatedAt) ?? new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Tokyo',
     year: 'numeric',
     month: '2-digit',
@@ -704,7 +705,7 @@ export function StoreDetailView({ detail }: { detail: PublicStoreDetail }) {
           '@type': 'LocalBusiness',
           name: formatPublicStoreName(summary.store),
           url: publicAbsoluteUrl(storeDetailPath(summary.store)),
-          address: summary.addressLabel === '住所は公式で確認' ? undefined : summary.addressLabel,
+          address: summary.store.address?.trim() || undefined,
           areaServed: summary.areaLabel,
           sameAs: summary.officialUrl ? [summary.officialUrl] : undefined,
         }}
@@ -779,7 +780,12 @@ export function StoreDetailView({ detail }: { detail: PublicStoreDetail }) {
                 ? '判定不可（性別表記が不足）'
                 : `${summary.femalePostCount}件（順位には不使用）`}
             </li>
-            <li>女性率: {summary.womenRatio == null ? '母数不足' : `${summary.womenRatio}%`}</li>
+            <li>
+              女性率:{' '}
+              {summary.womenRatio == null
+                ? '母数不足'
+                : `${summary.womenRatio}%（判定 ${summary.genderSampleCount}/${summary.recentPostCount}件${summary.genderCoverage < 60 ? '・参考' : ''}）`}
+            </li>
             <li>本日のイベント: {summary.todayEventCount}件</li>
             <li>取得状態: {summary.reliabilityLabel} / 最終更新 {summary.lastUpdatedLabel}</li>
             {summary.excludedUntimestampedCount > 0 ? (
@@ -847,6 +853,10 @@ function PublicStoreRadar({
   const dayCount = summary.recentPostCount
   const eventCount = summary.todayEventCount
   const hasGender = summary.womenRatio != null
+  const partialGender = hasGender && summary.genderCoverage < 60
+  const genderEvidence = hasGender
+    ? `判定 ${summary.genderSampleCount}/${summary.recentPostCount}件${partialGender ? '・参考' : ''}`
+    : '性別表記の母数不足'
   const style = {
     '--public-women-ratio': `${womenRatio}%`,
     '--public-heat-height': `${clampPublicPercent(summary.point.score)}%`,
@@ -857,9 +867,9 @@ function PublicStoreRadar({
 
   return (
     <div className={`${styles.publicStoreRadar} ${styles[`publicStoreRadar_${variant}`]}`} style={style}>
-      <div className={styles.publicRadarDonut} aria-label={hasGender ? `女性率 ${womenRatio}%、男性率 ${menRatio}%` : '女性率は観測中'}>
+      <div className={styles.publicRadarDonut} aria-label={hasGender ? `女性率 ${womenRatio}%、男性率 ${menRatio}%、${genderEvidence}` : '女性率は観測中'}>
         <strong>{hasGender ? womenRatio : '--'}<small>%</small></strong>
-        <span>女性率</span>
+        <span>{partialGender ? '女性率・参考' : '女性率'}</span>
       </div>
       <div className={styles.publicRadarBars} aria-label="店舗レーダー縦グラフ">
         <span>
@@ -884,7 +894,7 @@ function PublicStoreRadar({
         </span>
       </div>
       <p>
-        {hasGender ? `女性 ${womenRatio}% / 男性 ${menRatio}%` : '男女比率は観測中'}・直近3時間 {recentCount}件
+        {hasGender ? `女性 ${womenRatio}% / 男性 ${menRatio}%（${genderEvidence}）` : '男女比率は観測中'}・直近3時間 {recentCount}件
       </p>
     </div>
   )

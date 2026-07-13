@@ -6,7 +6,7 @@ import { formatBarName, formatStoreArea, formatStoreSessionLabel } from './displ
 import { mergeOfficialEvents } from './official-events'
 import { collectPagedRows } from './pagination'
 import { PUBLIC_DIRECTORY_CACHE_TAG } from './public-directory-cache'
-import { isStructurallyValidCustomerNormalizedPost } from './scoring'
+import { decisionDateKeyInJapan, isStructurallyValidCustomerNormalizedPost } from './scoring'
 import { resolvedStoreMapUrl, resolvedStoreMetadata, resolvedStoreOfficialUrl } from './store-catalog'
 import { matchesStoreSearch } from './store-search'
 import { createSupabaseAdminClient } from './supabase/server'
@@ -80,7 +80,7 @@ const conditionLabels = {
   hot: 'いま動きあり',
   open: '営業中',
   events: 'イベントあり',
-  female: '女性率高め',
+  female: '女性書き込みあり',
   fresh: '更新が新しい',
   price: '料金確認済み',
   beginner: '初回向け',
@@ -107,6 +107,8 @@ export type PublicStoreSummary = {
   sessionLabel: string
   womenRatio: number | null
   femalePostCount: number
+  genderSampleCount: number
+  genderCoverage: number
   recentPostCount: number
   recentThreeHourCount: number
   todayEventCount: number
@@ -525,7 +527,7 @@ function buildPublicStoreSummary(input: {
         : point.signals.totalSignals > 0
           ? `注目シグナル ${point.signals.totalSignals}件`
           : '巡回データを蓄積中'
-  const todayKey = new Intl.DateTimeFormat('sv-SE', {
+  const todayKey = decisionDateKeyInJapan(generatedAt) ?? new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Tokyo',
     year: 'numeric',
     month: '2-digit',
@@ -543,7 +545,11 @@ function buildPublicStoreSummary(input: {
     nextEvent,
     areaLabel,
     stationLabel: point.store.nearestStation?.trim() || areaLabel,
-    addressLabel: point.store.address?.trim() || '住所は公式で確認',
+    addressLabel:
+      point.store.address?.trim() ||
+      (point.store.nearestStation?.trim()
+        ? `住所非公開 / 最寄り ${point.store.nearestStation.trim()}`
+        : '住所は公式で確認'),
     officialUrl,
     bbsUrl,
     mapUrl: resolvedStoreMapUrl(point.store),
@@ -551,6 +557,8 @@ function buildPublicStoreSummary(input: {
     sessionLabel: formatStoreSessionLabel(point.store),
     womenRatio,
     femalePostCount,
+    genderSampleCount: insight.activity.genderSampleCount,
+    genderCoverage: insight.activity.genderCoverage,
     recentPostCount: recentPosts.length,
     recentThreeHourCount,
     todayEventCount,

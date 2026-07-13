@@ -1,4 +1,5 @@
 export type DataReliability = 'fresh' | 'stale' | 'blocked' | 'unknown'
+export type EventRegistrationStatus = 'scheduled' | 'none' | 'unverified'
 
 export type Bar = {
   id: string
@@ -30,6 +31,7 @@ export type Bar = {
   priceNote?: string
   sessionLabel?: string
   eventCount: number
+  eventStatus: EventRegistrationStatus
   femaleCount: number
   femaleRatio: number | null
   genderSampleCount: number
@@ -107,6 +109,8 @@ export type RuntimeMeta = {
   recentThreeHourCount: number
   eventCount: number
   todayEventCount: number
+  eventCoverageStoreCount: number
+  eventUnverifiedStoreCount: number
   highConfidenceCount: number
   normalizedCoverageAverage: number
   timestampCoverageAverage: number
@@ -149,6 +153,7 @@ const fallbackBars: Bar[] = [
     reason: '現在はデータ接続を確認しています。',
     peakHour: '確認中',
     eventCount: 0,
+    eventStatus: 'unverified',
     femaleCount: 0,
     femaleRatio: null,
     genderSampleCount: 0,
@@ -217,6 +222,8 @@ function createFallbackMeta(): RuntimeMeta {
     recentThreeHourCount: 0,
     eventCount: 0,
     todayEventCount: 0,
+    eventCoverageStoreCount: 0,
+    eventUnverifiedStoreCount: 0,
     highConfidenceCount: 0,
     normalizedCoverageAverage: 0,
     timestampCoverageAverage: 0,

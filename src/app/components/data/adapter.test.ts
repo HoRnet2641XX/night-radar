@@ -143,6 +143,8 @@ test('adapter maps current decision-date data without reservation placeholders',
 
   assert.equal(result.meta.postCount, 2)
   assert.equal(result.meta.todayEventCount, 1)
+  assert.equal(result.meta.eventCoverageStoreCount, 1)
+  assert.equal(result.meta.eventUnverifiedStoreCount, 0)
   assert.equal(result.meta.recentThreeHourCount, 2)
   assert.equal(bar.femaleCount, 1)
   assert.equal(bar.femaleRatio, null)
@@ -158,6 +160,7 @@ test('adapter maps current decision-date data without reservation placeholders',
   assert.equal(bar.firstVisitCount, 1)
   assert.equal(bar.groupCount, 1)
   assert.equal(bar.eventCount, 1)
+  assert.equal(bar.eventStatus, 'scheduled')
   assert.equal(bar.postCount, 2)
   assert.equal(bar.vibe, 100)
   assert.equal(bar.crowd, 100)
@@ -172,6 +175,59 @@ test('adapter maps current decision-date data without reservation placeholders',
   assert.equal(result.posts.filter((post) => post.isCurrentBusinessDay).length, 2)
   assert.match(bar.mapUrl ?? '', /google\.com\/maps\/search/)
   assert.equal(bar.officialUrl, 'https://example.com/')
+})
+
+test('adapter distinguishes no event today from an unverified event calendar', () => {
+  const verifiedStore = { ...store, id: 'verified-store', name: 'BAR VERIFIED' }
+  const unverifiedStore = { ...store, id: 'unverified-store', name: 'BAR UNVERIFIED' }
+  const monthlyEvent: EventInput = {
+    ...event,
+    id: 'future-month-event',
+    storeId: verifiedStore.id,
+    date: '2026-07-18',
+  }
+  const input = withDailyInsights({
+    ...state,
+    stores: [verifiedStore, unverifiedStore],
+    events: [monthlyEvent],
+    posts: [],
+    bbsNormalizedPosts: [],
+    bbsSources: [],
+  }, [monthlyEvent])
+  const result = adaptDashboardToBars(input, [monthlyEvent])
+
+  assert.equal(result.bars.find((bar) => bar.id === verifiedStore.id)?.eventStatus, 'none')
+  assert.equal(result.bars.find((bar) => bar.id === unverifiedStore.id)?.eventStatus, 'unverified')
+  assert.equal(result.meta.eventCoverageStoreCount, 1)
+  assert.equal(result.meta.eventUnverifiedStoreCount, 1)
+})
+
+test('adapter uses the active night business date after midnight for today events', () => {
+  const activeNightEvent: EventInput = {
+    ...event,
+    id: 'active-night-event',
+    date: '2026-07-12',
+  }
+  const nextCalendarEvent: EventInput = {
+    ...event,
+    id: 'next-calendar-event',
+    date: '2026-07-13',
+  }
+  const afterMidnightState = {
+    ...state,
+    setupStatus: { ...state.setupStatus, generatedAt: '2026-07-12T19:10:00.000Z' },
+    events: [activeNightEvent, nextCalendarEvent],
+    posts: [],
+    bbsNormalizedPosts: [],
+  }
+  const result = adaptDashboardToBars(
+    withDailyInsights(afterMidnightState, [activeNightEvent, nextCalendarEvent]),
+    [activeNightEvent, nextCalendarEvent],
+  )
+
+  assert.equal(result.meta.todayKey, '2026-07-12')
+  assert.equal(result.meta.todayEventCount, 1)
+  assert.equal(result.bars[0].eventCount, 1)
 })
 
 test('adapter ranks by all current decision-date posts before female count', () => {

@@ -1,39 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-
-const storeRows = [
-  { id: 'collabo', name: 'collabo' },
-  { id: 'honey-trap', name: 'HONEY TRAP' },
-  { id: 'bar-rusk', name: 'BAR RUSK' },
-  { id: 'papillon', name: 'Papillon' },
-  { id: 'harnes-tokyo', name: 'HARNES TOKYO' },
-  { id: 'bar-face', name: 'BAR FACE' },
-  { id: 'campo-bar', name: 'CAMPO BAR' },
-  { id: 'arabesque', name: 'ARABESQUE' },
-  { id: 'colors-bar', name: 'COLORS BAR' },
-  { id: 'bar440', name: 'BAR440' },
-  { id: 'voluptuous', name: 'Voluptuous' },
-  { id: 'retreat-bar', name: 'RETREAT BAR' },
-  { id: 'agreeable', name: 'AgreeAble' },
-  { id: 'secret-bar-silent-moon', name: 'Secret Bar Silent Moon' },
-  { id: 'bar-spear', name: 'BAR SPEAR' },
-  { id: 'bar-canelo', name: 'BAR CANELO' },
-  { id: 'b-dash', name: 'B-DASH' },
-  { id: 'ogikubo-himitsu-club', name: '荻窪秘密倶楽部' },
-  { id: 'club-zeus', name: 'CLUB ZEUS' },
-  { id: 'land-land', name: 'land land' },
-  { id: 'filt-shibuya', name: 'FILT SHIBUYA' },
-  { id: 'communicationbar-sango', name: 'Communicationbar 珊瑚' },
-].map((store) => ({
-  ...store,
-  area: '都内',
-  has_daytime: true,
-  has_night: true,
-  opening_hour_day: '13:00',
-  opening_hour_night: '19:00',
-  pr_structure: '公式イベント観測',
-  trust_seed: 60,
-}))
+import { createClient } from '@supabase/supabase-js'
 
 async function loadDotEnv(file) {
   const text = await readFile(file, 'utf8').catch(() => '')
@@ -90,6 +57,53 @@ async function upsertEvents(client, rows, includeDetails) {
   }
 }
 
+function nextMonth(month) {
+  const [year, monthNumber] = month.split('-').map(Number)
+  const date = new Date(Date.UTC(year, monthNumber, 1))
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+async function pruneGeneratedEvents(supabase, events, applyChanges) {
+  const scopes = new Map()
+  for (const event of events) {
+    const month = event.date.slice(0, 7)
+    const key = `${event.storeId}|${month}`
+    const scope = scopes.get(key) ?? {
+      storeId: event.storeId,
+      month,
+      ids: new Set(),
+      sourceUrls: new Set(),
+    }
+    scope.ids.add(event.id)
+    if (event.sourceUrl) scope.sourceUrls.add(event.sourceUrl)
+    scopes.set(key, scope)
+  }
+
+  let deleted = 0
+  for (const scope of scopes.values()) {
+    if (!scope.sourceUrls.size) continue
+    const { data, error } = await supabase
+      .from('events')
+      .select('id,source_url')
+      .eq('store_id', scope.storeId)
+      .gte('date_label', `${scope.month}-01`)
+      .lt('date_label', `${nextMonth(scope.month)}-01`)
+      .in('source_url', [...scope.sourceUrls])
+    if (error) throw new Error(`events prune lookup failed: ${error.message}`)
+
+    const staleIds = (data ?? []).map((row) => row.id).filter((id) => !scope.ids.has(id))
+    for (let index = 0; index < staleIds.length; index += 100) {
+      const chunk = staleIds.slice(index, index + 100)
+      if (applyChanges) {
+        const { error: deleteError } = await supabase.from('events').delete().in('id', chunk)
+        if (deleteError) throw new Error(`events prune failed: ${deleteError.message}`)
+      }
+      deleted += chunk.length
+    }
+  }
+  return deleted
+}
+
 await loadDotEnv(path.join(process.cwd(), '.env.local'))
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -98,26 +112,34 @@ if (!supabaseUrl || !serviceRoleKey) {
   throw new Error('NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.')
 }
 
-const eventsPath = process.argv[2] ?? path.join(process.cwd(), 'src/lib/official-events.generated.json')
+const prune = process.argv.includes('--prune')
+const dryRun = process.argv.includes('--dry-run')
+const eventsPath = process.argv.slice(2).find((argument) => !argument.startsWith('--')) ?? path.join(process.cwd(), 'src/lib/official-events.generated.json')
 const events = JSON.parse(await readFile(eventsPath, 'utf8'))
 const client = { supabaseUrl, serviceRoleKey }
-
-await upsertRows({ ...client, table: 'stores', rows: storeRows })
+const supabase = createClient(supabaseUrl, serviceRoleKey, {
+  auth: { persistSession: false, autoRefreshToken: false },
+})
 
 let detailsPersisted = true
-try {
-  await upsertEvents(client, events, true)
-} catch (error) {
-  if (!String(error?.message ?? error).includes('details')) throw error
-  detailsPersisted = false
-  await upsertEvents(client, events, false)
+if (!dryRun) {
+  try {
+    await upsertEvents(client, events, true)
+  } catch (error) {
+    if (!String(error?.message ?? error).includes('details')) throw error
+    detailsPersisted = false
+    await upsertEvents(client, events, false)
+  }
 }
+
+const prunedEvents = prune ? await pruneGeneratedEvents(supabase, events, !dryRun) : 0
 
 console.log(
   JSON.stringify(
     {
-      stores: storeRows.length,
+      mode: dryRun ? 'dry-run' : 'apply',
       events: events.length,
+      prunedEvents,
       detailsPersisted,
     },
     null,

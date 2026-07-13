@@ -42,6 +42,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
   const femaleMax = Math.max(1, ...bars.map((bar) => bar.femaleCount));
   const recentMax = Math.max(1, ...bars.map((bar) => bar.recentThreeHourCount));
   const topBar = bars[0];
+  const businessDateLabel = meta.todayKey.slice(5).replace('-', '/');
 
   return (
     <div className="flex flex-col gap-7">
@@ -62,7 +63,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, ease }}
           >
             <span className="nr-pulse" />
-            <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>最終集計 · {meta.generatedAtLabel}（日本時間）</span>
+            <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>営業日 {businessDateLabel} · 最終集計 {meta.generatedAtLabel}（日本時間）</span>
           </motion.div>
           <h1 className="nr-heading text-[30px] sm:text-[42px] leading-[1.12]" style={{ color: 'var(--nr-text-hi)' }}>
             <WordReveal text="今日の行き先を、" />
@@ -74,7 +75,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
             style={{ color: 'var(--nr-text-mid)' }}
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.7 }}
           >
-            今日の来店分として判定できた顧客投稿を集計し、店側の投稿と時刻を判定できないデータは順位から外しています。
+            当営業日の来店分として判定できた顧客投稿を集計し、店側の投稿と時刻を判定できないデータは順位から外しています。
           </motion.p>
           </div>
           <motion.div
@@ -109,7 +110,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
             { label: '当日顧客投稿', value: meta.postCount, suffix: '件', hint: '店側投稿を除外' },
             { label: '直近3時間', value: meta.recentThreeHourCount, suffix: '件', hint: 'BBS投稿' },
             { label: '女性書き込み', value: totalFemale, suffix: '件', hint: '性別判定済み' },
-            { label: '今日の予定', value: meta.todayEventCount, suffix: '件', hint: '公式URL登録済み' },
+            { label: '今日の予定', value: meta.todayEventCount, suffix: '件', hint: `${meta.eventCoverageStoreCount}店舗を確認` },
           ].map((k, i) => (
             <StaggerItem key={i}>
               <GlassCard className="p-4 flex flex-col gap-1.5 nr-focus nr-hairline">

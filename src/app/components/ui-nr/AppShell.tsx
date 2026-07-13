@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { Home, Search, CalendarDays, Radar, User, X, Activity, type LucideIcon } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { usePwaInstall } from '@/hooks/use-pwa-install';
 
 export type TabKey = 'home' | 'detail' | 'search' | 'schedule' | 'account';
 
@@ -12,34 +13,10 @@ const TABS: { key: TabKey; label: string; icon: LucideIcon }[] = [
   { key: 'account', label: '設定', icon: User },
 ];
 
-type InstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-};
-
 const ease = [0.22, 1, 0.36, 1] as const;
 
 export function AppShell({ tab, onTab, children }: { tab: TabKey; onTab: (t: TabKey) => void; children: ReactNode }) {
-  const [banner, setBanner] = useState(false);
-  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
-
-  useEffect(() => {
-    const handler = (event: Event) => {
-      event.preventDefault();
-      setInstallPrompt(event as InstallPromptEvent);
-      setBanner(true);
-    };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
-
-  async function installApp() {
-    if (!installPrompt) return;
-    await installPrompt.prompt();
-    await installPrompt.userChoice;
-    setInstallPrompt(null);
-    setBanner(false);
-  }
+  const { canInstall, dismiss: dismissInstall, install: installApp, showGuide, showReminder } = usePwaInstall();
 
   return (
     <div className="relative min-h-screen w-full flex justify-center" style={{ zIndex: 1 }}>
@@ -64,23 +41,28 @@ export function AppShell({ tab, onTab, children }: { tab: TabKey; onTab: (t: Tab
 
         {/* Banner — quiet editorial notice */}
         <AnimatePresence>
-          {banner && installPrompt && (
+          {showReminder && (
             <motion.div
               initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.7, ease }}
-              className="mb-6 flex items-center justify-between gap-4 px-4 py-2.5 rounded-xl"
+              className="mb-6 flex flex-wrap items-center justify-between gap-4 px-4 py-2.5 rounded-xl"
               style={{ border: '1px solid var(--nr-border)', background: 'rgba(255,255,255,0.02)' }}
             >
               <div className="flex items-center gap-3">
                 <span className="nr-mono text-[11px] px-1.5 py-0.5 rounded" style={{ color: 'var(--nr-accent-soft)', background: 'rgba(255,106,91,0.08)', border: '1px solid rgba(255,106,91,0.25)' }}>アプリ追加</span>
                 <span className="text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>
-                  Chrome のホーム画面に追加すると、ワンタップで今日の候補を確認できます。
+                  ホーム画面に追加すると、ワンタップで今日の候補を確認できます。
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={installApp} className="nr-chip" data-accent="true">ホーム画面に追加</button>
-                <button type="button" aria-label="ホーム画面追加の案内を閉じる" onClick={() => setBanner(false)} className="p-1 rounded-full hover:bg-white/5"><X size={12} color="var(--nr-text-mid)" /></button>
+                <button type="button" onClick={() => void installApp()} className="nr-chip" data-accent="true">{canInstall ? 'ホーム画面に追加' : '追加方法を見る'}</button>
+                <button type="button" aria-label="ホーム画面追加の案内を閉じる" onClick={dismissInstall} className="p-1 rounded-full hover:bg-white/5"><X size={12} color="var(--nr-text-mid)" /></button>
               </div>
+              {showGuide && (
+                <p className="basis-full text-[11px] leading-relaxed" style={{ color: 'var(--nr-text-mid)' }}>
+                  iPhoneは共有メニューの「ホーム画面に追加」、Androidはブラウザメニューの「アプリをインストール」を選んでください。
+                </p>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

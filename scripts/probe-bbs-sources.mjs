@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import {
   extractNormalizedBbsPostsFromText,
   filterPostsForDecisionDate,
+  isExplicitlyEmptyBbsText,
+  isLikelyCustomerNormalizedPost,
   isRankableCustomerNormalizedPost,
   isStructurallyValidCustomerNormalizedPost,
   normalizedBbsPostsToPostRecords,
@@ -21,7 +23,11 @@ async function probeSource(source) {
   const startedAt = Date.now()
   const result = await scrapePublicPage(source.url)
   const posts = result.status === 'ok' ? extractNormalizedBbsPostsFromText(result.extractedText, result.fetchedAt) : []
-  const structuredPosts = posts.filter((post) => isStructurallyValidCustomerNormalizedPost({ ...post, storeId: source.store_id }))
+  const explicitlyEmpty = isExplicitlyEmptyBbsText(result.extractedText)
+  const customerCandidates = explicitlyEmpty
+    ? []
+    : posts.filter((post) => isLikelyCustomerNormalizedPost({ ...post, storeId: source.store_id }))
+  const structuredPosts = customerCandidates.filter((post) => isStructurallyValidCustomerNormalizedPost({ ...post, storeId: source.store_id }))
   const rankablePosts = structuredPosts.filter((post) => isRankableCustomerNormalizedPost({ ...post, storeId: source.store_id }))
   const timedPosts = rankablePosts.length
   const decisionDatePosts = filterPostsForDecisionDate(
@@ -45,18 +51,21 @@ async function probeSource(source) {
     elapsedMs: Date.now() - startedAt,
     textLength: result.extractedText.length,
     postCount: posts.length,
+    customerCandidateCount: customerCandidates.length,
     structuredPostCount: structuredPosts.length,
     rankablePostCount: rankablePosts.length,
-    rejectedPostCount: posts.length - structuredPosts.length,
+    rejectedPostCount: customerCandidates.length - structuredPosts.length,
     timedPostCount: timedPosts,
     decisionDatePostCount: decisionDatePosts.length,
     timestampCoverage: structuredPosts.length ? Math.round((timedPosts / structuredPosts.length) * 100) : 0,
     parserHealth:
       result.status !== 'ok'
         ? '取得失敗'
-        : posts.length === 0
+        : customerCandidates.length === 0 && explicitlyEmpty
           ? '投稿0件'
-        : posts.length > 0 && structuredPosts.length === 0
+        : customerCandidates.length === 0
+          ? '顧客投稿0件'
+        : structuredPosts.length === 0
           ? '構造解析失敗'
           : structuredPosts.length > 0 && timedPosts / structuredPosts.length < 0.5
             ? '投稿時刻の解析不足'

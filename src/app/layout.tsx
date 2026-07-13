@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { PwaRegistration } from '@/components/pwa-registration'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -7,8 +8,12 @@ export const metadata: Metadata = {
   description: '公開BBSの女性書き込み数、直近3時間の投稿、店舗イベントを同じ条件で比較できるアプリ。',
   manifest: '/manifest.webmanifest',
   icons: {
-    icon: '/favicon.svg',
-    apple: '/favicon.svg',
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: '/icons/apple-touch-icon.png',
   },
   openGraph: {
     title: 'ナイトレーダー',
@@ -30,6 +35,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           メインへ移動
         </a>
         {children}
+        <PwaRegistration />
       </body>
     </html>
   )

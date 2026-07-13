@@ -1,15 +1,13 @@
 import { redirect } from 'next/navigation'
 import { formatBarName } from '@/lib/display'
 import { eventWeekday } from '@/lib/date'
-import officialEventsData from '@/lib/official-events.generated.json'
+import { mergeOfficialEvents } from '@/lib/official-events'
 import { getDashboardState } from '@/lib/server/repository'
 import { getCurrentUser } from '@/lib/supabase/server'
 import type { EventInput, StoreProfile } from '@/lib/types'
 import { CalendarDayExplorer, type CalendarEventView, type CalendarMonthView } from '@/components/calendar-day-explorer'
 
 export const dynamic = 'force-dynamic'
-
-const officialEvents = officialEventsData as EventInput[]
 
 const officialStoreNames: Record<string, string> = {
   collabo: 'collabo',
@@ -54,17 +52,7 @@ function sortEvents(events: EventInput[]) {
 }
 
 function mergeEvents(databaseEvents: EventInput[]) {
-  const merged = new Map(officialEvents.map((event) => [event.id, event]))
-  for (const event of databaseEvents) {
-    const official = merged.get(event.id)
-    merged.set(event.id, {
-      ...official,
-      ...event,
-      details: event.details || official?.details,
-      sourceUrl: event.sourceUrl || official?.sourceUrl,
-    })
-  }
-  return sortEvents([...merged.values()]).filter((event) => /^\d{4}-\d{2}-\d{2}$/.test(event.date))
+  return sortEvents(mergeOfficialEvents(databaseEvents))
 }
 
 function storeNameFor(storeMap: Map<string, StoreProfile>, storeId: string) {

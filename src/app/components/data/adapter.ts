@@ -1,6 +1,11 @@
 import { formatBarName, formatStoreArea, formatStoreSessionLabel } from '@/lib/display'
 import { resolvedStoreMapUrl, resolvedStoreOfficialUrl } from '@/lib/store-catalog'
-import { isStructurallyValidCustomerNormalizedPost, resolvedNormalizedPostGender } from '@/lib/scoring'
+import {
+  decisionDateKeyInJapan,
+  dedupeNormalizedBbsPosts,
+  isStructurallyValidCustomerNormalizedPost,
+  resolvedNormalizedPostGender,
+} from '@/lib/scoring'
 import type { DashboardState, EventInput, StoreDailyInsight, StoreProfile } from '@/lib/types'
 import type { Bar, CalendarEventItem, RadarPost, RuntimeMeta } from './mock'
 
@@ -19,15 +24,6 @@ function validDate(value: string | undefined) {
   if (!value) return null
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : date
-}
-
-function japanDateKey(value: string) {
-  return new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(validDate(value) ?? new Date())
 }
 
 function formatGeneratedAt(value: string) {
@@ -65,6 +61,7 @@ function toBar(
   insight: StoreDailyInsight,
   todayEvents: EventInput[] = [],
   scales: BarScales,
+  hasCurrentMonthEventCoverage = false,
 ): Bar {
   const point = insight.point
   const store = point.store
@@ -76,6 +73,7 @@ function toBar(
   const firstVisitCount = storeActivity.firstVisitCount
   const groupCount = storeActivity.groupVisitCount
   const eventCount = insight.todayEventCount
+  const eventStatus = eventCount > 0 ? 'scheduled' : hasCurrentMonthEventCoverage ? 'none' : 'unverified'
   const postCount = storeActivity.recentPostCount
   const hourly = {
     hourly: insight.hourlyCounts,
@@ -105,7 +103,7 @@ function toBar(
       dataConfidenceLabel,
       femaleCount > 0 ? `女性 ${femaleCount}件` : '',
       storeActivity.recentThreeHourCount > 0 ? `直近3時間 ${storeActivity.recentThreeHourCount}件` : '',
-      eventCount > 0 ? `予定 ${eventCount}件` : '',
+      eventStatus === 'scheduled' ? `予定 ${eventCount}件` : eventStatus === 'unverified' ? '予定 未確認' : '本日の予定なし',
     ].filter(Boolean),
     searchKeywords: [
       store.name,
@@ -145,6 +143,7 @@ function toBar(
     priceNote: store.priceNote,
     sessionLabel: formatStoreSessionLabel(store),
     eventCount,
+    eventStatus,
     femaleCount,
     femaleRatio,
     genderSampleCount: storeActivity.genderSampleCount,
@@ -235,21 +234,9 @@ function formatPostTime(value: string | undefined, fallback: string) {
 function toRadarPosts(state: DashboardState, bars: Bar[]): RadarPost[] {
   const storeNames = new Map(bars.map((bar) => [bar.id, bar.name]))
   const currentPostIds = new Set(state.dailyInsights.flatMap((insight) => insight.rankingPostIds))
-  const seen = new Set<string>()
 
-  return state.bbsNormalizedPosts
+  return dedupeNormalizedBbsPosts(state.bbsNormalizedPosts)
     .filter(isStructurallyValidCustomerNormalizedPost)
-    .filter((post) => {
-      const key = [
-        post.storeId,
-        post.authorName.normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase('ja-JP'),
-        post.postedAt?.slice(0, 16) ?? 'time-unknown',
-        cleanPostBody(post.body).normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase('ja-JP'),
-      ].join(':')
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
     .map((post) => {
       const gender = resolvedNormalizedPostGender(post)
       const body = cleanPostBody(post.body)
@@ -286,8 +273,17 @@ function modeLabel(mode: DashboardState['mode']) {
 
 export function adaptDashboardToBars(state: DashboardState, calendarEvents: EventInput[] = []): NightRadarViewData {
   const generatedAt = state.setupStatus.generatedAt || new Date().toISOString()
-  const todayKey = japanDateKey(generatedAt)
+  const todayKey = decisionDateKeyInJapan(generatedAt) ?? new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(validDate(generatedAt) ?? new Date())
+  const currentMonth = todayKey.slice(0, 7)
   const sourceEvents = calendarEvents.length ? calendarEvents : state.events
+  const eventCoverageStoreIds = new Set(
+    sourceEvents.filter((event) => event.date.startsWith(currentMonth)).map((event) => event.storeId),
+  )
   const scales: BarScales = {
     posts: Math.max(1, ...state.dailyInsights.map((insight) => insight.activity.recentPostCount)),
     recent: Math.max(1, ...state.dailyInsights.map((insight) => insight.activity.recentThreeHourCount)),
@@ -298,6 +294,7 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
       insight,
       sourceEvents.filter((event) => event.storeId === insight.store.id && event.date === todayKey),
       scales,
+      eventCoverageStoreIds.has(insight.store.id),
     ))
     .toSorted((left, right) => left.rank - right.rank)
   const events = sourceEvents
@@ -305,7 +302,6 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
     .toSorted((left, right) => left.date.localeCompare(right.date) || (left.startsAt ?? '').localeCompare(right.startsAt ?? ''))
   const freshCount = bars.filter((bar) => bar.reliability === 'fresh').length
   const staleCount = bars.filter((bar) => bar.reliability === 'stale' || bar.reliability === 'blocked').length
-  const currentMonth = todayKey.slice(0, 7)
   const todayEventCount = events.filter((event) => event.date === todayKey).length
   const recentThreeHourCount = bars.reduce((sum, bar) => sum + bar.recentThreeHourCount, 0)
   const barsWithPosts = bars.filter((bar) => bar.postCount > 0)
@@ -334,6 +330,8 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
       recentThreeHourCount,
       eventCount: events.length,
       todayEventCount,
+      eventCoverageStoreCount: eventCoverageStoreIds.size,
+      eventUnverifiedStoreCount: Math.max(0, state.stores.length - eventCoverageStoreIds.size),
       highConfidenceCount: bars.filter((bar) => bar.dataConfidence >= 80).length,
       normalizedCoverageAverage,
       timestampCoverageAverage,

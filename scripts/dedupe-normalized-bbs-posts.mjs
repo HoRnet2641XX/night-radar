@@ -1,9 +1,16 @@
 import { createHash } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
-import { normalizedBbsPostIdentityMaterial } from '../src/lib/scoring.ts'
+import {
+  dedupeNormalizedBbsPosts,
+  isObviousBbsSpamBody,
+  isStructurallyValidCustomerNormalizedPost,
+  normalizedBbsPostIdentityMaterial,
+} from '../src/lib/scoring.ts'
 
 const PAGE_SIZE = 1000
 const applyChanges = process.argv.includes('--apply')
+const rewriteKeys = process.argv.includes('--rewrite-keys')
+const purgeSpam = process.argv.includes('--purge-spam')
 
 function createDatabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -55,46 +62,81 @@ function duplicateGroups(rows) {
   return [...groups.values()].filter((group) => group.length > 1)
 }
 
+function toNormalizedPost(row) {
+  return {
+    id: row.id,
+    storeId: row.store_id,
+    articleNo: row.article_no || undefined,
+    authorName: row.author_name || '記載なし',
+    authorGender: row.author_gender || '記載なし',
+    postedAt: row.posted_at || undefined,
+    observedAt: row.observed_at,
+    body: row.body || '',
+    bodyHash: row.body_hash || '',
+    contentKey: row.content_key || '',
+  }
+}
+
 async function main() {
   const db = createDatabaseClient()
   const rows = await collectRows(db)
   const groups = duplicateGroups(rows)
-  const duplicateRows = groups.reduce((sum, group) => sum + group.length - 1, 0)
+  const exactDuplicateRows = groups.reduce((sum, group) => sum + group.length - 1, 0)
+  const normalizedPosts = rows.map(toNormalizedPost)
+  const invalidRows = rows.filter((row, index) => !isStructurallyValidCustomerNormalizedPost(normalizedPosts[index]))
+  const spamRows = rows.filter((row) => isObviousBbsSpamBody(row.body || ''))
+  const keptIds = new Set(dedupeNormalizedBbsPosts(normalizedPosts).map((post) => post.id))
+  const redundantRows = rows.filter((row) => !keptIds.has(row.id))
+  const keptRows = rows.filter((candidate) => keptIds.has(candidate.id))
+  const keyRewriteCandidates = keptRows.filter((row) => row.content_key !== desiredContentKey(row)).length
 
-  if (!applyChanges || !groups.length) {
-    console.log(JSON.stringify({ mode: applyChanges ? 'apply' : 'dry-run', scannedRows: rows.length, duplicateGroups: groups.length, duplicateRows }, null, 2))
+  if (!applyChanges) {
+    console.log(JSON.stringify({
+      mode: 'dry-run',
+      scannedRows: rows.length,
+      exactDuplicateGroups: groups.length,
+      exactDuplicateRows,
+      effectiveDuplicateRows: redundantRows.length,
+      invalidRows: invalidRows.length,
+      spamRows: spamRows.length,
+      purgeSpam,
+      keyRewriteCandidates,
+    }, null, 2))
     return
   }
 
   let deletedRows = 0
   let updatedRows = 0
-  for (const group of groups) {
-    const newest = group[0]
-    const desiredKey = desiredContentKey(newest)
-    const keeper = group.find((row) => row.content_key === desiredKey) ?? newest
-    const redundantIds = group.filter((row) => row.id !== keeper.id).map((row) => row.id)
+  const deletionMap = new Map(redundantRows.map((row) => [row.id, row]))
+  if (purgeSpam) spamRows.forEach((row) => deletionMap.set(row.id, row))
+  const rowsToDelete = [...deletionMap.values()]
+  for (let index = 0; index < rowsToDelete.length; index += 100) {
+    const ids = rowsToDelete.slice(index, index + 100).map((row) => row.id)
+    const { error: deleteError } = await db.from('bbs_normalized_posts').delete().in('id', ids)
+    if (deleteError) throw deleteError
+    deletedRows += ids.length
+  }
 
-    if (redundantIds.length) {
-      const { error: deleteError } = await db.from('bbs_normalized_posts').delete().in('id', redundantIds)
-      if (deleteError) throw deleteError
-      deletedRows += redundantIds.length
-    }
-
-    const updates = {
-      author_name: newest.author_name,
-      author_gender: newest.author_gender,
-      posted_at: newest.posted_at,
-      observed_at: newest.observed_at,
-      body: newest.body,
-      body_hash: newest.body_hash,
-      content_key: desiredKey,
-    }
-    const { error: updateError } = await db.from('bbs_normalized_posts').update(updates).eq('id', keeper.id)
+  for (const row of rewriteKeys ? keptRows : []) {
+    const contentKey = desiredContentKey(row)
+    if (row.content_key === contentKey) continue
+    const { error: updateError } = await db.from('bbs_normalized_posts').update({ content_key: contentKey }).eq('id', row.id)
     if (updateError) throw updateError
     updatedRows += 1
   }
 
-  console.log(JSON.stringify({ mode: 'apply', scannedRows: rows.length, duplicateGroups: groups.length, deletedRows, updatedRows }, null, 2))
+  console.log(JSON.stringify({
+    mode: 'apply',
+    scannedRows: rows.length,
+    exactDuplicateGroups: groups.length,
+    effectiveDuplicateRows: redundantRows.length,
+    invalidRows: invalidRows.length,
+    spamRows: spamRows.length,
+    purgeSpam,
+    keyRewriteCandidates,
+    deletedRows,
+    updatedRows,
+  }, null, 2))
 }
 
 main().catch((error) => {

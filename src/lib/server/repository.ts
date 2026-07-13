@@ -10,7 +10,11 @@ import {
   buildSearchableBbsRecords,
   extractNormalizedBbsPostsFromText,
   filterPostsWithinHours,
+  isExplicitlyEmptyBbsText,
+  isLikelyCustomerNormalizedPost,
+  isSuspiciousNormalizedPostDrop,
   isStructurallyValidCustomerNormalizedPost,
+  normalizedBbsParseStatus,
   normalizedBbsPostIdentityMaterial,
   scoreEvents,
   searchExactBbsTerms,
@@ -883,24 +887,75 @@ async function saveNormalizedBbsPostsFromText(
   extractedText: string,
   observedAt: string,
 ) {
+  const { data: previousRows, error: previousError } = await supabase
+    .from('bbs_normalized_posts')
+    .select('*')
+    .eq('source_id', source.id)
+    .lt('observed_at', observedAt)
+    .order('observed_at', { ascending: false })
+    .limit(500)
+  if (previousError && !isMissingRelationError(previousError)) throw new RepositoryError(previousError.message, 400)
+  const latestPreviousObservedAt = previousRows?.[0]?.observed_at ? new Date(String(previousRows[0].observed_at)).getTime() : 0
+  const previousBatchRows = latestPreviousObservedAt
+    ? (previousRows ?? []).filter((row) => Math.abs(new Date(String(row.observed_at)).getTime() - latestPreviousObservedAt) <= 2 * 60_000)
+    : []
+  const previousValidCount = previousBatchRows
+    .map(toBbsNormalizedPost)
+    .filter(isStructurallyValidCustomerNormalizedPost).length
   const posts = extractNormalizedBbsPostsFromText(extractedText, observedAt)
-  if (!posts.length) return []
-
-  const rows = posts
+  const explicitlyEmpty = isExplicitlyEmptyBbsText(extractedText)
+  const customerCandidates = explicitlyEmpty
+    ? []
+    : posts.filter((post) => isLikelyCustomerNormalizedPost({ ...post, storeId: source.storeId }))
+  const rows = customerCandidates
     .filter((post) => isStructurallyValidCustomerNormalizedPost({ ...post, storeId: source.storeId }))
     .map((post) => toBbsNormalizedPostRow({ source, observedAt, post }))
-  if (!rows.length) return []
+  if (!rows.length) {
+    let hasPreviousPosts = false
+    if (!customerCandidates.length && !explicitlyEmpty) {
+      const { count, error: historyError } = await supabase
+        .from('bbs_normalized_posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('source_id', source.id)
+      if (historyError && !isMissingRelationError(historyError)) throw new RepositoryError(historyError.message, 400)
+      hasPreviousPosts = (count ?? 0) > 0
+    }
+    return {
+      normalizedPosts: [] as BbsNormalizedPost[],
+      extractedCount: customerCandidates.length,
+      validCount: 0,
+      hasPreviousPosts,
+      explicitlyEmpty,
+      previousValidCount,
+    }
+  }
   const { data, error } = await supabase
     .from('bbs_normalized_posts')
     .upsert(rows, { onConflict: 'store_id,content_key' })
     .select('*')
 
   if (error) {
-    if (isMissingRelationError(error)) return []
+    if (isMissingRelationError(error)) {
+      return {
+        normalizedPosts: [] as BbsNormalizedPost[],
+        extractedCount: customerCandidates.length,
+        validCount: rows.length,
+        hasPreviousPosts: false,
+        explicitlyEmpty,
+        previousValidCount,
+      }
+    }
     throw new RepositoryError(error.message, 400)
   }
 
-  return (data ?? []).map(toBbsNormalizedPost)
+  return {
+    normalizedPosts: (data ?? []).map(toBbsNormalizedPost),
+    extractedCount: customerCandidates.length,
+    validCount: rows.length,
+    hasPreviousPosts: false,
+    explicitlyEmpty,
+    previousValidCount,
+  }
 }
 
 async function savePostWithAccess(access: Extract<WriteAccess, { mode: 'database' }>, input: Partial<PostRecord>) {
@@ -1478,18 +1533,47 @@ async function crawlSourceRow(
   const candidatePost = scrapeResultToPost(result, source.storeId)
   const post = candidatePost ? await savePostRow(supabase, candidatePost) : null
   const snapshot = result.status === 'ok' ? await buildBbsSnapshot(source, result, options.browserSession, options) : null
-  const normalizedPosts =
+  const normalizedSave =
     result.status === 'ok'
       ? await saveNormalizedBbsPostsFromText(supabase, source, snapshot?.extractedText ?? result.extractedText, result.fetchedAt)
-      : []
+      : {
+          normalizedPosts: [] as BbsNormalizedPost[],
+          extractedCount: 0,
+          validCount: 0,
+          hasPreviousPosts: false,
+          explicitlyEmpty: false,
+          previousValidCount: 0,
+        }
+  const parseStatus = normalizedBbsParseStatus(
+    normalizedSave.extractedCount,
+    normalizedSave.validCount,
+    normalizedSave.hasPreviousPosts,
+  )
+  const parserFailed = result.status === 'ok' && parseStatus === 'failed'
+  const parseDropDetected =
+    result.status === 'ok' &&
+    !normalizedSave.explicitlyEmpty &&
+    isSuspiciousNormalizedPostDrop(normalizedSave.validCount, normalizedSave.previousValidCount, {
+      minimumPreviousCount: Number(process.env.CRAWL_PARSE_DROP_MIN_PREVIOUS) || 10,
+      maximumRatio: Number(process.env.CRAWL_PARSE_DROP_MAX_RATIO) || 0.35,
+    })
+  const effectiveStatus = parserFailed || parseDropDetected ? 'failed' : result.status
+  const effectiveMessage = parseDropDetected
+    ? `解析件数が直前の${normalizedSave.previousValidCount}件から${normalizedSave.validCount}件へ急減したため、データ構造の変更を検知しました。`
+    : parserFailed
+    ? normalizedSave.extractedCount > 0
+      ? `投稿候補${normalizedSave.extractedCount}件中${normalizedSave.validCount}件しか顧客投稿として構造化できませんでした。`
+      : '直前まで投稿を解析できていましたが、今回のHTMLから投稿を構造化できませんでした。'
+    : result.message ?? result.title
+  const normalizedPosts = normalizedSave.normalizedPosts
   const fetchedAt = result.fetchedAt
 
   await supabase
     .from('bbs_sources')
     .update({
       last_fetched_at: fetchedAt,
-      last_status: result.status,
-      last_message: result.message ?? result.title ?? null,
+      last_status: effectiveStatus,
+      last_message: effectiveMessage ?? null,
     })
     .eq('id', source.id)
 
@@ -1499,8 +1583,8 @@ async function crawlSourceRow(
       source_id: source.id,
       store_id: source.storeId,
       url: source.url,
-      status: result.status,
-      message: result.message ?? result.title ?? null,
+      status: effectiveStatus,
+      message: effectiveMessage ?? null,
       fetched_at: fetchedAt,
       post_id: post?.id ?? null,
     })
@@ -1515,8 +1599,8 @@ async function crawlSourceRow(
     source: {
       ...source,
       lastFetchedAt: fetchedAt,
-      lastStatus: result.status,
-      lastMessage: result.message ?? result.title,
+      lastStatus: effectiveStatus,
+      lastMessage: effectiveMessage,
     },
     post,
     normalizedPosts,
@@ -1525,8 +1609,8 @@ async function crawlSourceRow(
       sourceId: source.id,
       storeId: source.storeId,
       url: source.url,
-      status: result.status,
-      message: result.message ?? result.title,
+      status: effectiveStatus,
+      message: effectiveMessage,
       fetchedAt,
       postId: post?.id,
     },

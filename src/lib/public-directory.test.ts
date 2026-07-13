@@ -28,6 +28,8 @@ function storeSummary(input: {
     sessionLabel: 'test',
     womenRatio: input.womenRatio ?? null,
     femalePostCount: input.femalePostCount,
+    genderSampleCount: input.femalePostCount,
+    genderCoverage: input.recentPostCount ? Math.round((input.femalePostCount / input.recentPostCount) * 100) : 0,
     recentPostCount: input.recentPostCount ?? 0,
     recentThreeHourCount: input.recentThreeHourCount ?? 0,
     todayEventCount: input.todayEventCount ?? 0,
