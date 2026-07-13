@@ -1,7 +1,7 @@
 import { revalidateTag } from 'next/cache'
 import { jsonError } from '@/lib/env'
 import { PUBLIC_DIRECTORY_CACHE_TAG } from '@/lib/public-directory-cache'
-import { getCronAuthorizationError } from '@/lib/server/cron-auth'
+import { cronCrawlHttpStatus, getCronAuthorizationError } from '@/lib/server/cron-auth'
 import { crawlDueBbsSourcesForCron, RepositoryError } from '@/lib/server/repository'
 import type { CronCrawlOptions } from '@/lib/server/repository'
 
@@ -115,7 +115,7 @@ export async function GET(request: Request) {
     const result = await crawlDueBbsSourcesForCron(getCronCrawlOptions(request))
     if (result.crawled > 0) revalidateTag(PUBLIC_DIRECTORY_CACHE_TAG, { expire: 0 })
     const response = compactCronCrawlResult(result, Date.now() - startedAt)
-    return Response.json(response, { status: response.failureCount > 0 ? 502 : 200 })
+    return Response.json(response, { status: cronCrawlHttpStatus(response.failureCount) })
   } catch (error) {
     if (error instanceof RepositoryError && error.status === 503) {
       return Response.json({ mode: 'demo', checked: 0, crawled: 0, message: error.message })
