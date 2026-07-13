@@ -1,6 +1,7 @@
 import { revalidateTag } from 'next/cache'
 import { jsonError } from '@/lib/env'
 import { PUBLIC_DIRECTORY_CACHE_TAG } from '@/lib/public-directory-cache'
+import { getCronAuthorizationError } from '@/lib/server/cron-auth'
 import { crawlDueBbsSourcesForCron, RepositoryError } from '@/lib/server/repository'
 import type { CronCrawlOptions } from '@/lib/server/repository'
 
@@ -8,18 +9,6 @@ export const runtime = 'nodejs'
 export const maxDuration = 30
 
 type CronCrawlResult = Awaited<ReturnType<typeof crawlDueBbsSourcesForCron>>
-
-function isProductionRuntime() {
-  return process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL_ENV || process.env.VERCEL)
-}
-
-function getCronAuthorizationError(request: Request) {
-  const secret = process.env.CRON_SECRET?.trim()
-  if (!secret) {
-    return isProductionRuntime() ? '本番環境でBBS巡回を実行するにはCRON_SECRETの設定が必要です。' : null
-  }
-  return request.headers.get('authorization') === `Bearer ${secret}` ? null : 'BBS巡回の認証に失敗しました。'
-}
 
 function getCronCrawlOptions(request: Request): CronCrawlOptions {
   const url = new URL(request.url)
@@ -118,7 +107,7 @@ function parseSourceIds(value: string | null) {
 }
 
 export async function GET(request: Request) {
-  const authorizationError = getCronAuthorizationError(request)
+  const authorizationError = getCronAuthorizationError(request, 'BBS巡回')
   if (authorizationError) return jsonError(authorizationError, authorizationError.includes('CRON_SECRET') ? 503 : 401)
 
   try {

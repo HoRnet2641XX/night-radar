@@ -47,7 +47,7 @@ import { buildBbsSnapshot, createBrowserSnapshotSession } from './bbs-snapshot'
 import type { BrowserSnapshotSession } from './bbs-snapshot'
 import { scrapePublicPage, scrapeResultToPost } from './scrape'
 import { getServiceSetupStatus } from './setup-status'
-import { dispatchNotification } from './notifications'
+import { dispatchNotification, dispatchOperationalAlert } from './notifications'
 
 type SupabaseServerClient = NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>
 type SupabaseAdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>
@@ -1411,15 +1411,44 @@ async function dispatchCrawlFailureNotifications(
   supabase: DataClient,
   results: Array<{ source: BbsSource; run: CrawlRun }>,
 ) {
-  if (process.env.CRAWL_FAILURE_NOTIFICATIONS !== '1') return []
+  if (process.env.CRAWL_FAILURE_NOTIFICATIONS === '0') return []
 
   const failures = results.filter(({ run }) => run.status === 'blocked' || run.status === 'failed')
   if (!failures.length) return []
 
-  const { data: preferences, error } = await supabase.from('notification_preferences').select('*')
-  if (error || !preferences?.length) return []
-
   const dispatchedJobs: NotificationJob[] = []
+  const failureSummary = failures
+    .slice(0, 8)
+    .map(({ source, run }) => `${source.label} (${source.storeId}): ${run.status} / ${run.message ?? '詳細なし'}`)
+    .join('\n')
+  const operationalJob: NotificationJob = {
+    id: `crawl-failure-operator-${failures.map(({ run }) => run.id).join('-')}`,
+    title: `BBS巡回で${failures.length}件の異常を検知`,
+    body: failureSummary,
+    channel: 'webhook',
+    audience: 'free',
+    scheduledFor: new Date().toISOString(),
+    status: 'queued',
+  }
+  const operationalResult = await dispatchOperationalAlert({
+    title: operationalJob.title,
+    body: operationalJob.body,
+    severity: 'error',
+    details: {
+      failureCount: failures.length,
+      detectedAt: operationalJob.scheduledFor,
+    },
+  })
+  if (operationalResult.status !== 'unconfigured') {
+    dispatchedJobs.push({
+      ...operationalJob,
+      status: operationalResult.status === 'sent' ? 'sent' : 'failed',
+    })
+  }
+
+  const { data: preferences, error } = await supabase.from('notification_preferences').select('*')
+  if (error || !preferences?.length) return dispatchedJobs
+
   for (const preferenceRow of preferences) {
     const preference = toNotificationPreference(preferenceRow)
     const userId = stringField(preferenceRow, 'user_id')

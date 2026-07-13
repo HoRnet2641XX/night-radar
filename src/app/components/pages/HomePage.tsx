@@ -30,12 +30,18 @@ function femaleMetricLabel(bar: Bar) {
   return `${bar.femaleCount}件`;
 }
 
+function genderEvidenceLabel(bar: Bar) {
+  if (bar.genderSampleCount === 0) return '性別の記載なし';
+  return `判定対象${bar.genderSampleCount}件中、女性${bar.femaleCount}件${bar.genderStatus === 'partial' ? '（参考）' : ''}`;
+}
+
 export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void; onNavigate: (tab: 'search' | 'schedule' | 'account') => void }) {
   const { bars, events, meta } = useNightRadarData();
   const ticker = useNightRadarTicker();
   const [filter, setFilter] = useState('すべて');
   const visibleBars = bars.filter((bar) => matchesFilter(bar, filter));
   const totalFemale = bars.reduce((sum, bar) => sum + bar.femaleCount, 0);
+  const totalGenderSamples = bars.reduce((sum, bar) => sum + bar.genderSampleCount, 0);
   const currentMonthEventCount = events.filter((event) => event.date.startsWith(meta.currentMonth)).length;
   const activeRecentStores = bars.filter((bar) => bar.recentThreeHourCount > 0).length;
   const postMax = Math.max(1, ...bars.map((bar) => bar.postCount));
@@ -89,7 +95,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
           <div className="grid w-full grid-cols-3 gap-2 pt-2 text-left">
             <div><span>当日投稿</span><strong>{topBar?.postCount ?? 0}件</strong></div>
             <div><span>直近3時間</span><strong>{topBar?.recentThreeHourCount ?? 0}件</strong></div>
-            <div><span>女性判定</span><strong>{topBar ? femaleMetricLabel(topBar) : '確認中'}</strong></div>
+            <div><span>{topBar ? `判定対象 ${topBar.genderSampleCount}件` : '女性判定'}</span><strong>{topBar ? `女性 ${femaleMetricLabel(topBar)}` : '確認中'}</strong></div>
           </div>
           <button
             className="nr-accent-btn mt-2 flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px]"
@@ -109,7 +115,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
           {[
             { label: '当日顧客投稿', value: meta.postCount, suffix: '件', hint: '店側投稿を除外' },
             { label: '直近3時間', value: meta.recentThreeHourCount, suffix: '件', hint: 'BBS投稿' },
-            { label: '女性書き込み', value: totalFemale, suffix: '件', hint: '性別判定済み' },
+            { label: '女性書き込み', value: totalFemale, suffix: '件', hint: `判定対象 ${totalGenderSamples}件` },
             { label: '今日の予定', value: meta.todayEventCount, suffix: '件', hint: `${meta.eventCoverageStoreCount}店舗を確認` },
           ].map((k, i) => (
             <StaggerItem key={i}>
@@ -165,7 +171,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
                       </div>
                     </div>
                     <MetricRing value={b.postCount} max={postMax} label="当日総書き込み" valueSuffix="件" color="var(--nr-accent)" />
-                    <MetricRing value={b.femaleCount} max={femaleMax} label="女性書き込み" displayValue={femaleMetricLabel(b)} color="var(--nr-accent-2)" />
+                    <MetricRing value={b.femaleCount} max={femaleMax} label={b.genderSampleCount ? `判定${b.genderSampleCount}件中の女性` : '性別記載なし'} displayValue={femaleMetricLabel(b)} color="var(--nr-accent-2)" />
                     <MetricRing value={b.recentThreeHourCount} max={recentMax} label="直近3時間" color="var(--nr-accent-soft)" />
                     <div className="flex flex-col gap-2 items-start sm:items-end sm:col-span-2 xl:col-span-1">
                       <div className="flex items-center gap-1.5 nr-mono text-[10px]" style={{ color: 'var(--nr-text-mid)' }}>
@@ -176,6 +182,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
                         <Sparkles size={11} color="var(--nr-accent)" className="mt-0.5 shrink-0" />
                         <p className="text-[12px] sm:text-right leading-relaxed" style={{ color: 'var(--nr-text-mid)' }}>{b.reason}</p>
                       </div>
+                      <span className="nr-mono text-[10px] sm:text-right" style={{ color: 'var(--nr-text-low)' }}>{genderEvidenceLabel(b)}</span>
                     </div>
                   </div>
                 </GlassCard>

@@ -263,7 +263,7 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
                     <div className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--nr-text-low)' }}><MapPin size={10} /> {bar.area}</div>
                   </div>
                   <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>当日総書き込み</span><br /><span className="nr-mono text-[14px]">{bar.postCount}件</span></div>
-                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>女性書き込み</span><br /><span className="nr-mono text-[14px]">{femaleValue(bar)}</span></div>
+                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{bar.genderSampleCount ? `判定対象${bar.genderSampleCount}件中` : '性別記載なし'}</span><br /><span className="nr-mono text-[14px]">女性 {femaleValue(bar)}</span></div>
                   <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>今日の予定</span><br /><span className="nr-mono text-[14px]">{bar.eventStatus === 'unverified' ? '未確認' : `${bar.eventCount}件`}</span></div>
                   <span className="nr-chip"><Activity size={10} />店舗詳細</span>
                 </button>

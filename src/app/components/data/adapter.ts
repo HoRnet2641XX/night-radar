@@ -1,4 +1,5 @@
 import { formatBarName, formatStoreArea, formatStoreSessionLabel } from '@/lib/display'
+import { officialEventCoverageStatus, type OfficialEventCoverageStatus } from '@/lib/official-event-coverage'
 import { resolvedStoreMapUrl, resolvedStoreOfficialUrl } from '@/lib/store-catalog'
 import {
   decisionDateKeyInJapan,
@@ -61,7 +62,7 @@ function toBar(
   insight: StoreDailyInsight,
   todayEvents: EventInput[] = [],
   scales: BarScales,
-  hasCurrentMonthEventCoverage = false,
+  monthEventCoverage: OfficialEventCoverageStatus = 'unverified',
 ): Bar {
   const point = insight.point
   const store = point.store
@@ -73,7 +74,7 @@ function toBar(
   const firstVisitCount = storeActivity.firstVisitCount
   const groupCount = storeActivity.groupVisitCount
   const eventCount = insight.todayEventCount
-  const eventStatus = eventCount > 0 ? 'scheduled' : hasCurrentMonthEventCoverage ? 'none' : 'unverified'
+  const eventStatus = eventCount > 0 ? 'scheduled' : monthEventCoverage === 'unverified' ? 'unverified' : 'none'
   const postCount = storeActivity.recentPostCount
   const hourly = {
     hourly: insight.hourlyCounts,
@@ -281,8 +282,11 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
   }).format(validDate(generatedAt) ?? new Date())
   const currentMonth = todayKey.slice(0, 7)
   const sourceEvents = calendarEvents.length ? calendarEvents : state.events
-  const eventCoverageStoreIds = new Set(
-    sourceEvents.filter((event) => event.date.startsWith(currentMonth)).map((event) => event.storeId),
+  const eventCoverageByStore = new Map(
+    state.stores.map((store) => [
+      store.id,
+      officialEventCoverageStatus(store.id, currentMonth, sourceEvents),
+    ]),
   )
   const scales: BarScales = {
     posts: Math.max(1, ...state.dailyInsights.map((insight) => insight.activity.recentPostCount)),
@@ -294,7 +298,7 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
       insight,
       sourceEvents.filter((event) => event.storeId === insight.store.id && event.date === todayKey),
       scales,
-      eventCoverageStoreIds.has(insight.store.id),
+      eventCoverageByStore.get(insight.store.id),
     ))
     .toSorted((left, right) => left.rank - right.rank)
   const events = sourceEvents
@@ -330,8 +334,8 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
       recentThreeHourCount,
       eventCount: events.length,
       todayEventCount,
-      eventCoverageStoreCount: eventCoverageStoreIds.size,
-      eventUnverifiedStoreCount: Math.max(0, state.stores.length - eventCoverageStoreIds.size),
+      eventCoverageStoreCount: [...eventCoverageByStore.values()].filter((status) => status !== 'unverified').length,
+      eventUnverifiedStoreCount: [...eventCoverageByStore.values()].filter((status) => status === 'unverified').length,
       highConfidenceCount: bars.filter((bar) => bar.dataConfidence >= 80).length,
       normalizedCoverageAverage,
       timestampCoverageAverage,

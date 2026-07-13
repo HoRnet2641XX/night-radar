@@ -32,6 +32,11 @@ function femaleMetricLabel(bar: Bar) {
   return `${bar.femaleCount}件`;
 }
 
+function genderEvidenceLabel(bar: Bar) {
+  if (bar.genderSampleCount === 0) return '性別の記載なし';
+  return `判定対象${bar.genderSampleCount}件中、女性${bar.femaleCount}件${bar.genderStatus === 'partial' ? '（参考）' : ''}`;
+}
+
 export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) => void }) {
   const { bars, events, meta } = useNightRadarData();
   const { candidateStoreIds, toggleCandidateStore } = useLocalPreferences();
@@ -99,7 +104,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           >
             <span className="flex items-center gap-1"><MapPin size={11} /> {bar.area}</span>
             <span className="flex items-center gap-1 nr-mono"><Clock size={11} /> {bar.businessWindowLabel} · 最多 {bar.peakHour}</span>
-            <span className="flex items-center gap-1 nr-mono"><Users size={11} /> 女性 {femaleMetricLabel(bar)} · 総投稿 {bar.postCount}件 · 3h {bar.recentThreeHourCount}件</span>
+            <span className="flex items-center gap-1 nr-mono"><Users size={11} /> {genderEvidenceLabel(bar)} · 総投稿 {bar.postCount}件 · 3h {bar.recentThreeHourCount}件</span>
           </motion.div>
           <motion.div className="flex flex-wrap gap-1.5 mt-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }}
@@ -149,7 +154,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
             </div>
           </div>
           <div className="nr-mono text-[11px] flex items-center gap-1 md:max-w-[280px]" style={{ color: 'var(--nr-text-mid)' }}>
-            <Info size={11} /> 時刻解析 {bar.timestampCoverage}% · 解析保留 {bar.excludedUntimestampedCount}件は順位に不使用 · 性別判定 {bar.genderCoverage}%
+            <Info size={11} /> 時刻解析 {bar.timestampCoverage}% · 解析保留 {bar.excludedUntimestampedCount}件は順位に不使用 · 性別判定 {bar.genderSampleCount}/{bar.postCount}件（{bar.genderCoverage}%）
           </div>
         </GlassCard>
       </motion.div>
@@ -227,7 +232,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
                         <div className="h-[3px] overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
                           <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, val)}%` }} transition={{ duration: 1.2, ease, delay: 0.4 }} style={{ height: '100%', background: m.color }} />
                         </div>
-                        <span className="text-[10px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>{m.hint}</span>
+                        <span className="text-[10px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>{m.k === 'drinks' ? genderEvidenceLabel(bar) : m.hint}</span>
                       </GlassCard>
                     </StaggerItem>
                   );
@@ -268,7 +273,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
               {others.map((item, index) => (
                 <button key={item.id} type="button" className="nr-compare-option" data-active={comparedBar?.id === item.id} onClick={() => setCompareId(item.id)}>
                   <span className="nr-compare-rank">{index + 1}</span>
-                  <span className="min-w-0 flex-1"><strong>{item.name}</strong><small>総投稿 {item.postCount}件 · 判定 {item.genderCoverage}%</small></span>
+                  <span className="min-w-0 flex-1"><strong>{item.name}</strong><small>総投稿 {item.postCount}件 · 判定対象 {item.genderSampleCount}件</small></span>
                   <span className="text-right"><strong>{femaleMetricLabel(item)}</strong><small>女性</small></span>
                 </button>
               ))}
@@ -354,7 +359,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
               {others.map((item, index) => (
                 <button key={item.id} type="button" className="nr-compare-option" data-active={comparedBar?.id === item.id} onClick={() => { setCompareId(item.id); setCompareModalOpen(false); }}>
                   <span className="nr-compare-rank">{index + 1}</span>
-                  <span className="min-w-0 flex-1"><strong>{item.name}</strong><small>総投稿 {item.postCount}件 · 性別判定 {item.genderCoverage}%</small></span>
+                  <span className="min-w-0 flex-1"><strong>{item.name}</strong><small>総投稿 {item.postCount}件 · 判定対象 {item.genderSampleCount}件</small></span>
                   <span className="text-right"><strong>{femaleMetricLabel(item)}</strong><small>女性</small></span>
                 </button>
               ))}

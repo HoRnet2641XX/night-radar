@@ -45,8 +45,8 @@ export function PublicLikesClient({ summaries }: { summaries: PublicStoreSummary
               <dd>{summary.lastUpdatedLabel}</dd>
             </div>
             <div>
-              <dt>女性率</dt>
-              <dd>{summary.womenRatio == null ? '観測中' : `${summary.womenRatio}%`}</dd>
+              <dt>女性書き込み</dt>
+              <dd>{summary.womenRatio == null ? '観測中' : `${summary.genderSampleCount}件中 ${summary.femalePostCount}件`}</dd>
             </div>
             <div>
               <dt>予定</dt>

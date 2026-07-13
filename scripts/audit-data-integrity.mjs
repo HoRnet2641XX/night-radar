@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { readFileSync } from 'node:fs'
 import { buildDailyStoreDataset, DAILY_INSIGHT_CONTRACT_VERSION } from '../src/lib/daily-store-insights.ts'
 import { mergeOfficialEvents } from '../src/lib/official-events.ts'
 import {
@@ -13,6 +14,16 @@ import { resolvedStoreMapUrl, resolvedStoreMetadata, resolvedStoreOfficialUrl } 
 
 const PAGE_SIZE = 1000
 const RECENT_HOURS = 48
+
+function loadOfficialEventCoverage() {
+  try {
+    return JSON.parse(
+      readFileSync(new URL('../src/lib/official-event-coverage.generated.json', import.meta.url), 'utf8'),
+    )
+  } catch {
+    return []
+  }
+}
 
 function createDatabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -187,7 +198,7 @@ async function main() {
   const [storeRows, sourceRows, normalizedRows, snapshotRows, eventRows, crawlRows] = await Promise.all([
     collectRows(() => db.from('stores').select('*').order('created_at', { ascending: true }).order('id', { ascending: true })),
     collectRows(() => db.from('bbs_sources').select('*').eq('active', true).order('created_at', { ascending: true }).order('id', { ascending: true })),
-    collectRows(() => db.from('bbs_normalized_posts').select('*').gte('posted_at', recentThreshold).lte('posted_at', referenceAt).order('posted_at', { ascending: false }).order('id', { ascending: false })),
+    collectRows(() => db.from('bbs_normalized_posts').select('*').gte('observed_at', recentThreshold).lte('observed_at', referenceAt).order('observed_at', { ascending: false }).order('id', { ascending: false })),
     collectRows(() => db.from('bbs_snapshots').select('id,source_id,store_id,url,extracted_text,metrics,radar_score,captured_at').gte('captured_at', recentThreshold).order('captured_at', { ascending: false }).order('id', { ascending: false })),
     collectRows(() => db.from('events').select('*').gte('date_label', `${monthKey}-01`).lt('date_label', `${afterNextMonth}-01`).order('date_label', { ascending: true }).order('id', { ascending: true })),
     collectRows(() => db.from('crawl_runs').select('id,source_id,store_id,status,message,fetched_at').gte('fetched_at', recentThreshold).order('fetched_at', { ascending: false }).order('id', { ascending: false })),
@@ -316,8 +327,36 @@ async function main() {
   const orphanEventCount = eventRows.filter((row) => !storeIds.has(row.store_id)).length
   const eventSourceMissingCount = eventRows.filter((row) => !row.source_url).length
   const currentMonthEvents = events.filter((event) => event.date.startsWith(monthKey))
-  const eventCoverageStoreCount = new Set(currentMonthEvents.map((event) => event.storeId)).size
-  const eventUnverifiedStoreCount = Math.max(0, stores.length - eventCoverageStoreCount)
+  const eventStores = new Set(currentMonthEvents.map((event) => event.storeId))
+  const eventCoverageByStore = new Map(
+    loadOfficialEventCoverage()
+      .filter((entry) => entry.month === monthKey && storeIds.has(entry.storeId))
+      .map((entry) => [entry.storeId, entry]),
+  )
+  for (const storeId of eventStores) {
+    if (!eventCoverageByStore.has(storeId)) {
+      eventCoverageByStore.set(storeId, {
+        storeId,
+        month: monthKey,
+        status: 'scheduled',
+        eventCount: currentMonthEvents.filter((event) => event.storeId === storeId).length,
+        sourceUrls: [],
+        checkedAt: referenceAt,
+        note: 'DBの当月イベントから確認',
+      })
+    }
+  }
+  const eventScheduledStoreCount = stores.filter(
+    (store) => eventCoverageByStore.get(store.id)?.status === 'scheduled',
+  ).length
+  const eventVerifiedNoScheduleStoreCount = stores.filter(
+    (store) => eventCoverageByStore.get(store.id)?.status === 'none',
+  ).length
+  const eventUnverifiedStoreIds = stores
+    .filter((store) => !eventCoverageByStore.has(store.id) || eventCoverageByStore.get(store.id)?.status === 'unverified')
+    .map((store) => store.id)
+  const eventCoverageStoreCount = eventScheduledStoreCount + eventVerifiedNoScheduleStoreCount
+  const eventUnverifiedStoreCount = eventUnverifiedStoreIds.length
   const eventWeekdayMismatchCount = currentMonthEvents.filter(eventTitleWeekdayMismatch).length
   const namedPosts = normalizedRows.filter((row) => row.author_name && row.author_name !== '記載なし').length
   const genderedPosts = normalizedRows.filter((row) => row.author_gender && row.author_gender !== '記載なし').length
@@ -375,7 +414,10 @@ async function main() {
       orphanEventCount,
       eventSourceMissingCount,
       eventCoverageStoreCount,
+      eventScheduledStoreCount,
+      eventVerifiedNoScheduleStoreCount,
       eventUnverifiedStoreCount,
+      eventUnverifiedStoreIds,
       eventWeekdayMismatchCount,
     },
     metadata: {

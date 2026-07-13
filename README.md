@@ -88,15 +88,17 @@ Set `CRON_SECRET` to protect `/api/cron/crawl`. In production, the cron route re
 
 BBS sources accept a 5-minute minimum crawl interval. The app route honors that interval, but your scheduler must call `/api/cron/crawl` every 5 minutes for true 5-minute operation. Vercel Hobby plans reject high-frequency cron schedules, so this project uses an external cron service by default. Use Vercel Pro if you want to re-add Vercel Cron. If the runtime cannot launch Playwright, set `DISABLE_BROWSER_SCREENSHOTS=true`; radar metrics still save from text snapshots.
 
+Call `/api/cron/audit` once a day with the same bearer token. It checks stale or failed sources, malformed/spam/duplicate posts, timestamp parsing, event consistency, and location guidance. Expected unknowns such as unverified events or unreported gender remain warnings; the route returns `502` only for actionable failures.
+
 Catalog writes are operator-only. Logged-in users can read stores, events, posts, BBS sources, crawl runs, and snapshots, but cannot write or delete them through the app. Use SQL, seed files, or a future admin-only dashboard for catalog updates.
 
 ### Notifications
 
-Set `RESEND_API_KEY` for email delivery or `NOTIFICATION_WEBHOOK_URL` for webhook delivery. Without either, email/webhook jobs are marked `dry_run`; in-app jobs are marked `sent`.
+Set `RESEND_API_KEY` for email delivery or `NOTIFICATION_WEBHOOK_URL` for user webhook delivery. Set `OPERATION_ALERT_WEBHOOK_URL` to a Slack Incoming Webhook, Discord Webhook, or a JSON webhook for operator alerts. Without an operator webhook, the crawl and audit routes still return `502`, so the external cron service can send its own failure email.
 
 Users can save notification preferences in the app. A saved user webhook URL is used before the global `NOTIFICATION_WEBHOOK_URL`.
 
-Cron crawls also create notification jobs for configured users when a BBS source returns `blocked` or `failed`.
+Cron crawls send one operator alert and also create notification jobs for configured users when a BBS source returns `blocked` or `failed`, including parser-count drops.
 
 ### Plan limits
 

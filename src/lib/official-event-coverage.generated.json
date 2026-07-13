@@ -1,0 +1,305 @@
+[
+  {
+    "storeId": "agreeable",
+    "storeName": "AgreeAble",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 61,
+    "sourceUrls": [
+      "https://agreeable.bar/calendar/?month=07&year_data=2026"
+    ],
+    "checkedAt": "2026-07-13T18:06:56.283Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "arabesque",
+    "storeName": "ARABESQUE",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 17,
+    "sourceUrls": [
+      "https://arabesque.jpn.com/event/"
+    ],
+    "checkedAt": "2026-07-13T18:06:56.372Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "b-dash",
+    "storeName": "B-DASH",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 62,
+    "sourceUrls": [
+      "https://b-dash.bar/calendar/?month=07&year_data=2026"
+    ],
+    "checkedAt": "2026-07-13T18:06:56.408Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "bar-canelo",
+    "storeName": "BAR CANELO",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 46,
+    "sourceUrls": [
+      "https://barcanelo.com/event/202607/"
+    ],
+    "checkedAt": "2026-07-13T18:06:56.447Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "bar-face",
+    "storeName": "BAR FACE",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 47,
+    "sourceUrls": [
+      "https://bar-face.jp/event/202607/"
+    ],
+    "checkedAt": "2026-07-13T18:06:56.475Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "bar-rusk",
+    "storeName": "BAR RUSK",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 27,
+    "sourceUrls": [
+      "https://bar-rusk.com/event/202607/"
+    ],
+    "checkedAt": "2026-07-13T18:06:56.500Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "bar-spear",
+    "storeName": "BAR SPEAR",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 64,
+    "sourceUrls": [
+      "https://www.barspear.com/event/202607/"
+    ],
+    "checkedAt": "2026-07-13T18:06:56.532Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "bar440",
+    "storeName": "BAR440",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 2,
+    "sourceUrls": [
+      "https://bar440.jimdofree.com/%E3%82%A4%E3%83%99%E3%83%B3%E3%83%88%E3%82%AB%E3%83%AC%E3%83%B3%E3%83%80%E3%83%BC/"
+    ],
+    "checkedAt": "2026-07-13T18:06:56.559Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "campo-bar",
+    "storeName": "CAMPO BAR",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 25,
+    "sourceUrls": [
+      "https://campo-bar.com/event/202607/"
+    ],
+    "checkedAt": "2026-07-13T18:06:56.566Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "club-scarlet-tokyo",
+    "storeName": "CLUB SCARLET TOKYO",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 2,
+    "sourceUrls": [
+      "https://scarlet.tokyo/"
+    ],
+    "checkedAt": "2026-07-13T18:06:56.585Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "club-zeus",
+    "storeName": "CLUB ZEUS",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 10,
+    "sourceUrls": [
+      "http://sm-zeus.com/calendar/",
+      "http://sm-zeus.com/event/"
+    ],
+    "checkedAt": "2026-07-13T18:06:56.597Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "collabo",
+    "storeName": "collabo",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 8,
+    "sourceUrls": [
+      "https://www.collabo7.com/p/11/"
+    ],
+    "checkedAt": "2026-07-13T18:06:56.622Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "colors-bar",
+    "storeName": "COLORS BAR",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 2,
+    "sourceUrls": [
+      "https://t-colors.net/event/list?date=2026-07-01"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.357Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "communicationbar-sango",
+    "storeName": "Communicationbar 珊瑚",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 4,
+    "sourceUrls": [
+      "https://bar-sango.com/events/"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.364Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "filt-shibuya",
+    "storeName": "FILT SHIBUYA",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 19,
+    "sourceUrls": [
+      "https://filtshibuya.com/event/"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.391Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "harnes-tokyo",
+    "storeName": "HARNES TOKYO",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 53,
+    "sourceUrls": [
+      "https://harnes.tokyo/event-calendar/"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.423Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "honey-trap",
+    "storeName": "HONEY TRAP",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 35,
+    "sourceUrls": [
+      "https://www.bar-honeytrap.com/event/202607/"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.457Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "land-land",
+    "storeName": "land land",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 1,
+    "sourceUrls": [
+      "https://land2021.com/category/event/"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.517Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "mille-feuille",
+    "storeName": "Mille-feuille",
+    "month": "2026-07",
+    "status": "none",
+    "eventCount": 0,
+    "sourceUrls": [
+      "https://www.millefeuillesby.com/%E3%82%A4%E3%83%99%E3%83%B3%E3%83%88%E3%82%B9%E3%82%B1%E3%82%B8%E3%83%A5%E3%83%BC%E3%83%AB%E3%82%AB%E3%83%AC%E3%83%B3%E3%83%80%E3%83%BC"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.522Z",
+    "note": "公式ページに「8月より開催予定」と明記"
+  },
+  {
+    "storeId": "neo",
+    "storeName": "Neo",
+    "month": "2026-07",
+    "status": "unverified",
+    "eventCount": 0,
+    "sourceUrls": [
+      "https://neo-nk.com/"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.533Z",
+    "note": "公式サイトは最新情報を公式Xで確認するよう案内。日付付きの当月予定は自動確認できず"
+  },
+  {
+    "storeId": "ogikubo-himitsu-club",
+    "storeName": "荻窪秘密倶楽部",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 56,
+    "sourceUrls": [
+      "https://ogikubo0620.com/events/%e6%9c%88/2026-07/"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.538Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "papillon",
+    "storeName": "Papillon",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 10,
+    "sourceUrls": [
+      "https://bar-papillon.net/event?date=2026-07-01"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.542Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "retreat-bar",
+    "storeName": "RETREAT BAR",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 60,
+    "sourceUrls": [
+      "https://retreatbar.jp/event/202607/"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.549Z",
+    "note": "公式ページから当月予定を抽出"
+  },
+  {
+    "storeId": "secret-bar-silent-moon",
+    "storeName": "Secret Bar Silent Moon",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 9,
+    "sourceUrls": [
+      "https://www.silent-moon.net/jp/event.php",
+      "https://www.silent-moon.net/bbs2025/yybbs.cgi?pg=0",
+      "https://www.silent-moon.net/bbs2025/yybbs.cgi?pg=10"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.555Z",
+    "note": "公式BBSの日別店舗告知から確認（今後分は告知後に追加）"
+  },
+  {
+    "storeId": "voluptuous",
+    "storeName": "Voluptuous",
+    "month": "2026-07",
+    "status": "scheduled",
+    "eventCount": 1,
+    "sourceUrls": [
+      "https://voluptuous.tokyo/event"
+    ],
+    "checkedAt": "2026-07-13T18:06:57.591Z",
+    "note": "公式ページから当月予定を抽出"
+  }
+]
