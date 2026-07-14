@@ -42,7 +42,13 @@ function getScreenshotTimeoutMs(url: string) {
   return standardTimeoutMs
 }
 
-function getScreenshotNavigationUrl(url: string) {
+function getReaderUrl(url: string) {
+  return `https://r.jina.ai/http://${url}`
+}
+
+function getScreenshotNavigationUrl(url: string, forceReader = false) {
+  if (forceReader) return getReaderUrl(url)
+
   try {
     const hostname = new URL(url).hostname
     const requiresReader =
@@ -54,7 +60,7 @@ function getScreenshotNavigationUrl(url: string) {
     // These two public boards accept the text crawler but consistently leave
     // serverless Chromium waiting. Render the same live public content through
     // the Reader endpoint already used by the canonical parser.
-    if (requiresReader) return `https://r.jina.ai/http://${url}`
+    if (requiresReader) return getReaderUrl(url)
   } catch {
     return url
   }
@@ -80,9 +86,13 @@ async function launchChromiumBrowser() {
   return chromium.launch({ headless: true })
 }
 
-async function captureBrowserSnapshotWithBrowser(url: string, browser: BrowserLike): Promise<BrowserSnapshot | null> {
+async function captureBrowserSnapshotWithBrowser(
+  url: string,
+  browser: BrowserLike,
+  options: { forceReader?: boolean } = {},
+): Promise<BrowserSnapshot | null> {
   try {
-    const navigationUrl = getScreenshotNavigationUrl(url)
+    const navigationUrl = getScreenshotNavigationUrl(url, options.forceReader)
     const page = await browser.newPage({
       viewport: screenshotViewport,
       userAgent: process.env.SCRAPE_USER_AGENT || defaultUserAgent,
@@ -133,9 +143,16 @@ async function captureBrowserSnapshot(url: string): Promise<BrowserSnapshot | nu
 
   let closeBrowser: (() => Promise<void>) | null = null
   try {
-    const browser = await launchChromiumBrowser()
+    let browser = await launchChromiumBrowser()
     closeBrowser = () => browser.close()
-    return await captureBrowserSnapshotWithBrowser(url, browser)
+    const directResult = await captureBrowserSnapshotWithBrowser(url, browser)
+    if (directResult) return directResult
+    if (!browser.isConnected()) {
+      await browser.close().catch(() => {})
+      browser = await launchChromiumBrowser()
+      closeBrowser = () => browser.close()
+    }
+    return await captureBrowserSnapshotWithBrowser(url, browser, { forceReader: true })
   } catch {
     return null
   } finally {
@@ -174,10 +191,10 @@ export async function createBrowserSnapshotSession(): Promise<BrowserSnapshotSes
       try {
         const activeBrowser = await getBrowser()
         const result = await captureBrowserSnapshotWithBrowser(url, activeBrowser)
-        if (result || activeBrowser.isConnected()) return result
+        if (result) return result
 
         await closeBrowser()
-        return await captureBrowserSnapshotWithBrowser(url, await getBrowser())
+        return await captureBrowserSnapshotWithBrowser(url, await getBrowser(), { forceReader: true })
       } catch {
         return null
       }
