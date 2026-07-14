@@ -42,6 +42,26 @@ function getScreenshotTimeoutMs(url: string) {
   return standardTimeoutMs
 }
 
+function getScreenshotNavigationUrl(url: string) {
+  try {
+    const hostname = new URL(url).hostname
+    const requiresReader =
+      hostname === 'neo-bbs.com' ||
+      hostname.endsWith('.neo-bbs.com') ||
+      hostname === 'millefeuillesby.apage.jp' ||
+      hostname.endsWith('.millefeuillesby.apage.jp')
+
+    // These two public boards accept the text crawler but consistently leave
+    // serverless Chromium waiting. Render the same live public content through
+    // the Reader endpoint already used by the canonical parser.
+    if (requiresReader) return `https://r.jina.ai/http://${url}`
+  } catch {
+    return url
+  }
+
+  return url
+}
+
 async function launchChromiumBrowser() {
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
     const [{ default: chromium }, { chromium: playwrightChromium }] = await Promise.all([
@@ -62,21 +82,22 @@ async function launchChromiumBrowser() {
 
 async function captureBrowserSnapshotWithBrowser(url: string, browser: BrowserLike): Promise<BrowserSnapshot | null> {
   try {
+    const navigationUrl = getScreenshotNavigationUrl(url)
     const page = await browser.newPage({
       viewport: screenshotViewport,
       userAgent: process.env.SCRAPE_USER_AGENT || defaultUserAgent,
     })
     try {
       await page.setExtraHTTPHeaders({ 'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8' })
-      await page.goto(url, {
+      await page.goto(navigationUrl, {
         // Several boards keep third-party resources open indefinitely. Waiting
         // for the first response commit keeps screenshots independent from
         // those optional resources while still proving the real page loaded.
         waitUntil: 'commit',
-        timeout: getScreenshotTimeoutMs(url),
+        timeout: getScreenshotTimeoutMs(navigationUrl),
       })
       await page
-        .waitForLoadState('domcontentloaded', { timeout: Math.min(getScreenshotTimeoutMs(url), 4_000) })
+        .waitForLoadState('domcontentloaded', { timeout: Math.min(getScreenshotTimeoutMs(navigationUrl), 4_000) })
         .catch(() => {})
       await page.waitForTimeout(readPositiveIntEnv('BROWSER_SCREENSHOT_SETTLE_MS', 180))
       const text = await page
