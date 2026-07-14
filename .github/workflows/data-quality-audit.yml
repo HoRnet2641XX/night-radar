@@ -48,6 +48,7 @@ jobs:
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RESPONSE: ${{ steps.audit.outputs.response }}
         run: |
           title='[Night Radar] データ品質監査異常'
@@ -68,6 +69,7 @@ jobs:
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           title='[Night Radar] データ品質監査異常'
           number="$(gh issue list --state open --search "${title} in:title" --json number --jq '.[0].number // empty')"

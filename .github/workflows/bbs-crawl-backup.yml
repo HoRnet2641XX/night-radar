@@ -77,6 +77,7 @@ jobs:
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           CRAWL_RESPONSE: ${{ steps.crawl.outputs.response }}
           SCREENSHOT_RESPONSE: ${{ steps.screenshots.outputs.response }}
         run: |
@@ -98,6 +99,7 @@ jobs:
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           title='[Night Radar] BBS巡回異常'
           number="$(gh issue list --state open --search "${title} in:title" --json number --jq '.[0].number // empty')"
