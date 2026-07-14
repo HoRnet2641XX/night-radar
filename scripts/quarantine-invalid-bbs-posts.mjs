@@ -109,11 +109,16 @@ async function main() {
     const { error } = await db.from('bbs_normalized_posts').delete().in('id', chunk)
     if (error) throw new Error(`安全削除に失敗しました: ${error.message}`)
   }
-  const { count: remaining, error: verifyError } = await db
-    .from('bbs_normalized_posts')
-    .select('id', { count: 'exact', head: true })
-    .in('id', ids)
-  if (verifyError) throw new Error(`安全削除後の確認に失敗しました: ${verifyError.message}`)
+  let remaining = 0
+  for (let index = 0; index < ids.length; index += CHUNK_SIZE) {
+    const chunk = ids.slice(index, index + CHUNK_SIZE)
+    const { count, error: verifyError } = await db
+      .from('bbs_normalized_posts')
+      .select('id', { count: 'exact', head: true })
+      .in('id', chunk)
+    if (verifyError) throw new Error(`安全削除後の確認に失敗しました: ${verifyError.message || '詳細なし'}`)
+    remaining += count ?? 0
+  }
   if (remaining) throw new Error(`${remaining}件が残っているため、安全削除を完了できませんでした。`)
 
   console.log(JSON.stringify({

@@ -57,6 +57,29 @@ it('distinguishes an empty board from a parser that rejected every extracted pos
   )
 })
 
+it('rejects article metadata fragments that do not contain a customer message', () => {
+  assert.equal(isStructurallyValidCustomerNormalizedPost({
+    storeId: 'bar-rusk',
+    authorName: '54070',
+    body: '記事番号：',
+  }), false)
+  assert.equal(isStructurallyValidCustomerNormalizedPost({
+    storeId: 'bar-rusk',
+    authorName: '来店者',
+    body: '記事番号：54070',
+  }), false)
+  assert.equal(isStructurallyValidCustomerNormalizedPost({
+    storeId: 'bar-rusk',
+    authorName: '来店者',
+    body: 'これから伺います。',
+  }), true)
+  assert.equal(isStructurallyValidCustomerNormalizedPost({
+    storeId: 'filt-shibuya',
+    authorName: '🌸',
+    body: '夜行きます。',
+  }), true)
+})
+
 it('detects a sudden parser-count drop without flagging normal small-board changes', () => {
   assert.equal(isSuspiciousNormalizedPostDrop(7, 30), true)
   assert.equal(isSuspiciousNormalizedPostDrop(11, 30), false)

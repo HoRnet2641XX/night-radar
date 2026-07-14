@@ -1345,6 +1345,7 @@ const explicitStoreAttributionPattern =
 const genericStoreAuthorPattern = /^(staff|スタッフ|管理人|管理者|運営|公式|店長|オーナー|マスター|受付|事務局)$/i
 const malformedPostBodyPattern =
   /(パスワードを入力|ニックネーム\s*\*|選択してください|利用規約に同意|投稿を編集|投稿を削除|bbs-edit-form|javascript:|\[url=|https?:\/\/|\bwww\.|Copyright ©)/i
+const metadataOnlyPostBodyPattern = /^(?:(?:記事番号|記事ID|No\.?)[:：]?\s*(?:[A-Za-z0-9_-]+)?|(?:投稿者|投稿日|投稿日時|書き込み日時)[:：]?)$/i
 const relativeTimestampOnlyBodyPattern = /^(?:\d+\s+){0,3}(?:\d+\s*日(?:、|,)?\s*)?(?:\d+\s*時間(?:、|,)?\s*)?(?:\d+\s*分)?前$/u
 const targetDateMarkerPattern = /^\[\[NR_TARGET_DATE:(\d{4}-\d{2}-\d{2})\]\]\s*/
 const storeAuthorAliases: Record<string, RegExp> = {
@@ -1426,10 +1427,17 @@ export function isStructurallyValidCustomerNormalizedPost(
 ) {
   if (!isLikelyCustomerNormalizedPost(post)) return false
 
-  const author = normalizedAuthorForStaffCheck(post.authorName)
+  const author = post.authorName.normalize('NFKC').replace(/\s+/g, ' ').trim()
   const body = post.body.replace(targetDateMarkerPattern, '').replace(/\s+/g, ' ').trim()
   if (!author || author === '記載なし' || author.length > 80 || /^(?:投稿者|投稿日|記事番号|No\.)[:：]?$/i.test(author)) return false
-  if (body.length < 2 || body.length > 1600 || isObviousBbsSpamBody(body) || malformedPostBodyPattern.test(body) || relativeTimestampOnlyBodyPattern.test(body)) return false
+  if (
+    body.length < 2
+    || body.length > 1600
+    || isObviousBbsSpamBody(body)
+    || malformedPostBodyPattern.test(body)
+    || metadataOnlyPostBodyPattern.test(body)
+    || relativeTimestampOnlyBodyPattern.test(body)
+  ) return false
   if ((body.match(/(?:投稿者|名前|Name)[:：]/gi) ?? []).length > 1) return false
   if ((body.match(/20\d{2}[年./-]\d{1,2}[月./-]\d{1,2}/g) ?? []).length > 2) return false
   return true
