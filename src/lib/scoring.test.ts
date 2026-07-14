@@ -51,6 +51,10 @@ it('distinguishes an empty board from a parser that rejected every extracted pos
   assert.equal(isExplicitlyEmptyBbsText('本日のご来店予告: 0 人'), true)
   assert.equal(isExplicitlyEmptyBbsText('来店予告 (0)'), true)
   assert.equal(isExplicitlyEmptyBbsText('来店予告を書き込む'), false)
+  assert.equal(
+    isExplicitlyEmptyBbsText('本日のご来店予告: 0 人\n投稿者: なお\n2026/07/14 12:30\n今夜行きます', 1),
+    false,
+  )
 })
 
 it('detects a sudden parser-count drop without flagging normal small-board changes', () => {

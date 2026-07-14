@@ -1,5 +1,6 @@
 import { Resend } from 'resend'
 import { planLimits } from '../plans'
+import { createSupabaseAdminClient } from '@/lib/supabase/server'
 import type { NotificationChannel, NotificationJob, PlanKey, ScoredEvent } from '../types'
 
 export type OperationalAlert = {
@@ -11,7 +12,7 @@ export type OperationalAlert = {
 
 export type OperationalAlertResult = {
   status: 'sent' | 'failed' | 'unconfigured'
-  destination?: 'slack' | 'discord' | 'generic'
+  destination?: 'slack' | 'discord' | 'generic' | 'email'
 }
 
 export function buildSignalNotifications(events: ScoredEvent[], audience: PlanKey, channel: NotificationChannel) {
@@ -58,11 +59,57 @@ export async function dispatchNotification(job: NotificationJob, options?: { rec
 
 export async function dispatchOperationalAlert(
   alert: OperationalAlert,
-  options?: { webhookUrl?: string },
+  options?: { webhookUrl?: string; recipient?: string },
 ): Promise<OperationalAlertResult> {
+  const supabase = createSupabaseAdminClient()
+  const { data: persistedAlert } = supabase
+    ? await supabase
+        .from('operational_alerts')
+        .insert({
+          title: alert.title,
+          body: alert.body,
+          severity: alert.severity ?? 'error',
+          details: alert.details ?? {},
+          delivery_status: 'pending',
+        })
+        .select('id')
+        .maybeSingle()
+    : { data: null }
+  const finish = async (result: OperationalAlertResult) => {
+    if (supabase && persistedAlert?.id) {
+      await supabase
+        .from('operational_alerts')
+        .update({ delivery_status: result.status })
+        .eq('id', persistedAlert.id)
+    }
+    return result
+  }
   const webhookUrl =
     options?.webhookUrl || process.env.OPERATION_ALERT_WEBHOOK_URL || process.env.NOTIFICATION_WEBHOOK_URL
-  if (!webhookUrl) return { status: 'unconfigured' }
+  const recipient = options?.recipient || process.env.OPERATION_ALERT_EMAIL
+
+  if (!webhookUrl && recipient && process.env.RESEND_API_KEY) {
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY)
+      const severity = alert.severity === 'warning' ? '警告' : '異常'
+      const detailText = alert.details
+        ? Object.entries(alert.details)
+            .map(([key, value]) => `${key}: ${String(value)}`)
+            .join('\n')
+        : ''
+      const { error } = await resend.emails.send({
+        from: process.env.NOTIFICATION_FROM_EMAIL ?? 'Night Radar <notifications@example.com>',
+        to: recipient,
+        subject: `[Night Radar / ${severity}] ${alert.title}`,
+        text: [alert.body, detailText].filter(Boolean).join('\n\n'),
+      })
+      return finish({ status: error ? 'failed' : 'sent', destination: 'email' })
+    } catch {
+      return finish({ status: 'failed', destination: 'email' })
+    }
+  }
+
+  if (!webhookUrl) return finish({ status: 'unconfigured' })
 
   try {
     const hostname = new URL(webhookUrl).hostname.toLowerCase()
@@ -91,8 +138,8 @@ export async function dispatchOperationalAlert(
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(5_000),
     })
-    return { status: response.ok ? 'sent' : 'failed', destination }
+    return finish({ status: response.ok ? 'sent' : 'failed', destination })
   } catch {
-    return { status: 'failed' }
+    return finish({ status: 'failed' })
   }
 }

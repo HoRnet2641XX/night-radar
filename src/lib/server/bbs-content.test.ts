@@ -1,7 +1,33 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { extractNormalizedBbsPostsFromText } from '../scoring'
-import { extractBbsPageContent, extractNeoReaderContent, extractScarletCommentsPayload } from './bbs-content'
+import {
+  extractBbsPageContent,
+  extractHarnesCurrentCalendarPostId,
+  extractHarnesPopupComments,
+  extractNeoReaderContent,
+  extractScarletCommentsPayload,
+} from './bbs-content'
+import { buildBbsSnapshot } from './bbs-snapshot'
+
+test('extracts the current HARNES popup id and canonical customer comments', () => {
+  const calendar = `<table><td class="jet-calendar-week__day current-day"><div class="jet-calendar-week__day-event" data-post-id="1837"></div></td></table>`
+  const popup = `<div class="jet-listing-grid__item" data-post-id="21853">
+    <style>.ignored{display:none}</style>
+    🌃 2026.07.12 14:44 投稿者: T (女性) 行きたいです
+  </div><div class="jet-listing-grid__item" data-post-id="21854">
+    夜 2026.07.12 18:31 投稿者: くま (男性) 久しぶりに伺います
+  </div>`
+
+  assert.equal(extractHarnesCurrentCalendarPostId(calendar), '1837')
+  const posts = extractNormalizedBbsPostsFromText(extractHarnesPopupComments(popup), '2026-07-12T10:00:00.000Z')
+  assert.equal(posts.length, 2)
+  assert.equal(posts[0].articleNo, '21853')
+  assert.equal(posts[0].authorName, 'T')
+  assert.equal(posts[0].authorGender, '女性')
+  assert.equal(posts[0].postedAt, '2026-07-12T05:44:00.000Z')
+  assert.equal(posts[1].authorName, 'くま')
+})
 
 test('normalizes WordPress comments into dated customer posts', () => {
   const page = extractBbsPageContent(
@@ -355,4 +381,37 @@ test('discovers latest Rara thread details', () => {
     'https://rara.jp/zeus/page632',
     'https://rara.jp/zeus/page630',
   ])
+})
+
+test('browser screenshots never replace canonical scrape text', async () => {
+  const snapshot = await buildBbsSnapshot(
+    {
+      id: 'test-source',
+      storeId: 'test-store',
+      label: 'BBS',
+      url: 'https://example.com/bbs',
+      parserType: 'auto',
+      active: true,
+      crawlIntervalMinutes: 5,
+      lastStatus: 'pending',
+    },
+    {
+      status: 'ok',
+      url: 'https://example.com/bbs',
+      title: 'BBS',
+      extractedText: '投稿者: あや（女性） 2026/07/14 10:00 本文です',
+      fetchedAt: '2026-07-14T01:00:00.000Z',
+    },
+    {
+      capture: async () => ({
+        screenshotDataUrl: 'data:image/jpeg;base64,dGVzdA==',
+        extractedText: '画面装飾だけで投稿本文がないテキスト',
+      }),
+      close: async () => {},
+    },
+    { captureBrowserScreenshot: true },
+  )
+
+  assert.equal(snapshot.extractedText, '投稿者: あや（女性） 2026/07/14 10:00 本文です')
+  assert.match(snapshot.screenshotDataUrl ?? '', /^data:image\/jpeg/)
 })

@@ -177,6 +177,19 @@ test('adapter maps current decision-date data without reservation placeholders',
   assert.equal(bar.officialUrl, 'https://example.com/')
 })
 
+test('adapter labels the event total as the current month only', () => {
+  const nextMonthEvent: EventInput = {
+    ...event,
+    id: 'event-next-month',
+    date: '2026-08-01',
+  }
+  const events = [event, nextMonthEvent]
+  const result = adaptDashboardToBars(withDailyInsights({ ...state, events }, events), events)
+
+  assert.equal(result.events.length, 2)
+  assert.equal(result.meta.eventCount, 1)
+})
+
 test('adapter distinguishes no event today from an unverified event calendar', () => {
   const verifiedStore = { ...store, id: 'verified-store', name: 'BAR VERIFIED' }
   const unverifiedStore = { ...store, id: 'unverified-store', name: 'BAR UNVERIFIED' }

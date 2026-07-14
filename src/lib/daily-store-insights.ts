@@ -3,9 +3,10 @@ import {
   buildStoreActivityMetrics,
   buildStoreRadarPoints,
   decisionDateKeyInJapan,
-  filterPostsForDecisionDate,
-  filterSnapshotsForBusinessDay,
+  filterPostsForStoreDecisionDate,
+  filterSnapshotsForStoreBusinessWindows,
   inferStoreBusinessWindows,
+  storeDecisionDateKeyInJapan,
   isStructurallyValidCustomerNormalizedPost,
 } from './scoring'
 import type {
@@ -272,8 +273,20 @@ export function buildDailyStoreDataset(input: BuildDailyStoreDatasetInput): Dail
   const upcomingKeys = upcomingJapanDateKeys(todayKey)
   const effectivePosts = buildEffectiveBbsPostRecords(input.rawPosts, input.normalizedPosts)
   const businessContextPosts = input.businessContextPosts ?? []
-  const businessPosts = filterPostsForDecisionDate(effectivePosts, generatedAt)
-  const businessSnapshots = filterSnapshotsForBusinessDay(input.snapshots, generatedAt)
+  const decisionContextPosts = [...businessContextPosts, ...effectivePosts]
+  const businessPosts = filterPostsForStoreDecisionDate(
+    effectivePosts,
+    input.stores,
+    generatedAt,
+    input.snapshots,
+    decisionContextPosts,
+  )
+  const businessSnapshots = filterSnapshotsForStoreBusinessWindows(
+    input.snapshots,
+    input.stores,
+    generatedAt,
+    decisionContextPosts,
+  )
   const basePoints = buildStoreRadarPoints(input.stores, businessPosts, businessSnapshots)
 
   const drafts = input.stores.map((store) => {
@@ -283,6 +296,7 @@ export function buildDailyStoreDataset(input: BuildDailyStoreDatasetInput): Dail
     const normalizedPosts = input.normalizedPosts.filter((post) => post.storeId === store.id)
     const events = input.events.filter((event) => event.storeId === store.id)
     const contextTexts = businessContextPosts.filter((post) => post.storeId === store.id).map((post) => post.body)
+    const storeTodayKey = storeDecisionDateKeyInJapan(store, generatedAt, contextTexts) ?? todayKey
     const windows = inferStoreBusinessWindows(store, generatedAt, contextTexts).map((window) => ({
       label: window.label,
       startsAt: new Date(window.start).toISOString(),
@@ -311,7 +325,7 @@ export function buildDailyStoreDataset(input: BuildDailyStoreDatasetInput): Dail
       timestampCoverage: activity.timestampCoverage,
       postCount: activity.recentPostCount,
     })
-    const storeTodayEvents = events.filter((event) => eventDateKey(event, todayKey) === todayKey)
+    const storeTodayEvents = events.filter((event) => eventDateKey(event, storeTodayKey) === storeTodayKey)
     const upcomingEvents = events.filter((event) => {
       const key = eventDateKey(event, todayKey)
       return key ? upcomingKeys.has(key) : false

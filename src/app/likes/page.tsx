@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { BreadcrumbJsonLd, PublicShell } from '@/components/public-directory'
+import { BreadcrumbJsonLd, PublicDataUnavailable, PublicShell } from '@/components/public-directory'
 import { PublicLikesClient } from '@/components/public-likes-client'
 import { getPublicDirectoryState } from '@/lib/public-directory'
 
@@ -19,7 +19,9 @@ export default async function LikesPage() {
       <section className="sr-only">
         <h1>保存した店舗</h1>
       </section>
-      <PublicLikesClient summaries={state.summaries} />
+      {state.mode === 'unavailable'
+        ? <PublicDataUnavailable message={state.connectionNote} />
+        : <PublicLikesClient summaries={state.summaries} />}
     </PublicShell>
   )
 }

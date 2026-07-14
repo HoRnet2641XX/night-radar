@@ -1,11 +1,17 @@
-import { requireAppUser } from '@/lib/server/auth-guard'
-import { getDashboardState } from '@/lib/server/repository'
+import { adaptPublicDirectoryToBars } from '@/app/components/data/adapter'
+import { getPublicDirectoryState } from '@/lib/public-directory'
 
 export const runtime = 'nodejs'
 
 export async function GET() {
-  const auth = await requireAppUser()
-  if (auth.response) return auth.response
-
-  return Response.json(await getDashboardState())
+  const state = await getPublicDirectoryState()
+  if (state.mode === 'unavailable') {
+    return Response.json({ error: state.connectionNote ?? '最新データを読み込めませんでした。' }, { status: 503 })
+  }
+  const data = adaptPublicDirectoryToBars(state)
+  return Response.json({
+    ...data,
+    events: data.events.filter((event) => event.date === data.meta.todayKey),
+    posts: [],
+  })
 }

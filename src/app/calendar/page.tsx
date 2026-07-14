@@ -1,11 +1,10 @@
-import { redirect } from 'next/navigation'
 import { formatBarName } from '@/lib/display'
 import { eventWeekday } from '@/lib/date'
 import { mergeOfficialEvents } from '@/lib/official-events'
 import { getDashboardState } from '@/lib/server/repository'
-import { getCurrentUser } from '@/lib/supabase/server'
 import type { EventInput, StoreProfile } from '@/lib/types'
 import { CalendarDayExplorer, type CalendarEventView, type CalendarMonthView } from '@/components/calendar-day-explorer'
+import { DataUnavailable } from '@/components/data-unavailable'
 
 export const dynamic = 'force-dynamic'
 
@@ -109,10 +108,8 @@ function buildMonths(events: EventInput[], storeMap: Map<string, StoreProfile>) 
 }
 
 export default async function CalendarPage() {
-  const user = await getCurrentUser()
-  if (!user) redirect('/login?next=/calendar')
-
   const state = await getDashboardState()
+  if (state.mode === 'unavailable') return <DataUnavailable message={state.connectionNote} />
   const storeMap = new Map(state.stores.map((store) => [store.id, store]))
   const events = mergeEvents(state.events)
   const months = buildMonths(events, storeMap)

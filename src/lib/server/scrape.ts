@@ -1,6 +1,12 @@
 import type { PostRecord, ScrapeResult } from '../types'
 import { storageSafeText } from '../text'
-import { extractBbsPageContent, extractNeoReaderContent, extractScarletCommentsPayload } from './bbs-content'
+import {
+  extractBbsPageContent,
+  extractHarnesCurrentCalendarPostId,
+  extractHarnesPopupComments,
+  extractNeoReaderContent,
+  extractScarletCommentsPayload,
+} from './bbs-content'
 
 const blockedHostPatterns = [
   /^localhost$/i,
@@ -173,7 +179,45 @@ function japanDateLabel(date = new Date()) {
   return `${part('year')}-${part('month')}-${part('day')}`
 }
 
-async function fetchKnownHostPosts(url: URL) {
+async function fetchHarnesCurrentPosts(url: URL, html: string) {
+  const postId = extractHarnesCurrentCalendarPostId(html)
+  if (!postId) return ''
+
+  try {
+    const endpoint = new URL('/wp-admin/admin-ajax.php', url)
+    const body = new URLSearchParams({
+      action: 'jet_popup_get_content',
+      'data[forceLoad]': 'true',
+      'data[customContent]': '',
+      'data[popupId]': 'jet-popup-334',
+      'data[isJetEngine]': 'true',
+      'data[queryId]': '',
+      'data[listingSource]': 'posts',
+      'data[postId]': postId,
+      'data[popup_id]': '334',
+      'data[page_url]': url.toString(),
+    })
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      body,
+      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_HARNES_POPUP_TIMEOUT_MS', 8_000)),
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+        'User-Agent': process.env.SCRAPE_USER_AGENT || defaultUserAgent,
+      },
+    })
+    if (!response.ok) return ''
+    const payload = (await response.json()) as { type?: string; content?: { content?: string } }
+    if (payload.type !== 'success' || !payload.content?.content) return ''
+    return extractHarnesPopupComments(payload.content.content)
+  } catch {
+    return ''
+  }
+}
+
+async function fetchKnownHostPosts(url: URL, html: string) {
+  if (/(^|\.)harnes\.tokyo$/i.test(url.hostname)) return fetchHarnesCurrentPosts(url, html)
   if (!/(^|\.)scarlet\.tokyo$/i.test(url.hostname)) return ''
 
   try {
@@ -283,7 +327,7 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
       const html = storageSafeText(await readHtmlResponse(response), 500_000)
       const page = extractBbsPageContent(html, response.url || url.toString())
       const [knownHostPosts, supplementalTexts] = await Promise.all([
-        fetchKnownHostPosts(url),
+        fetchKnownHostPosts(url, html),
         Promise.all(page.supplementalUrls.map(fetchSupplementalText)),
       ])
       const extractedText = storageSafeText(

@@ -127,9 +127,13 @@ export type PublicStoreSummary = {
 }
 
 export type PublicDirectoryState = {
+  mode: 'database' | 'demo' | 'unavailable'
+  connectionNote?: string
   stores: StoreProfile[]
   events: EventInput[]
   sources: BbsSource[]
+  normalizedPosts: BbsNormalizedPost[]
+  dailyInsights: StoreDailyInsight[]
   summaries: PublicStoreSummary[]
   generatedAt: string
 }
@@ -298,6 +302,7 @@ function toBusinessContextPost(row: DbRow): PostRecord {
 
 function demoPublicState(): PublicDirectoryState {
   return buildPublicState({
+    mode: 'demo',
     stores: demoStores,
     events: demoEvents,
     rawPosts: demoPosts,
@@ -308,15 +313,34 @@ function demoPublicState(): PublicDirectoryState {
   })
 }
 
+function unavailablePublicState(): PublicDirectoryState {
+  return {
+    mode: 'unavailable',
+    connectionNote: '最新の店舗データを取得できませんでした。時間をおいて再読み込みしてください。',
+    stores: [],
+    events: [],
+    sources: [],
+    normalizedPosts: [],
+    dailyInsights: [],
+    summaries: [],
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+function publicReadFailure(message: string) {
+  console.error('[Night Radar] public directory database read failed:', message)
+  return unavailablePublicState()
+}
+
 async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
   const supabase = createSupabaseAdminClient()
-  if (!supabase) return demoPublicState()
+  if (!supabase) return process.env.NODE_ENV === 'production' ? unavailablePublicState() : demoPublicState()
 
   let storeResult = (await supabase.from('stores').select(storeSelectColumns).order('name', { ascending: true })) as DbListResult
   if (isMissingColumnError(storeResult.error)) {
     storeResult = (await supabase.from('stores').select(legacyStoreSelectColumns).order('name', { ascending: true })) as DbListResult
   }
-  if (storeResult.error) return demoPublicState()
+  if (storeResult.error) return publicReadFailure(storeResult.error.message ?? 'stores query failed')
 
   const storeIds = (storeResult.data ?? []).map((row) => String(row.id)).filter(Boolean)
   const recentPostThreshold = isoHoursAgo(recentPostWindowHours)
@@ -377,7 +401,8 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
     normalizedPostResult.error && !isMissingRelationError(normalizedPostResult.error) ? normalizedPostResult.error : null
 
   if (eventResult.error || postResult.error || sourceResult.error || snapshotResult.error || snapshotContextResult.error || normalizedPostError) {
-    return demoPublicState()
+    const error = eventResult.error || postResult.error || sourceResult.error || snapshotResult.error || snapshotContextResult.error || normalizedPostError
+    return publicReadFailure(error?.message ?? 'public directory query failed')
   }
 
   const seenContextStores = new Set<string>()
@@ -449,6 +474,7 @@ async function loadPublicStoreDetail(storeId: string): Promise<PublicStoreDetail
 export const getPublicStoreDetail = cache(loadPublicStoreDetail)
 
 function buildPublicState(input: {
+  mode?: PublicDirectoryState['mode']
   stores: StoreProfile[]
   events: EventInput[]
   rawPosts: PostRecord[]
@@ -477,9 +503,12 @@ function buildPublicState(input: {
   )
 
   return {
+    mode: input.mode ?? 'database',
     stores: input.stores,
     events: input.events,
     sources: input.sources,
+    normalizedPosts: input.normalizedPosts,
+    dailyInsights: dailyDataset.insights,
     summaries,
     generatedAt,
   }
@@ -524,9 +553,9 @@ function buildPublicStoreSummary(input: {
       ? '本日のイベントあり'
       : recentThreeHourCount > 0
         ? '直近3時間で投稿あり'
-        : point.signals.totalSignals > 0
-          ? `注目シグナル ${point.signals.totalSignals}件`
-          : '巡回データを蓄積中'
+        : source?.lastStatus && source.lastStatus !== 'ok'
+          ? '最新巡回を再確認中'
+          : '当日顧客投稿 0件'
   const todayKey = decisionDateKeyInJapan(generatedAt) ?? new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Tokyo',
     year: 'numeric',

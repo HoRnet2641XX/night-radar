@@ -228,6 +228,19 @@ export function buildStoreActivityMetrics(input: {
   })
 
   const repeatedAuthors = uniqueAuthors.filter((name) => (allAuthorCounts.get(name) ?? 0) >= 2).length
+  const intentKeys = new Set<string>()
+  for (const post of businessPosts) {
+    const normalizedPost = normalizedByEffectivePostId.get(post.id)
+    const authorName = normalizeAuthorName(normalizedPost?.authorName ?? '')
+    const body = (normalizedPost?.body ?? post.body)
+      .replace(/^\[\[NR_TARGET_DATE:\d{4}-\d{2}-\d{2}\]\]\s*/u, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLocaleLowerCase('ja-JP')
+    const key = authorName ? `author:${authorName}` : body ? `body:${body}` : `post:${post.id}`
+    intentKeys.add(key)
+  }
+  const estimatedVisitIntentCount = intentKeys.size
 
   return {
     recentPostCount: businessPosts.length,
@@ -247,6 +260,8 @@ export function buildStoreActivityMetrics(input: {
       return isFemale || firstVisitRecordPattern.test(post.body) || groupVisitRecordPattern.test(post.body)
     }).length,
     uniqueAuthorCount: uniqueAuthors.length,
+    estimatedVisitIntentCount,
+    repeatPostCount: Math.max(0, businessPosts.length - estimatedVisitIntentCount),
     repeatAuthorRatio: uniqueAuthors.length ? clamp((repeatedAuthors / uniqueAuthors.length) * 100) : null,
     normalizedCoverage: businessPosts.length ? clamp((businessNormalizedPosts.length / businessPosts.length) * 100) : 0,
     timestampCoverage,
@@ -378,26 +393,34 @@ function extractBusinessTimeRangesFromText(text: string): BusinessTimeRange[] {
 function businessTimeRangesFromStore(store: StoreProfile): BusinessTimeRange[] {
   const ranges: BusinessTimeRange[] = []
 
+  const storedRange = (value: string, startFallback: number, endFallback: number) => {
+    const match = value.normalize('NFKC').match(/([0-2]?\d)(?::([0-5]\d))?\s*(?:-|~|〜|から|→|ー|―|－)\s*(?:翌)?([0-2]?\d)(?::([0-5]\d))?/)
+    if (!match) {
+      const start = parseClockText(value, startFallback)
+      return { startHour: start.hour, startMinute: start.minute, endHour: endFallback, endMinute: 0 }
+    }
+    return {
+      startHour: Number(match[1]),
+      startMinute: Number(match[2] ?? 0),
+      endHour: Number(match[3]),
+      endMinute: Number(match[4] ?? 0),
+    }
+  }
+
   if (store.hasDaytime) {
-    const start = parseClockText(store.openingHourDay, 13)
+    const range = storedRange(store.openingHourDay, 13, 19)
     pushUniqueRange(ranges, {
-      label: start.hour <= 11 ? '朝活' : '昼部',
-      startHour: start.hour,
-      startMinute: start.minute,
-      endHour: 19,
-      endMinute: 0,
+      label: range.startHour <= 11 ? '朝活' : '昼部',
+      ...range,
       source: 'profile',
     })
   }
 
   if (store.hasNight) {
-    const start = parseClockText(store.openingHourNight, 19)
+    const range = storedRange(store.openingHourNight, 19, 5)
     pushUniqueRange(ranges, {
       label: '夜部',
-      startHour: start.hour,
-      startMinute: start.minute,
-      endHour: 5,
-      endMinute: 0,
+      ...range,
       source: 'profile',
     })
   }
@@ -718,6 +741,78 @@ export function postDecisionDateKey(post: PostRecord) {
 
   const range = businessDayRangeInJapan(post.postedAt)
   return range ? japanCalendarDateKey(range.start) : postedCalendarDate
+}
+
+export function storeDecisionDateKeyInJapan(
+  store: StoreProfile,
+  referenceAt: string | number | Date,
+  contextTexts: string[] = [],
+) {
+  const referenceTime = referenceTimestamp(referenceAt)
+  if (referenceTime === null) return decisionDateKeyInJapan(referenceAt)
+  const windows = inferStoreBusinessWindows(store, referenceAt, contextTexts)
+  const activeWindow = windows.find((window) => window.start <= referenceTime && referenceTime <= window.end)
+  const selectedWindow = activeWindow ?? windows[0]
+  return selectedWindow ? japanCalendarDateKey(selectedWindow.start) : decisionDateKeyInJapan(referenceAt)
+}
+
+export function postDecisionDateKeyForStore(
+  post: PostRecord,
+  store: StoreProfile,
+  contextTexts: string[] = [],
+) {
+  const markedDate = post.keywords.find((keyword) => keyword.startsWith('target-date:'))?.slice('target-date:'.length)
+  if (markedDate && /^\d{4}-\d{2}-\d{2}$/.test(markedDate)) return markedDate
+
+  const body = post.body.normalize('NFKC')
+  if (cancelledVisitPattern.test(body)) return null
+
+  const explicitDate = explicitTargetDateKey(body, post.postedAt)
+  if (explicitDate) return explicitDate
+
+  const explicitDay = explicitDayOnlyTargetDateKey(body, post.postedAt)
+  if (explicitDay) return explicitDay
+
+  const explicitWeekday = explicitWeekdayTargetDateKey(body, post.postedAt)
+  if (explicitWeekday) return explicitWeekday
+
+  const operationalDate = storeDecisionDateKeyInJapan(store, post.postedAt, contextTexts)
+  if (!operationalDate) return postDecisionDateKey(post)
+  if (/明後日/.test(body)) return shiftJapanDateKey(operationalDate, 2)
+  if (/明日/.test(body)) return shiftJapanDateKey(operationalDate, 1)
+  return operationalDate
+}
+
+export function filterPostsForStoreDecisionDate(
+  posts: PostRecord[],
+  stores: StoreProfile[],
+  referenceAt: string | number | Date,
+  snapshots: BbsSnapshot[] = [],
+  contextPosts: PostRecord[] = posts,
+) {
+  const referenceTime = referenceTimestamp(referenceAt)
+  if (referenceTime === null) return posts
+  const futureTolerance = referenceTime + 10 * 60 * 1000
+  const storeById = new Map(stores.map((store) => [store.id, store]))
+  const contextByStore = new Map<string, string[]>()
+  const targetByStore = new Map<string, string | null>()
+
+  return posts.filter((post) => {
+    const store = storeById.get(post.storeId)
+    if (!store) return false
+    const postedTime = new Date(post.postedAt).getTime()
+    if (!Number.isFinite(postedTime) || postedTime > futureTolerance) return false
+
+    if (!contextByStore.has(store.id)) {
+      contextByStore.set(store.id, contextTextsForStore(store.id, contextPosts, snapshots))
+    }
+    const contextTexts = contextByStore.get(store.id) ?? []
+    if (!targetByStore.has(store.id)) {
+      targetByStore.set(store.id, storeDecisionDateKeyInJapan(store, referenceAt, contextTexts))
+    }
+    const targetDate = targetByStore.get(store.id)
+    return Boolean(targetDate && postDecisionDateKeyForStore(post, store, contextTexts) === targetDate)
+  })
 }
 
 export function filterPostsForDecisionDate(posts: PostRecord[], referenceAt: string | number | Date) {
@@ -1320,7 +1415,8 @@ export function isObviousBbsSpamBody(value: string) {
   return cyrillicCharacters >= 8 || /\[url=|https?:\/\/|\bwww\./i.test(value)
 }
 
-export function isExplicitlyEmptyBbsText(value: string) {
+export function isExplicitlyEmptyBbsText(value: string, extractedPostCount = 0) {
+  if (extractedPostCount > 0) return false
   const normalized = value.normalize('NFKC').replace(/\s+/g, ' ')
   return /(?:本日の)?ご?来店予告\s*(?:[:：]|[（(])?\s*0\s*(?:人|件|[）)])/i.test(normalized)
 }

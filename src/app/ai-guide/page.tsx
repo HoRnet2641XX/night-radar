@@ -1,27 +1,21 @@
-import { redirect } from 'next/navigation'
-import { buildStoreRadarPoints, buildVisitForecasts } from '@/lib/scoring'
+import { decisionDateKeyInJapan } from '@/lib/scoring'
 import { formatBarName } from '@/lib/display'
-import { analyzeTextWithAi } from '@/lib/server/ai'
-import { getDashboardState } from '@/lib/server/repository'
-import { getCurrentUser } from '@/lib/supabase/server'
+import { getPublicDirectoryState, sortByRanking } from '@/lib/public-directory'
+import { DataUnavailable } from '@/components/data-unavailable'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AiGuidePage() {
-  const user = await getCurrentUser()
-  if (!user) redirect('/login?next=/ai-guide')
-
-  const state = await getDashboardState()
-  const radar = buildStoreRadarPoints(state.stores, state.posts, state.bbsSnapshots)
-  const forecasts = buildVisitForecasts(state.events, state.stores, state.posts, { windowDays: 14 })
-  const topStore = radar[0]
-  const topForecast = forecasts[0]
-  const analysis = await analyzeTextWithAi(
-    state.posts
-      .slice(0, 8)
-      .map((post) => post.body)
-      .join('\n'),
-  )
+  const state = await getPublicDirectoryState()
+  if (state.mode === 'unavailable') return <DataUnavailable message={state.connectionNote} />
+  const ranked = sortByRanking(state.summaries, 'today')
+  const topStore = ranked[0]
+  const activity = topStore?.insight.activity
+  const todayKey = decisionDateKeyInJapan(state.generatedAt)
+  const todayEvents = todayKey
+    ? state.events.filter((event) => event.date === todayKey && event.storeId === topStore?.store.id)
+    : []
+  const primaryEvent = todayEvents[0]
 
   return (
     <main className="insight-page">
@@ -30,30 +24,30 @@ export default async function AiGuidePage() {
           ナイトレーダーへ戻る
         </a>
         <header className="insight-header">
-          <span>自動分析ガイド</span>
+          <span>公開情報の確認ガイド</span>
           <h1>行く日を決める前の確認</h1>
-          <p>公開情報から判断材料を整理します。個人追跡や来店保証ではなく、店舗単位の傾向確認として使います。</p>
+          <p>当営業日の顧客投稿、投稿者数、直近更新、公式予定を店舗単位で確認します。来店人数を保証する情報ではありません。</p>
         </header>
         <div className="guide-grid">
           <article>
-            <span>今日の候補</span>
-            <strong>{topForecast ? `${formatBarName(topForecast.store.name)} / ${topForecast.score}` : 'データ不足'}</strong>
-            <p>{topForecast?.reasons.join('、') ?? '掲示板とイベント情報を追加すると候補を出せます。'}</p>
+            <span>当日投稿が最も多い店舗</span>
+            <strong>{topStore ? formatBarName(topStore.store.name) : 'データ不足'}</strong>
+            <p>{activity ? `顧客投稿 ${activity.recentPostCount}件 / 投稿者 ${activity.uniqueAuthorCount}名 / 直近3時間 ${activity.recentThreeHourCount}件` : '当営業日の投稿を確認できていません。'}</p>
           </article>
           <article>
-            <span>盛り上がり店舗</span>
-            <strong>{topStore ? `${formatBarName(topStore.store.name)} / ${topStore.score}` : '未観測'}</strong>
-            <p>{topStore ? `${topStore.verdict}。注目シグナル ${topStore.signals.totalSignals}件。` : '掲示板の巡回後に表示されます。'}</p>
+            <span>本日の公式予定</span>
+            <strong>{primaryEvent?.title ?? '予定を確認中'}</strong>
+            <p>{primaryEvent ? `${primaryEvent.startsAt}開始 / 同店の本日予定 ${todayEvents.length}件` : '公式ページで本日の予定を確認できていません。'}</p>
           </article>
           <article>
-            <span>マナー</span>
-            <strong>安全確認を優先</strong>
-            <p>{analysis.safetyNotes[0] ?? '店舗ルール、同意、距離感、清潔感、スタッフ指示を優先してください。公開情報だけを見る。'}</p>
+            <span>データの状態</span>
+            <strong>{topStore?.dataConfidenceLabel ?? '確認中'}</strong>
+            <p>{topStore ? `${topStore.insight.freshnessLabel} / ${topStore.reliabilityLabel} / 時刻不明で除外 ${topStore.excludedUntimestampedCount}件` : '巡回状態を取得できていません。'}</p>
           </article>
           <article>
-            <span>自動要約</span>
-            <strong>{analysis.eventCategory}</strong>
-            <p>{analysis.summary}</p>
+            <span>行く前に確認</span>
+            <strong>公式情報を最後に確認</strong>
+            <p>料金、営業時間、入店条件、同意、店舗ルールは変更される場合があります。公式ページとスタッフ案内を優先してください。</p>
           </article>
         </div>
       </section>

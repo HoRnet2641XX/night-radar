@@ -1,8 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { crawlDueBbsSourcesForCron } from '../src/lib/server/repository.ts'
 
-const BATCH_SIZE = 8
-
 function createDatabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -18,23 +16,25 @@ const { data: sources, error } = await supabase
   .order('id')
 if (error) throw error
 
-const results = []
 const sourceIds = (sources ?? []).map((source) => source.id)
-for (let index = 0; index < sourceIds.length; index += BATCH_SIZE) {
-  const batchIds = sourceIds.slice(index, index + BATCH_SIZE)
-  const batch = await crawlDueBbsSourcesForCron({
-    force: true,
-    maxCrawls: batchIds.length,
-    sourceIds: batchIds,
-  })
-  results.push(...batch.results)
-}
+const startedAt = Date.now()
+const batch = await crawlDueBbsSourcesForCron({
+  captureBrowserScreenshots: true,
+  force: true,
+  maxCrawls: sourceIds.length,
+  screenshotCrawls: Number(process.env.CRON_SCREENSHOTS_PER_RUN) || 3,
+  sourceIds,
+})
+const results = batch.results
 
 console.log(JSON.stringify({
   refreshedAt: new Date().toISOString(),
+  elapsedMs: Date.now() - startedAt,
   sourceCount: sourceIds.length,
   okCount: results.filter((result) => result.run.status === 'ok').length,
   failedCount: results.filter((result) => result.run.status !== 'ok').length,
+  screenshotCount: results.filter((result) => result.snapshot?.screenshotDataUrl?.startsWith('data:image/jpeg')).length,
+  screenshotFailureCount: batch.screenshotFailureCount,
   normalizedPostCount: results.reduce((sum, result) => sum + result.normalizedPosts.length, 0),
   sources: results.map((result) => ({
     id: result.source.id,

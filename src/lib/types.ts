@@ -6,7 +6,7 @@ export type SignalTone = 'hot' | 'warm' | 'quiet'
 export type NotificationChannel = 'in_app' | 'email' | 'webhook'
 export type SituationStatus = 'open' | 'event' | 'crowded' | 'watch' | 'closed'
 export type ExactTermGroup = 'popularSingleMale' | 'popularSingleFemale' | 'negativePerson'
-export type RuntimeMode = 'database' | 'anonymous' | 'demo'
+export type RuntimeMode = 'database' | 'anonymous' | 'demo' | 'unavailable'
 export type CrawlStatus = 'ok' | 'blocked' | 'failed' | 'pending'
 export type BbsParserType = 'auto' | 'body'
 export type WordBookmarkMatchType = 'exact' | 'regex' | 'emoji'
@@ -155,6 +155,8 @@ export type StoreActivityMetrics = {
   groupVisitCount: number
   attentionPostCount: number
   uniqueAuthorCount: number
+  estimatedVisitIntentCount: number
+  repeatPostCount: number
   repeatAuthorRatio: number | null
   normalizedCoverage: number
   timestampCoverage: number

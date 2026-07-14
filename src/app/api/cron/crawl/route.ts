@@ -6,7 +6,7 @@ import { crawlDueBbsSourcesForCron, RepositoryError } from '@/lib/server/reposit
 import type { CronCrawlOptions } from '@/lib/server/repository'
 
 export const runtime = 'nodejs'
-export const maxDuration = 30
+export const maxDuration = 60
 
 type CronCrawlResult = Awaited<ReturnType<typeof crawlDueBbsSourcesForCron>>
 
@@ -26,17 +26,24 @@ function getCronCrawlOptions(request: Request): CronCrawlOptions {
   const sourceIds = parseSourceIds(url.searchParams.get('source') ?? url.searchParams.get('sourceId') ?? url.searchParams.get('sources') ?? url.searchParams.get('ids'))
   const excludeSourceIds = parseSourceIds(url.searchParams.get('exclude') ?? url.searchParams.get('excludeSource') ?? url.searchParams.get('excludeSourceId'))
   const force = ['1', 'true', 'yes'].includes((url.searchParams.get('force') ?? '').toLowerCase())
-  const captureBrowserScreenshots = ['1', 'true', 'yes'].includes(
-    (url.searchParams.get('screenshots') ?? url.searchParams.get('captureScreenshots') ?? '').toLowerCase(),
-  )
+  const screenshotValue = url.searchParams.get('screenshots') ?? url.searchParams.get('captureScreenshots')
+  const captureBrowserScreenshots = screenshotValue == null
+    ? process.env.DISABLE_BROWSER_SCREENSHOTS !== 'true'
+    : ['1', 'true', 'yes'].includes(screenshotValue.toLowerCase())
+  const screenshotCrawlsValue = Number(url.searchParams.get('screenshotCrawls') ?? url.searchParams.get('screenshotCount') ?? 0)
+  const screenshotCrawls = Number.isFinite(screenshotCrawlsValue) && screenshotCrawlsValue > 0 ? screenshotCrawlsValue : undefined
+  const concurrencyValue = Number(url.searchParams.get('concurrency') ?? 0)
+  const concurrency = Number.isFinite(concurrencyValue) && concurrencyValue > 0 ? concurrencyValue : undefined
 
   return {
     batch,
     batchSize,
     captureBrowserScreenshots,
+    concurrency,
     excludeSourceIds,
     force,
     maxCrawls,
+    screenshotCrawls,
     sourceIds,
   }
 }
@@ -54,6 +61,7 @@ function compactCronCrawlResult(result: CronCrawlResult, elapsedMs: number) {
     batch: result.batch,
     filters: result.filters,
     failureNotificationCount: result.failureNotificationCount,
+    screenshotFailureCount: result.screenshotFailureCount,
     failureCount: failedResults.length,
     results: result.results.map(({ source, run, post, snapshot, normalizedPosts }) => ({
       source: {
@@ -118,7 +126,7 @@ export async function GET(request: Request) {
     return Response.json(response, { status: cronCrawlHttpStatus(response.failureCount) })
   } catch (error) {
     if (error instanceof RepositoryError && error.status === 503) {
-      return Response.json({ mode: 'demo', checked: 0, crawled: 0, message: error.message })
+      return jsonError(error.message, 503)
     }
     if (error instanceof RepositoryError) return jsonError(error.message, error.status)
     return jsonError(error instanceof Error ? error.message : 'BBS巡回に失敗しました。', 400)

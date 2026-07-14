@@ -3,6 +3,7 @@ import {
   BreadcrumbJsonLd,
   DirectoryHero,
   PublicDecisionGuide,
+  PublicDataUnavailable,
   PublicDiscoveryRail,
   PublicHomeJsonLd,
   PublicShell,
@@ -43,6 +44,7 @@ export default async function ShopsPage({ searchParams }: PageProps) {
 
   return (
     <PublicShell current="shops">
+      {state.mode === 'unavailable' ? <PublicDataUnavailable message={state.connectionNote} /> : <>
       <PublicHomeJsonLd />
       <BreadcrumbJsonLd items={[{ name: '店舗一覧', href: '/shops' }]} />
       <StoreItemListJsonLd summaries={summaries} path="/shops" />
@@ -56,6 +58,7 @@ export default async function ShopsPage({ searchParams }: PageProps) {
       <StoreFilterLinks activeArea={area} activeCondition={condition} basePath="/shops" />
       <PublicStoreGrid summaries={summaries} variant="decision" />
       <PublicDecisionGuide />
+      </>}
     </PublicShell>
   )
 }

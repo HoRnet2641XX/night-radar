@@ -1,7 +1,8 @@
 import { motion } from 'motion/react';
+import { useEffect, useState } from 'react';
 import { GlassCard } from '../ui-nr/GlassCard';
 import { WordReveal, Stagger, StaggerItem } from '../ui-nr/Reveal';
-import { LogOut, Shield, Activity, Database, CheckCircle2, FileText, Bookmark, Trash2, X } from 'lucide-react';
+import { LogOut, Shield, Activity, Database, CheckCircle2, FileText, Bookmark, Trash2, X, BellRing } from 'lucide-react';
 import { useNightRadarData } from '../data/runtime';
 import { useLocalPreferences } from '../data/local-preferences';
 
@@ -11,6 +12,36 @@ export function AccountPage() {
   const { meta, bars } = useNightRadarData();
   const { savedWords, candidateStoreIds, toggleWord, toggleCandidateStore, clearPreferences } = useLocalPreferences();
   const candidateBars = candidateStoreIds.map((id) => bars.find((bar) => bar.id === id)).filter(Boolean);
+  const [notificationSupported, setNotificationSupported] = useState(false);
+  const [candidateNotificationEnabled, setCandidateNotificationEnabled] = useState(false);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const supported = 'Notification' in window;
+      setNotificationSupported(supported);
+      setCandidateNotificationEnabled(
+        supported && Notification.permission === 'granted' && window.localStorage.getItem('night-radar:candidate-notification') === 'enabled',
+      );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  async function toggleCandidateNotification() {
+    if (!notificationSupported) return;
+    if (candidateNotificationEnabled) {
+      window.localStorage.removeItem('night-radar:candidate-notification');
+      setCandidateNotificationEnabled(false);
+      return;
+    }
+    const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+    if (permission !== 'granted') return;
+    window.localStorage.setItem('night-radar:candidate-notification', 'enabled');
+    setCandidateNotificationEnabled(true);
+    new Notification('Night Radarの通知を有効にしました', {
+      body: '18時以降にアプリを開いている時、当日の候補を1日1回お知らせします。',
+      icon: '/icons/icon-192.png',
+    });
+  }
   async function signOut() {
     await fetch('/api/auth/signout', { method: 'POST' });
     window.location.assign('/');
@@ -66,6 +97,30 @@ export function AccountPage() {
         <p className="text-[11px] mt-3 leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>
           ログイン機能は別の用途へ移行中です。店舗比較・検索・予定確認はログインせず利用できます。
         </p>
+      </GlassCard>
+
+      <GlassCard className="p-5 nr-hairline">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <BellRing size={17} color="var(--nr-accent)" className="mt-0.5 shrink-0" />
+            <div>
+              <div className="text-[13px]" style={{ color: 'var(--nr-text-hi)' }}>今日の候補を端末通知</div>
+              <p className="mt-1 text-[11px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>
+                18時以降にこのアプリを開いている時、当日投稿1位を1日1回通知します。この端末だけに設定されます。
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="nr-secondary-btn min-w-[112px]"
+            data-active={candidateNotificationEnabled}
+            disabled={!notificationSupported}
+            aria-pressed={candidateNotificationEnabled}
+            onClick={toggleCandidateNotification}
+          >
+            {!notificationSupported ? '非対応' : candidateNotificationEnabled ? '通知を止める' : '通知を受け取る'}
+          </button>
+        </div>
       </GlassCard>
 
       <GlassCard className="p-5 nr-hairline">

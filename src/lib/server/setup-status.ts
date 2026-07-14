@@ -17,7 +17,7 @@ export function getServiceSetupStatus(): ServiceSetupStatus {
   const hasSupabaseAdmin = hasEnv('SUPABASE_SERVICE_ROLE_KEY')
   const stripePriceCount = ['STRIPE_PRICE_LIGHT', 'STRIPE_PRICE_STANDARD', 'STRIPE_PRICE_PREMIUM'].filter(hasEnv).length
   const hasStripeCore = hasEnv('STRIPE_SECRET_KEY') && hasEnv('STRIPE_WEBHOOK_SECRET')
-  const hasNotificationDelivery = hasEnv('RESEND_API_KEY') || hasEnv('NOTIFICATION_WEBHOOK_URL')
+  const hasOperationalDelivery = hasEnv('OPERATION_ALERT_WEBHOOK_URL') || hasEnv('NOTIFICATION_WEBHOOK_URL')
   const screenshotsDisabled = process.env.DISABLE_BROWSER_SCREENSHOTS === 'true'
 
   const items = [
@@ -86,12 +86,12 @@ export function getServiceSetupStatus(): ServiceSetupStatus {
     ),
     item(
       'notifications',
-      '通知配信',
-      hasNotificationDelivery ? 'ready' : 'check',
-      hasNotificationDelivery ? '外部配信可能' : 'アプリ内のみ',
-      hasNotificationDelivery
-        ? 'ResendまたはWebhookで外部通知を送信できます。'
-        : 'メール/Webhookは試行記録になります。実配信にはRESEND_API_KEYかNOTIFICATION_WEBHOOK_URLが必要です。',
+      '異常通知',
+      hasOperationalDelivery ? 'ready' : 'check',
+      hasOperationalDelivery ? '外部通知とDB記録' : 'DB記録のみ',
+      hasOperationalDelivery
+        ? '巡回失敗と品質異常をDBへ記録し、運用Webhookにも送信します。'
+        : '異常はDBへ保存します。即時の外部通知にはOPERATION_ALERT_WEBHOOK_URLが必要です。',
     ),
   ]
 

@@ -3,6 +3,7 @@ import { officialEventCoverageForMonth } from '@/lib/official-event-coverage'
 import { getCronAuthorizationError } from '@/lib/server/cron-auth'
 import { auditDataQuality, nextMonthKey } from '@/lib/server/data-quality-audit'
 import { dispatchOperationalAlert } from '@/lib/server/notifications'
+import { runNightRadarMaintenance } from '@/lib/server/maintenance'
 import { createSupabaseAdminClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
@@ -74,10 +75,15 @@ export async function GET(request: Request) {
     events: (eventsResult.data ?? []) as Parameters<typeof auditDataQuality>[0]['events'],
     eventCoverage: officialEventCoverageForMonth(month),
     referenceAt: now.toISOString(),
-    staleMinutes: Number(process.env.DATA_QUALITY_SOURCE_STALE_MINUTES) || 180,
+    staleMinutes: Number(process.env.DATA_QUALITY_SOURCE_STALE_MINUTES) || 15,
     minimumTimestampCoverage: Number(process.env.DATA_QUALITY_MIN_TIMESTAMP_COVERAGE) || 90,
   })
 
+  const maintenance = await runNightRadarMaintenance()
+  if (maintenance.status === 'failed') {
+    audit.failures.push(`履歴データの保持処理に失敗: ${maintenance.message ?? '詳細なし'}`)
+    audit.healthy = false
+  }
   let notification = 'not_needed'
   if (!audit.healthy && process.env.DATA_QUALITY_ALERTS !== '0') {
     const result = await dispatchOperationalAlert({
@@ -92,5 +98,5 @@ export async function GET(request: Request) {
     notification = result.status
   }
 
-  return Response.json({ ...audit, notification }, { status: audit.healthy ? 200 : 502 })
+  return Response.json({ ...audit, maintenance, notification }, { status: audit.healthy ? 200 : 502 })
 }

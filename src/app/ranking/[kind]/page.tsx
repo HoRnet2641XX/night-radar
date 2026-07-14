@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { BreadcrumbJsonLd, PublicShell, RankingView, StoreItemListJsonLd } from '@/components/public-directory'
+import { BreadcrumbJsonLd, PublicDataUnavailable, PublicShell, RankingView, StoreItemListJsonLd } from '@/components/public-directory'
 import { getPublicDirectoryState, publicRankingKinds, sortByRanking, type RankingKind } from '@/lib/public-directory'
 
 export const revalidate = 120
@@ -40,8 +40,10 @@ export default async function RankingPage({ params }: PageProps) {
           { name: publicRankingKinds.find((item) => item.key === kind)?.label ?? '今日', href: `/ranking/${kind}` },
         ]}
       />
-      <StoreItemListJsonLd summaries={ranked} path={`/ranking/${kind}`} />
-      <RankingView kind={kind} state={state} />
+      {state.mode === 'unavailable' ? <PublicDataUnavailable message={state.connectionNote} /> : <>
+        <StoreItemListJsonLd summaries={ranked} path={`/ranking/${kind}`} />
+        <RankingView kind={kind} state={state} />
+      </>}
     </PublicShell>
   )
 }

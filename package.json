@@ -17,6 +17,7 @@
     "stores:sync:metadata": "node --env-file=.env.local --import tsx scripts/sync-verified-store-metadata.mjs",
     "maintenance:dedupe-posts": "node --env-file=.env.local --import tsx scripts/dedupe-normalized-bbs-posts.mjs",
     "maintenance:quarantine-posts": "node --env-file=.env.local --import tsx scripts/quarantine-invalid-bbs-posts.mjs",
+    "maintenance:clear-legacy-screenshots": "node --env-file=.env.local scripts/clear-legacy-screenshots.mjs",
     "refresh:sources": "node --env-file=.env.local --import tsx scripts/refresh-all-bbs-sources.mjs",
     "start": "next start"
   },

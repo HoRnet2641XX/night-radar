@@ -1,5 +1,6 @@
 import { formatBarName, formatStoreArea, formatStoreSessionLabel } from '@/lib/display'
 import { officialEventCoverageStatus, type OfficialEventCoverageStatus } from '@/lib/official-event-coverage'
+import type { PublicDirectoryState } from '@/lib/public-directory'
 import { resolvedStoreMapUrl, resolvedStoreOfficialUrl } from '@/lib/store-catalog'
 import {
   decisionDateKeyInJapan,
@@ -74,7 +75,13 @@ function toBar(
   const firstVisitCount = storeActivity.firstVisitCount
   const groupCount = storeActivity.groupVisitCount
   const eventCount = insight.todayEventCount
-  const eventStatus = eventCount > 0 ? 'scheduled' : monthEventCoverage === 'unverified' ? 'unverified' : 'none'
+  const eventStatus = eventCount > 0
+    ? 'scheduled'
+    : monthEventCoverage === 'external'
+      ? 'external'
+      : monthEventCoverage === 'unverified'
+        ? 'unverified'
+        : 'none'
   const postCount = storeActivity.recentPostCount
   const hourly = {
     hourly: insight.hourlyCounts,
@@ -104,7 +111,13 @@ function toBar(
       dataConfidenceLabel,
       femaleCount > 0 ? `女性 ${femaleCount}件` : '',
       storeActivity.recentThreeHourCount > 0 ? `直近3時間 ${storeActivity.recentThreeHourCount}件` : '',
-      eventStatus === 'scheduled' ? `予定 ${eventCount}件` : eventStatus === 'unverified' ? '予定 未確認' : '本日の予定なし',
+      eventStatus === 'scheduled'
+        ? `予定 ${eventCount}件`
+        : eventStatus === 'external'
+          ? '予定 公式で確認'
+          : eventStatus === 'unverified'
+            ? '予定 未確認'
+            : '本日の予定なし',
     ].filter(Boolean),
     searchKeywords: [
       store.name,
@@ -153,6 +166,8 @@ function toBar(
     firstVisitCount,
     groupCount,
     uniqueAuthorCount: storeActivity.uniqueAuthorCount,
+    estimatedVisitIntentCount: storeActivity.estimatedVisitIntentCount,
+    repeatPostCount: storeActivity.repeatPostCount,
     repeatAuthorRatio: storeActivity.repeatAuthorRatio,
     normalizedCoverage: storeActivity.normalizedCoverage,
     timestampCoverage: storeActivity.timestampCoverage,
@@ -212,6 +227,12 @@ function toCalendarEvent(event: EventInput, stores: StoreProfile[]): CalendarEve
   }
 }
 
+export function adaptEventsToCalendar(events: EventInput[], stores: StoreProfile[]) {
+  return events
+    .map((event) => toCalendarEvent(event, stores))
+    .toSorted((left, right) => left.date.localeCompare(right.date) || (left.startsAt ?? '').localeCompare(right.startsAt ?? ''))
+}
+
 
 function cleanPostBody(value: string) {
   return value
@@ -232,11 +253,15 @@ function formatPostTime(value: string | undefined, fallback: string) {
   }).format(date)
 }
 
-function toRadarPosts(state: DashboardState, bars: Bar[]): RadarPost[] {
-  const storeNames = new Map(bars.map((bar) => [bar.id, bar.name]))
-  const currentPostIds = new Set(state.dailyInsights.flatMap((insight) => insight.rankingPostIds))
+export function adaptNormalizedPostsToRadar(
+  normalizedPosts: DashboardState['bbsNormalizedPosts'],
+  stores: StoreProfile[],
+  dailyInsights: StoreDailyInsight[],
+): RadarPost[] {
+  const storeNames = new Map(stores.map((store) => [store.id, formatBarName(store.name)]))
+  const currentPostIds = new Set(dailyInsights.flatMap((insight) => insight.rankingPostIds))
 
-  return dedupeNormalizedBbsPosts(state.bbsNormalizedPosts)
+  return dedupeNormalizedBbsPosts(normalizedPosts)
     .filter(isStructurallyValidCustomerNormalizedPost)
     .map((post) => {
       const gender = resolvedNormalizedPostGender(post)
@@ -269,6 +294,7 @@ function planLabel(plan: DashboardState['subscription']['plan']) {
 function modeLabel(mode: DashboardState['mode']) {
   if (mode === 'database') return '最新データ接続中'
   if (mode === 'anonymous') return 'ログイン前'
+  if (mode === 'unavailable') return 'データ更新停止'
   return 'デモ表示'
 }
 
@@ -301,9 +327,7 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
       eventCoverageByStore.get(insight.store.id),
     ))
     .toSorted((left, right) => left.rank - right.rank)
-  const events = sourceEvents
-    .map((event) => toCalendarEvent(event, state.stores))
-    .toSorted((left, right) => left.date.localeCompare(right.date) || (left.startsAt ?? '').localeCompare(right.startsAt ?? ''))
+  const events = adaptEventsToCalendar(sourceEvents, state.stores)
   const freshCount = bars.filter((bar) => bar.reliability === 'fresh').length
   const staleCount = bars.filter((bar) => bar.reliability === 'stale' || bar.reliability === 'blocked').length
   const todayEventCount = events.filter((event) => event.date === todayKey).length
@@ -315,7 +339,7 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
   const timestampCoverageAverage = state.bbsNormalizedPosts.length
     ? clamp((state.bbsNormalizedPosts.filter((post) => Boolean(post.postedAt)).length / state.bbsNormalizedPosts.length) * 100)
     : 0
-  const posts = toRadarPosts(state, bars)
+  const posts = adaptNormalizedPostsToRadar(state.bbsNormalizedPosts, state.stores, state.dailyInsights)
 
   return {
     bars,
@@ -332,7 +356,7 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
       sourceCount: state.bbsSources.filter((source) => source.active).length,
       postCount: bars.reduce((sum, bar) => sum + bar.postCount, 0),
       recentThreeHourCount,
-      eventCount: events.length,
+      eventCount: events.filter((event) => event.date.startsWith(currentMonth)).length,
       todayEventCount,
       eventCoverageStoreCount: [...eventCoverageByStore.values()].filter((status) => status !== 'unverified').length,
       eventUnverifiedStoreCount: [...eventCoverageByStore.values()].filter((status) => status === 'unverified').length,
@@ -352,4 +376,38 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
       summary: `当日顧客投稿 ${bars.reduce((sum, bar) => sum + bar.postCount, 0)}件 / 直近3時間 ${recentThreeHourCount}件 / 時刻解析率 ${timestampCoverageAverage}%`,
     },
   }
+}
+
+export function adaptPublicDirectoryToBars(
+  state: PublicDirectoryState,
+  calendarEvents: EventInput[] = [],
+): NightRadarViewData {
+  return adaptDashboardToBars({
+    mode: state.mode,
+    connectionNote: state.connectionNote,
+    setupStatus: {
+      generatedAt: state.generatedAt,
+      actionCount: 0,
+      checkCount: 0,
+      items: [],
+    },
+    stores: state.stores,
+    events: state.events,
+    posts: [],
+    scoredEvents: [],
+    situations: [],
+    bbsSources: state.sources,
+    crawlRuns: [],
+    bbsSnapshots: [],
+    bbsNormalizedPosts: state.normalizedPosts,
+    dailyInsights: state.dailyInsights,
+    storeDecisions: {},
+    exactTerms: { popularSingleMale: '', popularSingleFemale: '', negativePerson: '' },
+    wordBookmarks: [],
+    notificationJobs: [],
+    notificationPreference: { email: '', webhookUrl: '', channel: 'in_app', audience: 'free' },
+    importBatches: [],
+    subscription: { plan: 'free', status: 'public' },
+    wordCategories: [],
+  }, calendarEvents)
 }

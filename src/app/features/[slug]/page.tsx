@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import {
   BreadcrumbJsonLd,
+  PublicDataUnavailable,
   PublicShell,
   PublicStoreGrid,
   StoreFilterLinks,
@@ -42,12 +43,14 @@ export default async function FeaturePage({ params }: PageProps) {
           { name: label, href: `/features/${slug}` },
         ]}
       />
+      {state.mode === 'unavailable' ? <PublicDataUnavailable message={state.connectionNote} /> : <>
       <StoreItemListJsonLd summaries={summaries} path={`/features/${slug}`} />
       <section className="sr-only">
         <h1>{label}の店舗</h1>
       </section>
       <StoreFilterLinks activeCondition={slug} basePath="/shops" />
       <PublicStoreGrid summaries={summaries} />
+      </>}
     </PublicShell>
   )
 }

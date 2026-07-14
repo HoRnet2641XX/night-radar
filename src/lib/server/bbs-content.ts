@@ -86,6 +86,42 @@ export function extractScarletCommentsPayload(payload: unknown) {
     .join('\n')
 }
 
+export function extractHarnesCurrentCalendarPostId(html: string) {
+  const $ = cheerio.load(html)
+  return (
+    $('.jet-calendar-week__day.current-day .jet-calendar-week__day-event[data-post-id]').first().attr('data-post-id') ||
+    $('.jet-calendar-week__day-event[data-post-id]').last().attr('data-post-id') ||
+    ''
+  ).trim()
+}
+
+export function extractHarnesPopupComments(html: string) {
+  const $ = cheerio.load(html)
+  $('style, script, noscript').remove()
+  const posts: string[] = []
+
+  $('.jet-listing-grid__item[data-post-id]').each((_, element) => {
+    const item = $(element)
+    const raw = compactText(item.text())
+    const match = raw.match(
+      /^(.{0,60}?)\s*(20\d{2}[./-]\d{1,2}[./-]\d{1,2}\s+\d{1,2}:\d{2})\s+投稿者[:：]\s*(.{1,80}?)\s*[（(]\s*(男性|女性|カップル|複数|指定なし)?\s*[）)]\s*([\s\S]{1,1600})$/u,
+    )
+    if (!match) return
+
+    const gender = match[4]?.trim()
+    const author = `${match[3]?.trim() ?? ''}${gender ? `（${gender}）` : ''}`
+    const post = canonicalPost({
+      author,
+      body: match[5] ?? '',
+      date: (match[2] ?? '').replace(/[.]/g, '/'),
+      articleNo: item.attr('data-post-id'),
+    })
+    if (post) posts.push(post)
+  })
+
+  return posts.join('\n')
+}
+
 function extractWordPressComments($: cheerio.CheerioAPI) {
   const posts: string[] = []
 

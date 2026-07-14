@@ -1,7 +1,7 @@
 import coverageData from './official-event-coverage.generated.json'
 import type { EventInput } from './types'
 
-export type OfficialEventCoverageStatus = 'scheduled' | 'none' | 'unverified'
+export type OfficialEventCoverageStatus = 'scheduled' | 'none' | 'external' | 'unverified'
 
 export type OfficialEventCoverage = {
   storeId: string

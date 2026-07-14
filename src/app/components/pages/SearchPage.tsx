@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Activity, BookmarkCheck, BookmarkPlus, Clock3, MapPin, MessageSquareText, Search, Smile, Star, Store, UserRound, X } from 'lucide-react';
 import { matchesStoreSearch } from '@/lib/store-search';
@@ -88,7 +88,9 @@ function PostRow({ post, onOpen }: { post: RadarPost; onOpen: (id: string) => vo
 }
 
 export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
-  const { bars, posts } = useNightRadarData();
+  const { bars, posts: initialPosts } = useNightRadarData();
+  const [posts, setPosts] = useState(initialPosts);
+  const [postsStatus, setPostsStatus] = useState<'loading' | 'ready' | 'error'>(initialPosts.length ? 'ready' : 'loading');
   const { savedWords, candidateStoreIds, toggleWord, toggleCandidateStore } = useLocalPreferences();
   const [mode, setMode] = useState<'posts' | 'stores'>('posts');
   const [q, setQ] = useState('');
@@ -97,6 +99,23 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
   const [postGender, setPostGender] = useState<'all' | RadarPostGender>('all');
   const [postWindow, setPostWindow] = useState<'today' | 'recent'>('today');
   const [visiblePostCount, setVisiblePostCount] = useState(40);
+
+  useEffect(() => {
+    if (initialPosts.length) return;
+    const controller = new AbortController();
+    fetch('/api/app-content?kind=posts', { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json() as { posts?: RadarPost[]; error?: string };
+        if (!response.ok || !payload.posts) throw new Error(payload.error || '書き込みを読み込めませんでした。');
+        setPosts(payload.posts);
+        setPostsStatus('ready');
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setPostsStatus('error');
+      });
+    return () => controller.abort();
+  }, [initialPosts]);
 
   const filteredBars = useMemo(() => bars.filter((bar) => {
     const matchesQuery = matchesStoreSearch(q, bar.searchKeywords);
@@ -239,11 +258,23 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
 
       {mode === 'posts' ? (
         <div className="grid gap-3">
+          {postsStatus === 'loading' && (
+            <GlassCard className="nr-hairline p-8 text-center" role="status" aria-live="polite">
+              <span className="nr-loading-dot" aria-hidden="true" />
+              <p className="mt-3 text-[13px]" style={{ color: 'var(--nr-text-mid)' }}>直近48時間の書き込みを読み込んでいます</p>
+            </GlassCard>
+          )}
+          {postsStatus === 'error' && (
+            <GlassCard className="nr-hairline p-8 text-center" role="alert">
+              <p className="text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>書き込みを読み込めませんでした</p>
+              <button type="button" className="nr-secondary-btn mx-auto mt-4 flex" onClick={() => window.location.reload()}>再読み込み</button>
+            </GlassCard>
+          )}
           {filteredPosts.slice(0, visiblePostCount).map((post) => <PostRow key={post.id} post={post} onOpen={onOpen} />)}
           {filteredPosts.length > visiblePostCount && (
             <button type="button" className="nr-secondary-btn mx-auto flex" onClick={() => setVisiblePostCount((value) => value + 40)}>さらに40件を見る</button>
           )}
-          {filteredPosts.length === 0 && (
+          {postsStatus === 'ready' && filteredPosts.length === 0 && (
             <GlassCard className="nr-hairline p-8 text-center">
               <p className="text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>一致する書き込みがありません</p>
               <p className="mt-2 text-[12px]" style={{ color: 'var(--nr-text-low)' }}>性別や期間を「すべて」に戻すか、名前の一部だけで検索してください。</p>
@@ -262,9 +293,9 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
                     <div className="text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>{bar.rank}位 · {bar.name}</div>
                     <div className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--nr-text-low)' }}><MapPin size={10} /> {bar.area}</div>
                   </div>
-                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>当日総書き込み</span><br /><span className="nr-mono text-[14px]">{bar.postCount}件</span></div>
+                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>当日投稿 / 投稿者 / 来店意向</span><br /><span className="nr-mono text-[14px]">{bar.postCount}件 / {bar.uniqueAuthorCount}名 / 約{bar.estimatedVisitIntentCount}組</span></div>
                   <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{bar.genderSampleCount ? `判定対象${bar.genderSampleCount}件中` : '性別記載なし'}</span><br /><span className="nr-mono text-[14px]">女性 {femaleValue(bar)}</span></div>
-                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>今日の予定</span><br /><span className="nr-mono text-[14px]">{bar.eventStatus === 'unverified' ? '未確認' : `${bar.eventCount}件`}</span></div>
+                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>今日の予定</span><br /><span className="nr-mono text-[14px]">{bar.eventStatus === 'external' ? '公式で確認' : bar.eventStatus === 'unverified' ? '未確認' : `${bar.eventCount}件`}</span></div>
                   <span className="nr-chip"><Activity size={10} />店舗詳細</span>
                 </button>
                 <button type="button" className="nr-chip my-3 mr-3 grid min-w-10 place-items-center !px-2" data-active={saved} aria-label={saved ? `${bar.name}を候補から外す` : `${bar.name}を候補に保存`} aria-pressed={saved} onClick={() => toggleCandidateStore(bar.id)}><Star size={14} fill={saved ? 'currentColor' : 'none'} /></button>

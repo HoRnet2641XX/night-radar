@@ -36,13 +36,13 @@ function genderEvidenceLabel(bar: Bar) {
 }
 
 export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void; onNavigate: (tab: 'search' | 'schedule' | 'account') => void }) {
-  const { bars, events, meta } = useNightRadarData();
+  const { bars, meta } = useNightRadarData();
   const ticker = useNightRadarTicker();
   const [filter, setFilter] = useState('すべて');
   const visibleBars = bars.filter((bar) => matchesFilter(bar, filter));
   const totalFemale = bars.reduce((sum, bar) => sum + bar.femaleCount, 0);
   const totalGenderSamples = bars.reduce((sum, bar) => sum + bar.genderSampleCount, 0);
-  const currentMonthEventCount = events.filter((event) => event.date.startsWith(meta.currentMonth)).length;
+  const currentMonthEventCount = meta.eventCount;
   const activeRecentStores = bars.filter((bar) => bar.recentThreeHourCount > 0).length;
   const postMax = Math.max(1, ...bars.map((bar) => bar.postCount));
   const femaleMax = Math.max(1, ...bars.map((bar) => bar.femaleCount));
@@ -162,9 +162,10 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
                         </span>
                       </div>
                       <h3 className="nr-heading text-[26px] leading-[1.05]" style={{ color: 'var(--nr-text-hi)' }}>{b.name}</h3>
-                      <div className="flex items-center gap-4 text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>
                         <span className="flex items-center gap-1"><MapPin size={10} /> {b.area}</span>
                         <span className="flex items-center gap-1 nr-mono"><Clock size={10} /> {b.businessWindowLabel}</span>
+                        <span className="flex items-center gap-1 nr-mono"><Users size={10} /> 投稿者 {b.uniqueAuthorCount}名・来店意向 約{b.estimatedVisitIntentCount}組{b.repeatPostCount ? `・再投稿 ${b.repeatPostCount}件` : ''}</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5 mt-1">
                         {b.tags.slice(0, 3).map(t => <span key={t} className="text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{t}</span>)}

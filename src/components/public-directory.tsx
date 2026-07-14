@@ -83,6 +83,18 @@ export function PublicShell({
   )
 }
 
+export function PublicDataUnavailable({ message }: { message?: string }) {
+  return (
+    <section className={styles.emptyState} role="alert">
+      <p>データ更新停止</p>
+      <h2>最新の店舗情報を読み込めませんでした。</h2>
+      <span>{message ?? '時間をおいて再読み込みしてください。'}</span>
+      <br />
+      <Link href="/shops">再読み込み</Link>
+    </section>
+  )
+}
+
 export function PublicHomeJsonLd() {
   const faq = buildPublicFaqSchema()
   return (

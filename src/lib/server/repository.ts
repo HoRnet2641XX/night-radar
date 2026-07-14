@@ -155,6 +155,38 @@ function demoDashboardState(mode: RuntimeMode = 'demo', connectionNote?: string)
   }
 }
 
+function unavailableDashboardState(connectionNote = 'データベースから最新情報を取得できませんでした。'): DashboardState {
+  return {
+    mode: 'unavailable',
+    connectionNote,
+    setupStatus: getServiceSetupStatus(),
+    stores: [],
+    events: [],
+    posts: [],
+    businessContextPosts: [],
+    scoredEvents: [],
+    situations: [],
+    bbsSources: [],
+    crawlRuns: [],
+    bbsSnapshots: [],
+    bbsNormalizedPosts: [],
+    dailyInsights: [],
+    storeDecisions: {},
+    exactTerms: defaultExactTerms,
+    wordBookmarks: [],
+    notificationJobs: [],
+    notificationPreference: defaultNotificationPreference,
+    importBatches: [],
+    subscription: { plan: 'free', status: 'inactive' },
+    wordCategories,
+  }
+}
+
+function dashboardReadFailure(message: string) {
+  console.error('[Night Radar] dashboard database read failed:', message)
+  return unavailableDashboardState()
+}
+
 function ensureId(value?: string) {
   const trimmed = value?.trim()
   return trimmed || randomUUID()
@@ -903,10 +935,8 @@ async function saveNormalizedBbsPostsFromText(
     .map(toBbsNormalizedPost)
     .filter(isStructurallyValidCustomerNormalizedPost).length
   const posts = extractNormalizedBbsPostsFromText(extractedText, observedAt)
-  const explicitlyEmpty = isExplicitlyEmptyBbsText(extractedText)
-  const customerCandidates = explicitlyEmpty
-    ? []
-    : posts.filter((post) => isLikelyCustomerNormalizedPost({ ...post, storeId: source.storeId }))
+  const customerCandidates = posts.filter((post) => isLikelyCustomerNormalizedPost({ ...post, storeId: source.storeId }))
+  const explicitlyEmpty = isExplicitlyEmptyBbsText(extractedText, customerCandidates.length)
   const rows = customerCandidates
     .filter((post) => isStructurallyValidCustomerNormalizedPost({ ...post, storeId: source.storeId }))
     .map((post) => toBbsNormalizedPostRow({ source, observedAt, post }))
@@ -1009,13 +1039,17 @@ export async function getDashboardState(): Promise<DashboardState> {
     data: { user },
   } = sessionClient ? await sessionClient.auth.getUser() : { data: { user: null } }
   const supabase = createSupabaseAdminClient() ?? sessionClient
-  if (!supabase) return demoDashboardState('demo', 'Supabase未接続')
+  if (!supabase) {
+    return process.env.NODE_ENV === 'production'
+      ? unavailableDashboardState('データ接続の設定を確認しています。')
+      : demoDashboardState('demo', 'Supabase未接続')
+  }
 
   let storeResult = (await supabase.from('stores').select(storeSelectColumns).order('created_at', { ascending: false })) as DbListResult
   if (isMissingColumnError(storeResult.error)) {
     storeResult = (await supabase.from('stores').select(legacyStoreSelectColumns).order('created_at', { ascending: false })) as DbListResult
   }
-  if (storeResult.error) return demoDashboardState('demo', storeResult.error.message)
+  if (storeResult.error) return dashboardReadFailure(storeResult.error.message ?? 'stores query failed')
 
   const storeIds = (storeResult.data ?? []).map((row) => row.id)
   const stores = (storeResult.data ?? []).map(toStore)
@@ -1140,7 +1174,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     preferenceResult.error ||
     importResult.error ||
     subscriptionResult.error
-  if (firstError) return demoDashboardState('demo', firstError.message)
+  if (firstError) return dashboardReadFailure(firstError.message ?? 'dashboard query failed')
 
   let snapshotRows = snapshotResult.data ?? []
   if (normalizedPostResult.error && isMissingRelationError(normalizedPostResult.error) && storeIds.length) {
@@ -1183,7 +1217,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     ? await supabase.from('user_store_decisions').select(storeDecisionSelectColumns).eq('user_id', user.id)
     : { data: [], error: null }
   if (decisionResult.error && !isMissingRelationError(decisionResult.error)) {
-    return demoDashboardState('demo', decisionResult.error.message)
+    return dashboardReadFailure(decisionResult.error.message)
   }
 
   return {
@@ -1727,14 +1761,35 @@ async function crawlSourceRowSafely(
     captureBrowserScreenshot?: boolean
   } = {},
 ) {
-  try {
-    return await crawlSourceRow(supabase, row, options)
-  } catch (error) {
+  const configuredRetries = Number(process.env.CRAWL_RETRY_COUNT)
+  const retryCount = Number.isFinite(configuredRetries) && configuredRetries >= 0
+    ? Math.min(2, Math.floor(configuredRetries))
+    : 1
+  const retryDelayMs = Math.max(0, Math.min(2_000, Number(process.env.CRAWL_RETRY_DELAY_MS) || 250))
+  let lastError: unknown
+  let lastResult: CrawlSourceResult | null = null
+
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
     try {
-      return await saveFailedCrawlRun(supabase, row, error)
-    } catch {
-      return fallbackFailedCrawlResult(row, `巡回処理で例外が発生しました: ${errorMessage(error)}`.slice(0, 500), new Date().toISOString())
+      const result = await crawlSourceRow(supabase, row, options)
+      lastResult = result
+      if (result.run.status === 'ok' || attempt === retryCount) return result
+    } catch (error) {
+      lastError = error
+      if (attempt === retryCount) break
     }
+    if (retryDelayMs) await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+  }
+
+  if (lastResult) return lastResult
+  try {
+    return await saveFailedCrawlRun(supabase, row, lastError)
+  } catch {
+    return fallbackFailedCrawlResult(
+      row,
+      `巡回処理で例外が発生しました: ${errorMessage(lastError)}`.slice(0, 500),
+      new Date().toISOString(),
+    )
   }
 }
 
@@ -1750,10 +1805,35 @@ export type CronCrawlOptions = {
   batch?: number | 'auto'
   batchSize?: number
   captureBrowserScreenshots?: boolean
+  concurrency?: number
   excludeSourceIds?: string[]
   force?: boolean
   maxCrawls?: number
+  screenshotCrawls?: number
   sourceIds?: string[]
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+) {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+  const workerCount = Math.min(items.length, Math.max(1, concurrency))
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      for (;;) {
+        const index = nextIndex
+        nextIndex += 1
+        if (index >= items.length) return
+        results[index] = await worker(items[index], index)
+      }
+    }),
+  )
+
+  return results
 }
 
 function normalizeCronBatchOptions(activeCount: number, options: CronCrawlOptions) {
@@ -1800,10 +1880,26 @@ function prioritizeBbsRowsForCrawl(rows: DbRow[]) {
 
 function normalizeCronMaxCrawls(options: CronCrawlOptions) {
   const value = options.maxCrawls ?? Number(process.env.CRON_MAX_CRAWLS_PER_RUN)
-  if (Number.isFinite(value) && value > 0) return Math.max(1, Math.min(10, Math.floor(value)))
-  if (options.sourceIds?.length) return Math.max(1, Math.min(10, options.sourceIds.length))
-  if (options.batchSize) return 1
-  return 3
+  if (Number.isFinite(value) && value > 0) return Math.max(1, Math.min(30, Math.floor(value)))
+  if (options.sourceIds?.length) return Math.max(1, Math.min(30, options.sourceIds.length))
+  if (options.batchSize) return Math.max(1, Math.min(30, Math.floor(options.batchSize)))
+  return 30
+}
+
+function normalizeCronConcurrency(options: CronCrawlOptions) {
+  const configured = options.concurrency ?? Number(process.env.CRON_CRAWL_CONCURRENCY)
+  if (Number.isFinite(configured) && configured > 0) return Math.max(1, Math.min(12, Math.floor(configured)))
+  return 8
+}
+
+function screenshotSourceIds(rows: DbRow[], options: CronCrawlOptions) {
+  if (!options.captureBrowserScreenshots || rows.length === 0) return new Set<string>()
+  const configured = options.screenshotCrawls ?? Number(process.env.CRON_SCREENSHOTS_PER_RUN)
+  const size = Number.isFinite(configured) && configured > 0 ? Math.min(rows.length, Math.floor(configured)) : Math.min(rows.length, 3)
+  const sorted = [...rows].sort((left, right) => stringField(left, 'id').localeCompare(stringField(right, 'id')))
+  const start = (Math.floor(Date.now() / 300_000) * size) % sorted.length
+  const selected = Array.from({ length: size }, (_, index) => sorted[(start + index) % sorted.length])
+  return new Set(selected.map((row) => stringField(row, 'id')))
 }
 
 export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) {
@@ -1834,37 +1930,43 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
         return elapsedMinutes >= Number(row.crawl_interval_minutes ?? 360)
       })
   const maxCrawls = normalizeCronMaxCrawls(options)
+  const concurrency = normalizeCronConcurrency(options)
   const crawlRows = prioritizeBbsRowsForCrawl(dueRows).slice(0, maxCrawls)
   const captureBrowserScreenshots = options.captureBrowserScreenshots === true
+  const screenshotIds = screenshotSourceIds(crawlRows, options)
 
-  const results: CrawlSourceResult[] = []
-  const browserSession = crawlRows.length && captureBrowserScreenshots ? await createBrowserSnapshotSession() : null
+  const browserSession = crawlRows.some((row) => screenshotIds.has(stringField(row, 'id')))
+    ? await createBrowserSnapshotSession()
+    : null
+  let results: CrawlSourceResult[]
   try {
-    if (browserSession) {
-      for (const row of crawlRows) {
-        results.push(
-          await crawlSourceRowSafely(supabase, row, {
-            browserSession,
-            captureBrowserScreenshot: captureBrowserScreenshots,
-          }),
-        )
-      }
-    } else {
-      results.push(
-        ...(await Promise.all(
-          crawlRows.map((row) =>
-            crawlSourceRowSafely(supabase, row, {
-              captureBrowserScreenshot: false,
-            }),
-          ),
-        )),
-      )
-    }
+    results = await mapWithConcurrency(
+      crawlRows,
+      concurrency,
+      async (row) => {
+        const captureBrowserScreenshot = screenshotIds.has(stringField(row, 'id'))
+        return crawlSourceRowSafely(supabase, row, {
+          browserSession,
+          captureBrowserScreenshot,
+        })
+      },
+    )
   } finally {
     await browserSession?.close()
   }
 
   const failureNotifications = await dispatchCrawlFailureNotifications(supabase, results)
+  const screenshotFailures = results.filter(({ source, snapshot }) =>
+    screenshotIds.has(source.id) && !snapshot?.screenshotDataUrl,
+  )
+  if (screenshotFailures.length) {
+    await dispatchOperationalAlert({
+      title: `実画面スクリーンショットを${screenshotFailures.length}店舗で保存できませんでした`,
+      body: screenshotFailures.map(({ source }) => `${source.label} (${source.storeId})`).join('\n'),
+      severity: 'warning',
+      details: { requested: screenshotIds.size, failed: screenshotFailures.length },
+    })
+  }
 
   return {
     mode: 'database' as const,
@@ -1876,13 +1978,16 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
     batch,
     filters: {
       captureBrowserScreenshots,
+      concurrency,
       excludeSourceIds: options.excludeSourceIds ?? [],
       force: Boolean(options.force),
       maxCrawls,
+      screenshotCrawls: screenshotIds.size,
       sourceIds: options.sourceIds ?? [],
     },
     results,
     failureNotificationCount: failureNotifications.length,
+    screenshotFailureCount: screenshotFailures.length,
   }
 }
 

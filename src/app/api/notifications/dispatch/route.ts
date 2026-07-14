@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { events as demoEvents, posts as demoPosts, stores as demoStores } from '@/lib/demo-data'
 import { jsonError } from '@/lib/env'
 import { highestAudienceForPlan, planRank } from '@/lib/plans'
 import { requireAppUser } from '@/lib/server/auth-guard'
@@ -10,7 +9,6 @@ import {
   saveDispatchedNotifications,
 } from '@/lib/server/repository'
 import { buildSignalNotifications, dispatchNotification } from '@/lib/server/notifications'
-import { scoreEvents } from '@/lib/scoring'
 import type { NotificationChannel, PlanKey, ScoredEvent } from '@/lib/types'
 
 export const runtime = 'nodejs'
@@ -40,9 +38,12 @@ export async function POST(request: Request) {
         : requestedAudience
     const recipient = parsed.data.recipient ?? delivery.preference.email
     const webhookUrl = parsed.data.webhookUrl ?? delivery.preference.webhookUrl
-    const fallbackEvents = scoreEvents(demoEvents, demoStores, demoPosts)
     const state = parsed.data.events?.length ? null : await getDashboardState()
-    const events = (parsed.data.events?.length ? parsed.data.events : state?.scoredEvents.length ? state.scoredEvents : fallbackEvents) as ScoredEvent[]
+    if (state?.mode === 'unavailable') {
+      return jsonError(state.connectionNote ?? '最新データを取得できないため、通知を停止しました。', 503)
+    }
+    const events = (parsed.data.events?.length ? parsed.data.events : state?.scoredEvents ?? []) as ScoredEvent[]
+    if (events.length === 0) return jsonError('通知できる当日の候補がありません。', 409)
     const jobs = buildSignalNotifications(events, audience, channel)
     const dispatched = await Promise.all(jobs.map((job) => dispatchNotification(job, { recipient, webhookUrl })))
     const persisted = await saveDispatchedNotifications(dispatched)

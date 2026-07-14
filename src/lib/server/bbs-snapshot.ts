@@ -28,47 +28,8 @@ function readPositiveIntEnv(name: string, fallback: number) {
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
 
-function escapeSvgText(value: string) {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function wrapSnapshotText(value: string, maxLineLength = 26, maxLines = 34) {
-  const normalized = value.replace(/\s+/g, ' ').trim()
-  const lines: string[] = []
-  for (let index = 0; index < normalized.length && lines.length < maxLines; index += maxLineLength) {
-    lines.push(normalized.slice(index, index + maxLineLength))
-  }
-  return lines
-}
-
-function buildTextSnapshotDataUrl(source: BbsSource, scrapeResult: ScrapeResult, extractedText: string) {
-  if (!extractedText.trim()) return undefined
-
-  const lines = wrapSnapshotText(extractedText)
-  const textRows = lines
-    .map((line, index) => `<text x="22" y="${118 + index * 19}" class="body">${escapeSvgText(line)}</text>`)
-    .join('')
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844">
-  <rect width="390" height="844" fill="#08111f"/>
-  <rect x="14" y="14" width="362" height="816" rx="18" fill="#101827" stroke="#27364b"/>
-  <text x="22" y="48" class="label">BBS本文スナップショット</text>
-  <text x="22" y="78" class="title">${escapeSvgText(source.storeId)}</text>
-  <text x="22" y="100" class="meta">${escapeSvgText(scrapeResult.url)}</text>
-  ${textRows}
-  <text x="22" y="808" class="meta">${escapeSvgText(scrapeResult.fetchedAt)}</text>
-  <style>
-    .label{font:700 11px -apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;letter-spacing:.08em;fill:#6ea8c7}
-    .title{font:700 22px -apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;fill:#e8f4ff}
-    .meta{font:500 10px -apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;fill:#8da0b7}
-    .body{font:600 13px -apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;fill:#cbd7e6}
-  </style>
-</svg>`
-
-  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
-}
-
 function getScreenshotTimeoutMs(url: string) {
-  const standardTimeoutMs = readPositiveIntEnv('BROWSER_SCREENSHOT_TIMEOUT_MS', 4_500)
+  const standardTimeoutMs = readPositiveIntEnv('BROWSER_SCREENSHOT_TIMEOUT_MS', 10_000)
   try {
     const hostname = new URL(url).hostname
     if (hostname === 'neo-bbs.com' || hostname.endsWith('.neo-bbs.com')) {
@@ -108,11 +69,21 @@ async function captureBrowserSnapshotWithBrowser(url: string, browser: BrowserLi
     try {
       await page.setExtraHTTPHeaders({ 'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8' })
       await page.goto(url, {
-        waitUntil: 'domcontentloaded',
+        // Several boards keep third-party resources open indefinitely. Waiting
+        // for the first response commit keeps screenshots independent from
+        // those optional resources while still proving the real page loaded.
+        waitUntil: 'commit',
         timeout: getScreenshotTimeoutMs(url),
       })
+      await page
+        .waitForLoadState('domcontentloaded', { timeout: Math.min(getScreenshotTimeoutMs(url), 4_000) })
+        .catch(() => {})
       await page.waitForTimeout(readPositiveIntEnv('BROWSER_SCREENSHOT_SETTLE_MS', 180))
-      const text = ((await page.locator('body').textContent({ timeout: 1_000 })) ?? '').replace(/\s+/g, ' ').trim()
+      const text = await page
+        .locator('body')
+        .textContent({ timeout: 1_000 })
+        .then((value) => (value ?? '').replace(/\s+/g, ' ').trim())
+        .catch(() => '')
       const image = await page.screenshot({
         type: 'jpeg',
         quality: 42,
@@ -126,7 +97,12 @@ async function captureBrowserSnapshotWithBrowser(url: string, browser: BrowserLi
     } finally {
       await page.close().catch(() => {})
     }
-  } catch {
+  } catch (error) {
+    console.warn(
+      '[Night Radar] browser screenshot failed:',
+      url,
+      error instanceof Error ? error.message : String(error),
+    )
     return null
   }
 }
@@ -155,19 +131,26 @@ export async function createBrowserSnapshotSession(): Promise<BrowserSnapshotSes
   }
 
   let browser: BrowserLike | null = null
+  let browserPromise: Promise<BrowserLike> | null = null
 
   async function closeBrowser() {
     await browser?.close().catch(() => {})
     browser = null
+    browserPromise = null
+  }
+
+  async function getBrowser() {
+    if (browser) return browser
+    browserPromise ??= launchChromiumBrowser()
+    browser = await browserPromise
+    return browser
   }
 
   return {
     capture: async (url) => {
       try {
-        browser ??= await launchChromiumBrowser()
-        return await captureBrowserSnapshotWithBrowser(url, browser)
+        return await captureBrowserSnapshotWithBrowser(url, await getBrowser())
       } catch {
-        await closeBrowser()
         return null
       }
     },
@@ -185,8 +168,9 @@ export async function buildBbsSnapshot(
     scrapeResult.status === 'ok' && options.captureBrowserScreenshot !== false
       ? await (browserSession ? browserSession.capture(scrapeResult.url) : captureBrowserSnapshot(scrapeResult.url))
       : null
-  const extractedText = browserSnapshot?.extractedText || scrapeResult.extractedText || scrapeResult.message || ''
-  const fallbackSnapshotDataUrl = browserSnapshot ? undefined : buildTextSnapshotDataUrl(source, scrapeResult, extractedText)
+  // Browser text is only a fallback. A visual capture must never replace the
+  // canonical text parser used for rankings and normalized customer posts.
+  const extractedText = scrapeResult.extractedText || browserSnapshot?.extractedText || scrapeResult.message || ''
   const metrics = buildBbsSnapshotMetrics(extractedText)
 
   return {
@@ -194,7 +178,9 @@ export async function buildBbsSnapshot(
     sourceId: source.id,
     storeId: source.storeId,
     url: scrapeResult.url,
-    screenshotDataUrl: browserSnapshot?.screenshotDataUrl || fallbackSnapshotDataUrl,
+    // Text-only crawls still create metric snapshots, but only a real browser
+    // capture is stored in the screenshot field.
+    screenshotDataUrl: browserSnapshot?.screenshotDataUrl,
     extractedText,
     metrics,
     radarScore: scoreBbsSnapshot(metrics),

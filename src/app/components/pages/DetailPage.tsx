@@ -104,7 +104,8 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           >
             <span className="flex items-center gap-1"><MapPin size={11} /> {bar.area}</span>
             <span className="flex items-center gap-1 nr-mono"><Clock size={11} /> {bar.businessWindowLabel} · 最多 {bar.peakHour}</span>
-            <span className="flex items-center gap-1 nr-mono"><Users size={11} /> {genderEvidenceLabel(bar)} · 総投稿 {bar.postCount}件 · 3h {bar.recentThreeHourCount}件</span>
+            <span className="flex items-center gap-1 nr-mono"><Users size={11} /> 投稿者 {bar.uniqueAuthorCount}名 · 来店意向 約{bar.estimatedVisitIntentCount}組 · 再投稿 {bar.repeatPostCount}件 · 総投稿 {bar.postCount}件 · 3h {bar.recentThreeHourCount}件</span>
+            <span className="flex items-center gap-1 nr-mono"><Users size={11} /> {genderEvidenceLabel(bar)}</span>
           </motion.div>
           <motion.div className="flex flex-wrap gap-1.5 mt-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }}
@@ -154,7 +155,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
             </div>
           </div>
           <div className="nr-mono text-[11px] flex items-center gap-1 md:max-w-[280px]" style={{ color: 'var(--nr-text-mid)' }}>
-            <Info size={11} /> 時刻解析 {bar.timestampCoverage}% · 解析保留 {bar.excludedUntimestampedCount}件は順位に不使用 · 性別判定 {bar.genderSampleCount}/{bar.postCount}件（{bar.genderCoverage}%）
+            <Info size={11} /> 順位は投稿 {bar.postCount}件で算出 · 投稿者 {bar.uniqueAuthorCount}名 · 再投稿をまとめた来店意向 約{bar.estimatedVisitIntentCount}組 · 時刻解析 {bar.timestampCoverage}% · 解析保留 {bar.excludedUntimestampedCount}件
           </div>
         </GlassCard>
       </motion.div>
@@ -220,7 +221,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
                     : m.k === 'drinks'
                       ? femaleMetricLabel(bar)
                       : m.k === 'music'
-                        ? bar.eventStatus === 'unverified' ? '未確認' : `${bar.eventCount}件`
+                        ? bar.eventStatus === 'external' ? '公式確認' : bar.eventStatus === 'unverified' ? '未確認' : `${bar.eventCount}件`
                         : m.k === 'crowd'
                           ? `${bar.recentThreeHourCount}件`
                           : `${bar.dataConfidence}点`;
@@ -258,7 +259,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
                   </a>
                 ))}
               </div>
-            ) : <p className="mt-4 text-[12px]" style={{ color: 'var(--nr-text-low)' }}>{bar.eventStatus === 'unverified' ? 'この店舗の公式予定は未確認です。予定なしとは判定していません。' : '今日の公式イベントはありません。'}</p>}
+            ) : <p className="mt-4 text-[12px]" style={{ color: 'var(--nr-text-low)' }}>{bar.eventStatus === 'external' ? 'この店舗の予定は公式サイト・公式Xでご確認ください。予定なしとは判定していません。' : bar.eventStatus === 'unverified' ? 'この店舗の公式予定は未確認です。予定なしとは判定していません。' : '今日の公式イベントはありません。'}</p>}
           </GlassCard>
         </div>
 

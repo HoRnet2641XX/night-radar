@@ -129,6 +129,29 @@ test('daily insight contract includes pre-opening posts assigned to today and ex
   ])
 })
 
+test('daily insight uses each store overnight closing time instead of a fixed 06:00 boundary', () => {
+  const target = {
+    ...store('late-night-store'),
+    openingHourNight: '19:00-07:00',
+  }
+  const dataset = buildDailyStoreDataset({
+    stores: [target],
+    events: [],
+    rawPosts: [],
+    sources: [source(target.id)],
+    snapshots: [],
+    normalizedPosts: [
+      { ...post({ id: 'overnight', storeId: target.id, postedAt: '2026-07-10T21:30:00.000Z', authorName: '夜営業中' }), body: '今から伺います。' },
+      { ...post({ id: 'next-day', storeId: target.id, postedAt: '2026-07-10T22:30:00.000Z', authorName: '翌営業日' }), body: '明日伺います。' },
+    ],
+    referenceAt: '2026-07-10T21:40:00.000Z',
+  })
+
+  assert.equal(dataset.insights[0].activity.recentPostCount, 1)
+  assert.deepEqual(dataset.insights[0].rankingPostIds, ['normalized-overnight'])
+  assert.match(dataset.insights[0].businessWindowLabel, /翌07:00/)
+})
+
 test('daily insight contract resolves Japanese day and weekday visit expressions without counting reschedules', () => {
   const target = store('japanese-date-store')
   const rows = [

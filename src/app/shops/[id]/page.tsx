@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { PublicShell, StoreDetailView } from '@/components/public-directory'
+import { PublicDataUnavailable, PublicShell, StoreDetailView } from '@/components/public-directory'
 import { formatPublicStoreName, getPublicDirectoryState, getPublicStoreDetail, storeDetailPath } from '@/lib/public-directory'
 
 export const revalidate = 120
@@ -24,6 +24,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function StorePage({ params }: PageProps) {
   const { id } = await params
+  const state = await getPublicDirectoryState()
+  if (state.mode === 'unavailable') {
+    return <PublicShell current="shops"><PublicDataUnavailable message={state.connectionNote} /></PublicShell>
+  }
   const detail = await getPublicStoreDetail(id)
   if (!detail) notFound()
 

@@ -5,7 +5,7 @@ import { type CalendarEventItem } from '../data/mock';
 import { useNightRadarData } from '../data/runtime';
 import { DigitRoll } from '../ui-nr/DigitRoll';
 import { WordReveal, Stagger, StaggerItem } from '../ui-nr/Reveal';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const DAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const FILTERS = ['すべて', '朝・昼', '夜', 'BINGO', '月1', '誕生日'];
@@ -32,7 +32,9 @@ function matchesQuery(event: CalendarEventItem, query: string) {
 }
 
 export function SchedulePage() {
-  const { events, meta } = useNightRadarData();
+  const { events: initialEvents, meta } = useNightRadarData();
+  const [events, setEvents] = useState(initialEvents);
+  const [eventsStatus, setEventsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [visibleMonth, setVisibleMonth] = useState(meta.currentMonth);
   const [selected, setSelected] = useState<number | null>(Number(meta.todayKey.slice(-2)) || 1);
   const [filter, setFilter] = useState('すべて');
@@ -55,6 +57,22 @@ export function SchedulePage() {
   const sourcedCount = monthEvents.filter((event) => event.sourceUrl).length;
   const coveredStoreCount = new Set(monthEvents.map((event) => event.storeId)).size;
 
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/app-content?kind=events', { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json() as { events?: CalendarEventItem[]; error?: string };
+        if (!response.ok || !payload.events) throw new Error(payload.error || '月間予定を読み込めませんでした。');
+        setEvents(payload.events);
+        setEventsStatus('ready');
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setEventsStatus('error');
+      });
+    return () => controller.abort();
+  }, []);
+
   function moveMonth(delta: number) {
     const nextMonth = shiftMonth(visibleMonth, delta);
     const isCurrentMonth = nextMonth === meta.currentMonth;
@@ -65,6 +83,12 @@ export function SchedulePage() {
 
   return (
     <div className="flex flex-col gap-8">
+      {eventsStatus === 'loading' && (
+        <div className="nr-inline-status" role="status" aria-live="polite"><span className="nr-loading-dot" aria-hidden="true" />月間予定を読み込んでいます</div>
+      )}
+      {eventsStatus === 'error' && (
+        <div className="nr-inline-status" data-error="true" role="alert">月間予定を読み込めませんでした。再読み込みしてください。</div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-5 lg:gap-8 items-end pt-4">
         <div>
           <motion.div className="flex items-center gap-2 mb-4"

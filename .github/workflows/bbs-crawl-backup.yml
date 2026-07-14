@@ -1,0 +1,80 @@
+name: BBS crawl backup
+
+on:
+  schedule:
+    # Primary external scheduler runs on :00/:05. This delayed pass only picks
+    # up sources that are still due, avoiding duplicate rows on healthy runs.
+    - cron: "2-57/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: night-radar-bbs-crawl
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Crawl all due stores
+        id: crawl
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          TARGET_URL: ${{ vars.NIGHT_RADAR_URL || 'https://night-radar.vercel.app' }}
+        run: |
+          test -n "$CRON_SECRET"
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error \
+            --max-time 55 \
+            --retry 1 \
+            --retry-delay 3 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$TARGET_URL/api/cron/crawl")"
+          cat "$response_file"
+          {
+            echo 'response<<EOF'
+            head -c 12000 "$response_file"
+            echo
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "BBS巡回がHTTP $statusで失敗しました。" >&2
+            exit 1
+          fi
+
+      - name: Record crawl failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESPONSE: ${{ steps.crawl.outputs.response }}
+        run: |
+          title='[Night Radar] BBS巡回異常'
+          body_file="$(mktemp)"
+          printf '自動巡回で異常を検知しました。\n\n- 実行: %s\n- URL: %s/actions/runs/%s\n\n```json\n%s\n```\n' \
+            "$(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            "$GITHUB_RUN_ID" \
+            "${RESPONSE:-応答本文なし}" > "$body_file"
+          number="$(gh issue list --state open --search "${title} in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body-file "$body_file"
+          else
+            gh issue create --title "$title" --body-file "$body_file"
+          fi
+
+      - name: Close recovered crawl alert
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title='[Night Radar] BBS巡回異常'
+          number="$(gh issue list --state open --search "${title} in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue close "$number" --comment 'BBS巡回の正常復帰を確認しました。'
+          fi

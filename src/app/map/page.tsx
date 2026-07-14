@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { BreadcrumbJsonLd, MapExplorerView, PublicShell } from '@/components/public-directory'
+import { BreadcrumbJsonLd, MapExplorerView, PublicDataUnavailable, PublicShell } from '@/components/public-directory'
 import { getPublicDirectoryState, sortByRanking } from '@/lib/public-directory'
 
 export const revalidate = 120
@@ -15,7 +15,9 @@ export default async function MapPage() {
   return (
     <PublicShell current="map">
       <BreadcrumbJsonLd items={[{ name: '地図', href: '/map' }]} />
-      <MapExplorerView summaries={sortByRanking(state.summaries, 'today')} />
+      {state.mode === 'unavailable'
+        ? <PublicDataUnavailable message={state.connectionNote} />
+        : <MapExplorerView summaries={sortByRanking(state.summaries, 'today')} />}
     </PublicShell>
   )
 }

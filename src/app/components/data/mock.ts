@@ -1,5 +1,5 @@
 export type DataReliability = 'fresh' | 'stale' | 'blocked' | 'unknown'
-export type EventRegistrationStatus = 'scheduled' | 'none' | 'unverified'
+export type EventRegistrationStatus = 'scheduled' | 'none' | 'external' | 'unverified'
 
 export type Bar = {
   id: string
@@ -40,6 +40,8 @@ export type Bar = {
   firstVisitCount: number
   groupCount: number
   uniqueAuthorCount: number
+  estimatedVisitIntentCount: number
+  repeatPostCount: number
   repeatAuthorRatio: number | null
   normalizedCoverage: number
   timestampCoverage: number
@@ -153,7 +155,7 @@ const fallbackBars: Bar[] = [
     reason: '現在はデータ接続を確認しています。',
     peakHour: '確認中',
     eventCount: 0,
-    eventStatus: 'unverified',
+    eventStatus: 'external',
     femaleCount: 0,
     femaleRatio: null,
     genderSampleCount: 0,
@@ -162,6 +164,8 @@ const fallbackBars: Bar[] = [
     firstVisitCount: 0,
     groupCount: 0,
     uniqueAuthorCount: 0,
+    estimatedVisitIntentCount: 0,
+    repeatPostCount: 0,
     repeatAuthorRatio: null,
     normalizedCoverage: 0,
     timestampCoverage: 0,

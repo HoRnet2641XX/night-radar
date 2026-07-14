@@ -232,13 +232,14 @@
     "storeId": "neo",
     "storeName": "Neo",
     "month": "2026-07",
-    "status": "unverified",
+    "status": "external",
     "eventCount": 0,
     "sourceUrls": [
-      "https://neo-nk.com/"
+      "https://neo-nk.com/",
+      "https://twitter.com/Neo202412"
     ],
     "checkedAt": "2026-07-13T18:06:57.533Z",
-    "note": "公式サイトは最新情報を公式Xで確認するよう案内。日付付きの当月予定は自動確認できず"
+    "note": "公式サイトが最新情報の確認先として公式Xを案内。自動集計外のため公式Xで確認"
   },
   {
     "storeId": "ogikubo-himitsu-club",

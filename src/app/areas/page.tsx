@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { AreaIndexView, BreadcrumbJsonLd, PublicShell } from '@/components/public-directory'
+import { AreaIndexView, BreadcrumbJsonLd, PublicDataUnavailable, PublicShell } from '@/components/public-directory'
 import { getPublicDirectoryState } from '@/lib/public-directory'
 
 export const revalidate = 120
@@ -15,7 +15,7 @@ export default async function AreasPage() {
   return (
     <PublicShell current="areas">
       <BreadcrumbJsonLd items={[{ name: 'エリア検索', href: '/areas' }]} />
-      <AreaIndexView state={state} />
+      {state.mode === 'unavailable' ? <PublicDataUnavailable message={state.connectionNote} /> : <AreaIndexView state={state} />}
     </PublicShell>
   )
 }

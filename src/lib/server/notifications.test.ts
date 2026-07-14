@@ -5,8 +5,12 @@ import { dispatchOperationalAlert } from './notifications'
 test('operator alert remains unconfigured without a webhook', async () => {
   const previousOperationUrl = process.env.OPERATION_ALERT_WEBHOOK_URL
   const previousNotificationUrl = process.env.NOTIFICATION_WEBHOOK_URL
+  const previousOperationEmail = process.env.OPERATION_ALERT_EMAIL
+  const previousResendKey = process.env.RESEND_API_KEY
   delete process.env.OPERATION_ALERT_WEBHOOK_URL
   delete process.env.NOTIFICATION_WEBHOOK_URL
+  delete process.env.OPERATION_ALERT_EMAIL
+  delete process.env.RESEND_API_KEY
   try {
     assert.deepEqual(
       await dispatchOperationalAlert({ title: '巡回異常', body: '解析件数が急減しました。' }),
@@ -15,6 +19,8 @@ test('operator alert remains unconfigured without a webhook', async () => {
   } finally {
     if (previousOperationUrl) process.env.OPERATION_ALERT_WEBHOOK_URL = previousOperationUrl
     if (previousNotificationUrl) process.env.NOTIFICATION_WEBHOOK_URL = previousNotificationUrl
+    if (previousOperationEmail) process.env.OPERATION_ALERT_EMAIL = previousOperationEmail
+    if (previousResendKey) process.env.RESEND_API_KEY = previousResendKey
   }
 })
 
