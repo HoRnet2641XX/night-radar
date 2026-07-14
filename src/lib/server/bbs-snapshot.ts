@@ -140,7 +140,9 @@ export async function createBrowserSnapshotSession(): Promise<BrowserSnapshotSes
   }
 
   async function getBrowser() {
-    if (browser) return browser
+    if (browser?.isConnected()) return browser
+    browser = null
+    browserPromise = null
     browserPromise ??= launchChromiumBrowser()
     browser = await browserPromise
     return browser
@@ -149,6 +151,11 @@ export async function createBrowserSnapshotSession(): Promise<BrowserSnapshotSes
   return {
     capture: async (url) => {
       try {
+        const activeBrowser = await getBrowser()
+        const result = await captureBrowserSnapshotWithBrowser(url, activeBrowser)
+        if (result || activeBrowser.isConnected()) return result
+
+        await closeBrowser()
         return await captureBrowserSnapshotWithBrowser(url, await getBrowser())
       } catch {
         return null

@@ -1897,50 +1897,71 @@ export async function captureDueBbsScreenshotsForCron(options: ScreenshotCronOpt
   const browserSession = selectedSources.length ? await createBrowserSnapshotSession() : null
 
   try {
-    const results = await Promise.all(
-      selectedSources.map(async (source) => {
-        const { data: latestRow, error: latestError } = await supabase
-          .from('bbs_snapshots')
-          .select('*')
-          .eq('source_id', source.id)
-          .order('captured_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (latestError || !latestRow) {
-          return { sourceId: source.id, storeId: source.storeId, status: 'failed' as const, message: latestError?.message ?? '本文スナップショットがありません。' }
-        }
+    const results: Array<
+      | { sourceId: string; storeId: string; status: 'captured'; capturedAt: string }
+      | { sourceId: string; storeId: string; status: 'failed'; message: string }
+    > = []
 
-        const browserSnapshot = await browserSession?.capture(source.url)
-        if (!browserSnapshot?.screenshotDataUrl) {
-          return { sourceId: source.id, storeId: source.storeId, status: 'failed' as const, message: '実画面を撮影できませんでした。' }
-        }
+    for (const source of selectedSources) {
+      const { data: latestRow, error: latestError } = await supabase
+        .from('bbs_snapshots')
+        .select('*')
+        .eq('source_id', source.id)
+        .order('captured_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (latestError || !latestRow) {
+        results.push({
+          sourceId: source.id,
+          storeId: source.storeId,
+          status: 'failed',
+          message: latestError?.message ?? '本文スナップショットがありません。',
+        })
+        continue
+      }
 
-        const capturedAt = new Date().toISOString()
-        const currentUpdate = await supabase
+      const browserSnapshot = await browserSession?.capture(source.url)
+      if (!browserSnapshot?.screenshotDataUrl) {
+        results.push({
+          sourceId: source.id,
+          storeId: source.storeId,
+          status: 'failed',
+          message: '実画面を撮影できませんでした。',
+        })
+        continue
+      }
+
+      const capturedAt = new Date().toISOString()
+      const currentUpdate = await supabase
+        .from('bbs_snapshots')
+        .update({
+          screenshot_data_url: browserSnapshot.screenshotDataUrl,
+          screenshot_captured_at: capturedAt,
+        })
+        .eq('id', stringField(latestRow, 'id'))
+      let updateError = currentUpdate.error
+
+      if (isMissingScreenshotCapturedAt(updateError)) {
+        const legacyUpdate = await supabase
           .from('bbs_snapshots')
           .update({
             screenshot_data_url: browserSnapshot.screenshotDataUrl,
-            screenshot_captured_at: capturedAt,
+            created_at: capturedAt,
           })
           .eq('id', stringField(latestRow, 'id'))
-        let updateError = currentUpdate.error
-
-        if (isMissingScreenshotCapturedAt(updateError)) {
-          const legacyUpdate = await supabase
-            .from('bbs_snapshots')
-            .update({
-              screenshot_data_url: browserSnapshot.screenshotDataUrl,
-              created_at: capturedAt,
-            })
-            .eq('id', stringField(latestRow, 'id'))
-          updateError = legacyUpdate.error
-        }
-        if (updateError) {
-          return { sourceId: source.id, storeId: source.storeId, status: 'failed' as const, message: updateError.message }
-        }
-        return { sourceId: source.id, storeId: source.storeId, status: 'captured' as const, capturedAt }
-      }),
-    )
+        updateError = legacyUpdate.error
+      }
+      if (updateError) {
+        results.push({
+          sourceId: source.id,
+          storeId: source.storeId,
+          status: 'failed',
+          message: updateError.message,
+        })
+        continue
+      }
+      results.push({ sourceId: source.id, storeId: source.storeId, status: 'captured', capturedAt })
+    }
 
     const failures = results.filter((item) => item.status === 'failed')
     if (failures.length) {
