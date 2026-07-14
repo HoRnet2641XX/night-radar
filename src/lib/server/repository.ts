@@ -1813,6 +1813,158 @@ export type CronCrawlOptions = {
   sourceIds?: string[]
 }
 
+export type ScreenshotCronOptions = {
+  force?: boolean
+  intervalMinutes?: number
+  limit?: number
+}
+
+function isMissingScreenshotCapturedAt(error: { message?: string } | null) {
+  return Boolean(error?.message?.includes('screenshot_captured_at'))
+}
+
+async function loadLatestScreenshotCaptureRows(supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>) {
+  const currentSchema = await supabase
+    .from('bbs_snapshots')
+    .select('id,source_id,captured_at,screenshot_captured_at')
+    .like('screenshot_data_url', 'data:image/jpeg%')
+    .order('screenshot_captured_at', { ascending: false })
+    .limit(1_000)
+
+  if (!currentSchema.error) {
+    return {
+      rows: currentSchema.data ?? [],
+      timestampField: 'screenshot_captured_at' as const,
+    }
+  }
+  if (!isMissingScreenshotCapturedAt(currentSchema.error)) {
+    throw new RepositoryError(currentSchema.error.message, 500)
+  }
+
+  const legacySchema = await supabase
+    .from('bbs_snapshots')
+    .select('id,source_id,captured_at,created_at')
+    .like('screenshot_data_url', 'data:image/jpeg%')
+    .order('created_at', { ascending: false })
+    .limit(1_000)
+  if (legacySchema.error) throw new RepositoryError(legacySchema.error.message, 500)
+
+  return {
+    rows: legacySchema.data ?? [],
+    timestampField: 'created_at' as const,
+  }
+}
+
+export async function captureDueBbsScreenshotsForCron(options: ScreenshotCronOptions = {}) {
+  const supabase = createSupabaseAdminClient()
+  if (!supabase) throw new RepositoryError('Supabaseの管理接続が未設定です。', 503)
+
+  const [{ data: sourceRows, error: sourceError }, screenshotHistory] = await Promise.all([
+    supabase.from('bbs_sources').select(sourceSelectColumns).eq('active', true).order('id'),
+    loadLatestScreenshotCaptureRows(supabase),
+  ])
+  if (sourceError) throw new RepositoryError(sourceError.message, 500)
+
+  const latestScreenshotBySource = new Map<string, string>()
+  for (const row of screenshotHistory.rows) {
+    const sourceId = stringField(row, 'source_id')
+    const capturedAt = stringField(row, screenshotHistory.timestampField) || stringField(row, 'captured_at')
+    if (sourceId && capturedAt && !latestScreenshotBySource.has(sourceId)) {
+      latestScreenshotBySource.set(sourceId, capturedAt)
+    }
+  }
+
+  const intervalMinutes = Math.max(
+    20,
+    Math.min(180, Number(options.intervalMinutes ?? process.env.SCREENSHOT_INTERVAL_MINUTES) || 30),
+  )
+  const limit = Math.max(1, Math.min(5, Math.floor(Number(options.limit ?? process.env.SCREENSHOT_MAX_PER_RUN) || 3)))
+  const now = Date.now()
+  const sources = (sourceRows ?? []).map(toBbsSource)
+  const dueSources = sources
+    .filter((source) => {
+      if (options.force) return true
+      const capturedAt = latestScreenshotBySource.get(source.id)
+      if (!capturedAt) return true
+      return now - new Date(capturedAt).getTime() >= intervalMinutes * 60_000
+    })
+    .sort((left, right) => {
+      const leftTime = new Date(latestScreenshotBySource.get(left.id) ?? 0).getTime()
+      const rightTime = new Date(latestScreenshotBySource.get(right.id) ?? 0).getTime()
+      return leftTime - rightTime || left.id.localeCompare(right.id)
+    })
+  const selectedSources = dueSources.slice(0, limit)
+  const browserSession = selectedSources.length ? await createBrowserSnapshotSession() : null
+
+  try {
+    const results = await Promise.all(
+      selectedSources.map(async (source) => {
+        const { data: latestRow, error: latestError } = await supabase
+          .from('bbs_snapshots')
+          .select('*')
+          .eq('source_id', source.id)
+          .order('captured_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (latestError || !latestRow) {
+          return { sourceId: source.id, storeId: source.storeId, status: 'failed' as const, message: latestError?.message ?? '本文スナップショットがありません。' }
+        }
+
+        const browserSnapshot = await browserSession?.capture(source.url)
+        if (!browserSnapshot?.screenshotDataUrl) {
+          return { sourceId: source.id, storeId: source.storeId, status: 'failed' as const, message: '実画面を撮影できませんでした。' }
+        }
+
+        const capturedAt = new Date().toISOString()
+        const currentUpdate = await supabase
+          .from('bbs_snapshots')
+          .update({
+            screenshot_data_url: browserSnapshot.screenshotDataUrl,
+            screenshot_captured_at: capturedAt,
+          })
+          .eq('id', stringField(latestRow, 'id'))
+        let updateError = currentUpdate.error
+
+        if (isMissingScreenshotCapturedAt(updateError)) {
+          const legacyUpdate = await supabase
+            .from('bbs_snapshots')
+            .update({
+              screenshot_data_url: browserSnapshot.screenshotDataUrl,
+              created_at: capturedAt,
+            })
+            .eq('id', stringField(latestRow, 'id'))
+          updateError = legacyUpdate.error
+        }
+        if (updateError) {
+          return { sourceId: source.id, storeId: source.storeId, status: 'failed' as const, message: updateError.message }
+        }
+        return { sourceId: source.id, storeId: source.storeId, status: 'captured' as const, capturedAt }
+      }),
+    )
+
+    const failures = results.filter((item) => item.status === 'failed')
+    if (failures.length) {
+      await dispatchOperationalAlert({
+        title: `実画面スクリーンショットを${failures.length}店舗で保存できませんでした`,
+        body: failures.map((item) => `${item.sourceId}: ${item.message}`).join('\n'),
+        severity: 'warning',
+        details: { selected: selectedSources.length, failed: failures.length },
+      })
+    }
+
+    return {
+      mode: 'database' as const,
+      checked: sources.length,
+      due: dueSources.length,
+      selected: selectedSources.length,
+      intervalMinutes,
+      results,
+    }
+  } finally {
+    await browserSession?.close()
+  }
+}
+
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,

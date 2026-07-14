@@ -48,11 +48,37 @@ jobs:
             exit 1
           fi
 
+      - name: Capture due store screenshots
+        id: screenshots
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          TARGET_URL: ${{ vars.NIGHT_RADAR_URL || 'https://night-radar.vercel.app' }}
+        run: |
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error \
+            --max-time 55 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$TARGET_URL/api/cron/screenshots")"
+          cat "$response_file"
+          {
+            echo 'response<<EOF'
+            head -c 12000 "$response_file"
+            echo
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "BBS実画面撮影がHTTP $statusで失敗しました。" >&2
+            exit 1
+          fi
+
       - name: Record crawl failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
-          RESPONSE: ${{ steps.crawl.outputs.response }}
+          CRAWL_RESPONSE: ${{ steps.crawl.outputs.response }}
+          SCREENSHOT_RESPONSE: ${{ steps.screenshots.outputs.response }}
         run: |
           title='[Night Radar] BBS巡回異常'
           body_file="$(mktemp)"
@@ -60,7 +86,7 @@ jobs:
             "$(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
             "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             "$GITHUB_RUN_ID" \
-            "${RESPONSE:-応答本文なし}" > "$body_file"
+            "本文巡回: ${CRAWL_RESPONSE:-応答本文なし}\n実画面撮影: ${SCREENSHOT_RESPONSE:-応答本文なし}" > "$body_file"
           number="$(gh issue list --state open --search "${title} in:title" --json number --jq '.[0].number // empty')"
           if [ -n "$number" ]; then
             gh issue comment "$number" --body-file "$body_file"

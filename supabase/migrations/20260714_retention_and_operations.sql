@@ -13,6 +13,11 @@ create table if not exists public.store_daily_rollups (
 alter table public.bbs_sources alter column crawl_interval_minutes set default 5;
 update public.bbs_sources set crawl_interval_minutes = 5 where active = true and crawl_interval_minutes <> 5;
 
+alter table public.bbs_snapshots add column if not exists screenshot_captured_at timestamptz;
+create index if not exists bbs_snapshots_source_screenshot_idx
+  on public.bbs_snapshots (source_id, screenshot_captured_at desc)
+  where screenshot_captured_at is not null;
+
 create table if not exists public.store_hourly_rollups (
   store_id text not null references public.stores(id) on delete cascade,
   hour_start timestamptz not null,

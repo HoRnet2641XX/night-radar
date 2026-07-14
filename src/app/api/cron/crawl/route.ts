@@ -6,7 +6,7 @@ import { crawlDueBbsSourcesForCron, RepositoryError } from '@/lib/server/reposit
 import type { CronCrawlOptions } from '@/lib/server/repository'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 30
 
 type CronCrawlResult = Awaited<ReturnType<typeof crawlDueBbsSourcesForCron>>
 
@@ -26,24 +26,17 @@ function getCronCrawlOptions(request: Request): CronCrawlOptions {
   const sourceIds = parseSourceIds(url.searchParams.get('source') ?? url.searchParams.get('sourceId') ?? url.searchParams.get('sources') ?? url.searchParams.get('ids'))
   const excludeSourceIds = parseSourceIds(url.searchParams.get('exclude') ?? url.searchParams.get('excludeSource') ?? url.searchParams.get('excludeSourceId'))
   const force = ['1', 'true', 'yes'].includes((url.searchParams.get('force') ?? '').toLowerCase())
-  const screenshotValue = url.searchParams.get('screenshots') ?? url.searchParams.get('captureScreenshots')
-  const captureBrowserScreenshots = screenshotValue == null
-    ? process.env.DISABLE_BROWSER_SCREENSHOTS !== 'true'
-    : ['1', 'true', 'yes'].includes(screenshotValue.toLowerCase())
-  const screenshotCrawlsValue = Number(url.searchParams.get('screenshotCrawls') ?? url.searchParams.get('screenshotCount') ?? 0)
-  const screenshotCrawls = Number.isFinite(screenshotCrawlsValue) && screenshotCrawlsValue > 0 ? screenshotCrawlsValue : undefined
   const concurrencyValue = Number(url.searchParams.get('concurrency') ?? 0)
   const concurrency = Number.isFinite(concurrencyValue) && concurrencyValue > 0 ? concurrencyValue : undefined
 
   return {
     batch,
     batchSize,
-    captureBrowserScreenshots,
+    captureBrowserScreenshots: false,
     concurrency,
     excludeSourceIds,
     force,
     maxCrawls,
-    screenshotCrawls,
     sourceIds,
   }
 }
