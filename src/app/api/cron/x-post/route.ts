@@ -3,7 +3,9 @@ import { getCronAuthorizationError } from '@/lib/server/cron-auth'
 import { dispatchOperationalAlert } from '@/lib/server/notifications'
 import {
   getXAutoPostConfig,
-  prepareXDailyPost,
+  inferXAutoPostSlot,
+  parseXAutoPostSlot,
+  prepareXScheduledPost,
   publishXPost,
   XAutoPostPlanError,
 } from '@/lib/server/x-auto-post'
@@ -28,9 +30,16 @@ function isMissingRelationError(error?: { code?: string; message?: string } | nu
   return error.code === '42P01' || error.code === 'PGRST205' || /x_auto_posts.*does not exist|Could not find the table/i.test(error.message ?? '')
 }
 
-function publicPlan(plan: ReturnType<typeof prepareXDailyPost>) {
+function isUnsupportedPostKindError(error?: { code?: string; message?: string } | null) {
+  if (!error) return false
+  return error.code === '23514' && /x_auto_posts_post_kind_check/i.test(error.message ?? '')
+}
+
+function publicPlan(plan: ReturnType<typeof prepareXScheduledPost>) {
   return {
+    slot: plan.slot,
     kind: plan.kind,
+    targetDateKey: plan.targetDateKey,
     scheduledFor: plan.scheduledFor,
     sourceGeneratedAt: plan.sourceGeneratedAt,
     text: plan.text,
@@ -61,11 +70,13 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const previewOnly = ['1', 'true'].includes(url.searchParams.get('dryRun') ?? '')
   const retryFailed = ['1', 'true'].includes(url.searchParams.get('retry') ?? '')
+  const pathSlot = parseXAutoPostSlot(url.pathname.split('/').filter(Boolean).at(-1))
+  const slot = parseXAutoPostSlot(url.searchParams.get('slot')) ?? pathSlot ?? inferXAutoPostSlot()
   const config = getXAutoPostConfig()
 
-  let plan: ReturnType<typeof prepareXDailyPost>
+  let plan: ReturnType<typeof prepareXScheduledPost>
   try {
-    plan = prepareXDailyPost(await getPublicDirectoryState(), {
+    plan = prepareXScheduledPost(await getPublicDirectoryState(), slot, {
       includeUrl: config.includeUrl,
       targetUrl: config.targetUrl,
       minimumDataConfidence: config.minimumDataConfidence,
@@ -157,6 +168,11 @@ export async function GET(request: Request) {
     if (isMissingRelationError(claimResult.error)) {
       return Response.json({
         error: 'X投稿履歴テーブルが未作成です。supabase/migrations/20260715_x_auto_posts.sql を適用してください。',
+      }, { status: 503 })
+    }
+    if (isUnsupportedPostKindError(claimResult.error)) {
+      return Response.json({
+        error: 'X投稿履歴テーブルを3種類の投稿へ更新してください。supabase/migrations/20260716_expand_x_auto_post_kinds.sql を適用してください。',
       }, { status: 503 })
     }
     if (claimResult.error) return Response.json({ error: claimResult.error.message }, { status: 500 })

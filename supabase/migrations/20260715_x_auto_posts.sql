@@ -1,7 +1,7 @@
 create table if not exists public.x_auto_posts (
   id uuid primary key default gen_random_uuid(),
   idempotency_key text not null unique,
-  post_kind text not null check (post_kind in ('daily_ranking')),
+  post_kind text not null check (post_kind in ('daily_ranking', 'today_ranking', 'weekly_momentum', 'tomorrow_forecast')),
   scheduled_for timestamptz not null,
   content text not null,
   content_hash text not null,

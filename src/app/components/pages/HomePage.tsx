@@ -9,6 +9,7 @@ import { Ticker } from '../ui-nr/Ticker';
 import { type Bar } from '../data/mock';
 import { useNightRadarData, useNightRadarTicker } from '../data/runtime';
 import { useState } from 'react';
+import { heatLabelForRank } from '@/lib/heat-labels';
 
 const FILTERS = ['すべて', '営業時間内', '直近3時間', '女性書き込みあり', '初回来店の記述', '複数来店の記述', '予定あり', '集計信頼度80点以上'];
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -48,6 +49,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
   const femaleMax = Math.max(1, ...bars.map((bar) => bar.femaleCount));
   const recentMax = Math.max(1, ...bars.map((bar) => bar.recentThreeHourCount));
   const topBar = bars[0];
+  const topHeatLabel = topBar ? heatLabelForRank(topBar.rank) : null;
   const weeklyTop = weeklyMomentum.ranking.filter((item) => item.momentumPercent > 50).slice(0, 3);
   const weeklyCountMax = Math.max(
     1,
@@ -93,7 +95,18 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
           className="nr-hero-signal-panel flex flex-col items-start gap-2 rounded-2xl p-3 sm:p-4 lg:items-end"
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.5 }}
         >
-          <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日顧客投稿 1位</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日顧客投稿 1位</span>
+            {topHeatLabel && (
+              <span
+                className="nr-heat-label"
+                data-level={topHeatLabel.key}
+                title={topHeatLabel.description}
+              >
+                <span aria-hidden="true">{topHeatLabel.emoji}</span>{topHeatLabel.label}
+              </span>
+            )}
+          </div>
           <div className="nr-heading max-w-full text-[24px] leading-tight sm:text-[28px] lg:text-right" style={{ color: 'var(--nr-text-hi)' }}>
             {topBar?.name ?? '集計中'}
           </div>
@@ -148,6 +161,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
       <Stagger delay={0.2} gap={0.09}>
         <div className="flex flex-col gap-3">
           {visibleBars.slice(0, 3).map((b) => {
+            const heatLabel = heatLabelForRank(b.rank);
             return (
               <StaggerItem key={b.id}>
               <GlassCard interactive onClick={() => onOpen(b.id)} className="nr-rank-card nr-focus nr-hairline nr-sheen p-4 sm:p-5" data-rank={b.rank}>
@@ -159,6 +173,15 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
                     <div className="flex flex-col gap-1.5 sm:col-span-2 xl:col-span-1">
                       <div className="flex items-center gap-2">
                         <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日投稿 {b.rank}位</span>
+                        {heatLabel && (
+                          <span
+                            className="nr-heat-label"
+                            data-level={heatLabel.key}
+                            title={heatLabel.description}
+                          >
+                            <span aria-hidden="true">{heatLabel.emoji}</span>{heatLabel.label}
+                          </span>
+                        )}
                         <span className="nr-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,106,91,0.10)', color: 'var(--nr-accent-soft)' }}>
                           {b.businessStatusLabel}
                         </span>

@@ -57,12 +57,13 @@ X Developer Portal: https://developer.x.com/en/portal/dashboard
 
 ```bash
 curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
-  "https://YOUR_VERCEL_DOMAIN/api/cron/x-post?dryRun=1"
+  "https://YOUR_VERCEL_DOMAIN/api/cron/x-post/midday?dryRun=1"
 ```
 
-6. 文面と上位3店舗が正しければ `X_AUTO_POST_ENABLED=true` に変更する。
+6. `supabase/migrations/20260716_expand_x_auto_post_kinds.sql` をSQL Editorで実行する。
+7. 文面と上位3店舗が正しければ `X_AUTO_POST_ENABLED=true` に変更する。
 
-自動投稿は毎日18:00（JST）に1回。同日分はDBの一意キーで二重投稿を防止する。投稿者名やBBS本文はXへ送らず、店舗名と当日投稿件数の集計だけを使う。
+自動投稿は毎日3回。12時台は当日来店予告、18時台は先週同期間から伸びた店舗、23時台は翌日のイベントとBBS来店予告を投稿する。投稿枠と対象日を含むDBの一意キーで二重投稿を防止する。投稿者名やBBS本文はXへ送らず、店舗単位の集計だけを使う。
 
 ## 4. Stripe
 
@@ -125,7 +126,7 @@ Dashboard: https://vercel.com/dashboard
 4. Cron保護用に `CRON_SECRET` を設定する。
 5. 5分おきBBS巡回は外部Cronで `/api/cron/crawl` を叩く。
 6. 1日1回の品質監査は `vercel.json` で毎朝6:30（JST）に設定済み。Vercel本番デプロイ後にCron一覧へ表示されることを確認する。
-7. X自動投稿は `vercel.json` で毎日18:00（JST）に設定済み。最初は `X_AUTO_POST_ENABLED=false` でプレビューする。
+8. X自動投稿は `vercel.json` で毎日12時台・18時台・23時台（JST）に設定済み。最初は `X_AUTO_POST_ENABLED=false` で3種類をプレビューする。
 8. 解析急減や品質異常をSlack/Discordへ送る場合は `OPERATION_ALERT_WEBHOOK_URL` を設定する。
 
 Vercel Hobbyでは高頻度Cronが制限されるため、5分おき運用は外部Cron推奨。Vercel Cronで運用したい場合はPro以上にしてから `vercel.json` にCron設定を追加する。
@@ -138,8 +139,10 @@ curl -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_VERCEL_DOMAIN/api/
 # 1日1回。異常がなければ200、対応が必要な異常があれば502。
 curl -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_VERCEL_DOMAIN/api/cron/audit
 
-# Xには投稿せず、当日分の文面だけ確認。
-curl -H "Authorization: Bearer YOUR_CRON_SECRET" "https://YOUR_VERCEL_DOMAIN/api/cron/x-post?dryRun=1"
+# Xには投稿せず、3種類の文面だけ確認。
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" "https://YOUR_VERCEL_DOMAIN/api/cron/x-post/midday?dryRun=1"
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" "https://YOUR_VERCEL_DOMAIN/api/cron/x-post/evening?dryRun=1"
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" "https://YOUR_VERCEL_DOMAIN/api/cron/x-post/tomorrow?dryRun=1"
 ```
 
 External cron services:

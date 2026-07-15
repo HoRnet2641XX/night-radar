@@ -7,8 +7,16 @@
       "schedule": "30 21 * * *"
     },
     {
-      "path": "/api/cron/x-post",
+      "path": "/api/cron/x-post/midday",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/x-post/evening",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/x-post/tomorrow",
+      "schedule": "0 14 * * *"
     }
   ]
 }

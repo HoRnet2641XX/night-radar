@@ -567,6 +567,51 @@ body::before {
   background: rgba(226, 74, 58, 0.16);
 }
 
+.nr-heat-label,
+.nr-hero-signal-panel .nr-heat-label {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 0.35rem;
+  width: fit-content;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  color: var(--nr-text-hi);
+  background: rgba(255, 255, 255, 0.045);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.nr-heat-label > span,
+.nr-hero-signal-panel .nr-heat-label > span {
+  display: inline;
+  color: inherit;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.nr-heat-label[data-level='blazing'] {
+  border-color: rgba(255, 106, 91, 0.45);
+  color: #ffc0b6;
+  background: rgba(226, 74, 58, 0.14);
+}
+
+.nr-heat-label[data-level='hype'] {
+  border-color: rgba(255, 184, 168, 0.28);
+  color: #ffd2c8;
+  background: rgba(255, 149, 115, 0.09);
+}
+
+.nr-heat-label[data-level='warming'] {
+  border-color: rgba(155, 201, 232, 0.24);
+  color: #bfddf0;
+  background: rgba(86, 133, 171, 0.09);
+}
+
 .nr-weekly-momentum {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);

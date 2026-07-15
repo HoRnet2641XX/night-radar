@@ -103,20 +103,32 @@ Cron crawls send one operator alert and also create notification jobs for config
 
 ### X automatic posting
 
-The scheduled route `/api/cron/x-post` runs once a day at 18:00 JST. It publishes only when all of the following are true:
+X posting runs three times a day. The Vercel Hobby scheduler can run up to 59 minutes after the configured minute, so each daily job starts at the beginning of the hour before its deadline:
+
+- `/api/cron/x-post/midday`: 12:00-12:59 JST, today's visit-intent post ranking
+- `/api/cron/x-post/evening`: 18:00-18:59 JST, stores growing against the same period last week
+- `/api/cron/x-post/tomorrow`: 23:00-23:59 JST, tomorrow's official events and BBS visit intent
+
+Each route publishes only when all of the following are true:
 
 - `X_AUTO_POST_ENABLED=true`
 - all four OAuth 1.0a credentials are configured
-- `supabase/migrations/20260715_x_auto_posts.sql` has been applied
+- `supabase/migrations/20260715_x_auto_posts.sql` and `20260716_expand_x_auto_post_kinds.sql` have been applied
 - at least three stores have fresh, successful data above the configured confidence threshold
 
-The post contains store-level aggregates only. BBS author names and post bodies are never sent to X. A unique daily key in `x_auto_posts` prevents duplicate posts.
+The post contains store-level aggregates only. BBS author names and post bodies are never sent to X. A unique key per date and posting slot in `x_auto_posts` prevents duplicate posts. The three relative labels used in X and the app are `🔥 アツすぎて滅`, `🚀 テンアゲ`, and `👀 じわアツ`.
 
 Preview the exact text without publishing:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
-  "https://YOUR_VERCEL_DOMAIN/api/cron/x-post?dryRun=1"
+  "https://YOUR_VERCEL_DOMAIN/api/cron/x-post/midday?dryRun=1"
+
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
+  "https://YOUR_VERCEL_DOMAIN/api/cron/x-post/evening?dryRun=1"
+
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
+  "https://YOUR_VERCEL_DOMAIN/api/cron/x-post/tomorrow?dryRun=1"
 ```
 
 Required environment variables:
