@@ -12,7 +12,10 @@ export default function App() {
   const [tab, setTab] = useState<TabKey>('home');
   const [detailId, setDetailId] = useState<string>(() => bars[0]?.id ?? '');
 
-  const openDetail = (id: string) => { setDetailId(id); setTab('detail'); };
+  const openDetail = (id: string) => {
+    setDetailId(id);
+    setTab('detail');
+  };
 
   useEffect(() => {
     function notifyTodayCandidate() {

@@ -37,22 +37,78 @@ function genderEvidenceLabel(bar: Bar) {
   return `判定対象${bar.genderSampleCount}件中、女性${bar.femaleCount}件${bar.genderStatus === 'partial' ? '（参考）' : ''}`;
 }
 
+function DailyStoreComparisonIndex({ bars, activeId, onOpen }: { bars: Bar[]; activeId: string; onOpen: (id: string) => void }) {
+  const sortedBars = [...bars].toSorted((left, right) => right.score - left.score || left.rank - right.rank);
+
+  return (
+    <GlassCard className="nr-daily-index nr-hairline p-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>全店舗を同じ0〜100の直線上で比較</div>
+          <h2 className="nr-heading mt-1 text-[20px]" style={{ color: 'var(--nr-text-hi)' }}>当日の店舗比較指数</h2>
+        </div>
+        <span className="nr-chip nr-mono">全{sortedBars.length}店舗</span>
+      </div>
+      <p className="mt-2 max-w-[760px] text-[11px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>
+        投稿量58点・直近3時間24点・注目投稿8点・当日イベント最大5点・取得鮮度5点で算出。店舗名を選ぶと、その店舗詳細へ切り替わります。
+      </p>
+
+      <div className="nr-daily-index-axis" aria-hidden="true">
+        <span>店舗名</span>
+        <span className="nr-daily-index-ticks"><i>0</i><i>25</i><i>50</i><i>75</i><i>100</i></span>
+        <span>指数</span>
+      </div>
+      <div className="nr-daily-index-list" role="list" aria-label="当日の店舗比較指数">
+        {sortedBars.map((item) => {
+          const score = Math.min(100, Math.max(0, item.score));
+          const active = item.id === activeId;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className="nr-daily-index-row"
+              data-active={active}
+              aria-current={active ? 'true' : undefined}
+              aria-label={`${item.name}、当日の店舗比較指数${score}点の詳細を開く`}
+              onClick={() => onOpen(item.id)}
+            >
+              <span className="nr-daily-index-name">
+                <small>{active ? '表示中' : `当日投稿 ${item.rank}位`}</small>
+                <strong>{item.name}</strong>
+              </span>
+              <span className="nr-daily-index-track" aria-hidden="true">
+                <motion.span
+                  className="nr-daily-index-progress"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${score}%` }}
+                  transition={{ duration: 0.75, ease, delay: 0.05 }}
+                />
+                <motion.i
+                  className="nr-daily-index-marker"
+                  style={{ left: `${score}%` }}
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ duration: 0.45, ease, delay: 0.3 }}
+                />
+              </span>
+              <strong className="nr-daily-index-score">{score}<small>点</small></strong>
+            </button>
+          );
+        })}
+      </div>
+    </GlassCard>
+  );
+}
+
 export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) => void }) {
   const { bars, events, meta } = useNightRadarData();
   const { candidateStoreIds, toggleCandidateStore } = useLocalPreferences();
-  const [compareId, setCompareId] = useState('');
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const bar = bars.find(b => b.id === id) ?? bars[0];
   const barId = bar?.id ?? '';
   const others = useMemo(() => bars
     .filter(b => b.id !== barId)
-    .toSorted((left, right) => {
-      const leftUnavailable = left.genderStatus === 'unavailable' ? 1 : 0;
-      const rightUnavailable = right.genderStatus === 'unavailable' ? 1 : 0;
-      return leftUnavailable - rightUnavailable || right.femaleCount - left.femaleCount || left.rank - right.rank;
-    })
-    .slice(0, 8), [barId, bars]);
-  const comparedBar = others.find((item) => item.id === compareId) ?? others[0];
+    .toSorted((left, right) => left.rank - right.rank), [barId, bars]);
 
   useEffect(() => {
     if (!compareModalOpen) return;
@@ -74,7 +130,6 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
 
   const radarValues = RADAR_KEYS.map(k => bar[k.key]);
   const radarLabels = RADAR_KEYS.map(k => k.label);
-  const comparisonValues = comparedBar ? RADAR_KEYS.map((key) => comparedBar[key.key]) : undefined;
   const todayEvents = events.filter((event) => event.storeId === bar.id && event.date === meta.todayKey);
   const hourlyMax = Math.max(0, ...bar.hourly);
   const sourceLink = bar.officialUrl || bar.bbsUrl || bar.mapUrl;
@@ -191,21 +246,29 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
         </div>
       </GlassCard>
 
+      <DailyStoreComparisonIndex bars={bars} activeId={bar.id} onOpen={onOpen} />
+
       {/* Radar, facts and comparison */}
+      <div className="nr-detail-analysis-heading" aria-live="polite">
+        <div>
+          <span className="nr-mono">選択中の店舗</span>
+          <h2 className="nr-heading">{bar.name}</h2>
+        </div>
+        <p className="nr-mono">当日投稿 {bar.rank}位 · 比較指数 {bar.score}点</p>
+      </div>
       <button type="button" className="nr-secondary-btn flex w-full items-center justify-between xl:hidden" onClick={() => setCompareModalOpen(true)}>
-        <span><span className="block text-[10px]" style={{ color: 'var(--nr-text-low)' }}>比較中</span>{comparedBar?.name ?? '比較店舗を選ぶ'}</span>
-        <span className="flex items-center gap-1"><ChevronsUpDown size={14} /> 比較店舗を選ぶ</span>
+        <span>店舗一覧から選ぶ</span>
+        <span className="flex items-center gap-1"><ChevronsUpDown size={14} /> 別の店舗を開く</span>
       </button>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-4">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(300px,0.9fr)_minmax(0,1fr)]">
             <GlassCard className="nr-hairline relative flex min-w-0 flex-col items-center overflow-hidden p-5">
-              <div className="nr-mono mb-1 text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>当日の店舗比較指数 · 0〜100</div>
-              <RadarChart values={radarValues} comparisonValues={comparisonValues} labels={radarLabels} size={330} color="var(--nr-accent)" />
+              <div className="nr-mono mb-1 text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>選択店舗の5指標 · 0〜100</div>
+              <RadarChart values={radarValues} labels={radarLabels} size={330} color="var(--nr-accent)" />
               <div className="mt-1 flex flex-wrap justify-center gap-x-4 gap-y-2 nr-mono text-[10px]">
                 <span className="flex items-center gap-1.5" style={{ color: 'var(--nr-text-mid)' }}><i className="h-0.5 w-5" style={{ background: 'var(--nr-accent)' }} />{bar.name}</span>
-                {comparedBar && <span className="flex items-center gap-1.5" style={{ color: 'var(--nr-text-mid)' }}><i className="h-0 w-5 border-t border-dashed border-[#9BC9E8]" />{comparedBar.name}</span>}
               </div>
               <p className="mt-4 max-w-[360px] text-center text-[11px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>
                 投稿・直近3時間・予定は当日の最大店舗を100として換算。女性比率と集計信頼度は実測値です。件数そのものに上限はありません。
@@ -266,20 +329,19 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
         <aside className="hidden xl:block">
           <GlassCard className="nr-hairline sticky top-5 p-3">
             <div className="px-2 pb-3 pt-1">
-              <div className="nr-mono text-[10px]" style={{ color: 'var(--nr-accent-soft)' }}>比較候補</div>
-              <h2 className="nr-heading mt-1 text-[17px]" style={{ color: 'var(--nr-text-hi)' }}>女性書き込み数が多い店舗</h2>
-              <p className="mt-1 text-[10px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>選ぶとレーダーへ点線で重ねます。判定率が低い店舗は参考値です。</p>
+              <div className="nr-mono text-[10px]" style={{ color: 'var(--nr-accent-soft)' }}>店舗一覧</div>
+              <h2 className="nr-heading mt-1 text-[17px]" style={{ color: 'var(--nr-text-hi)' }}>任意の店舗を開く</h2>
+              <p className="mt-1 text-[10px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>当日顧客投稿数の順位です。選択すると、その店舗詳細へすぐ切り替わります。</p>
             </div>
             <div className="grid max-h-[560px] gap-1 overflow-y-auto pr-1">
-              {others.map((item, index) => (
-                <button key={item.id} type="button" className="nr-compare-option" data-active={comparedBar?.id === item.id} onClick={() => setCompareId(item.id)}>
-                  <span className="nr-compare-rank">{index + 1}</span>
-                  <span className="min-w-0 flex-1"><strong>{item.name}</strong><small>総投稿 {item.postCount}件 · 判定対象 {item.genderSampleCount}件</small></span>
-                  <span className="text-right"><strong>{femaleMetricLabel(item)}</strong><small>女性</small></span>
+              {others.map((item) => (
+                <button key={item.id} type="button" className="nr-compare-option" onClick={() => onOpen(item.id)}>
+                  <span className="nr-compare-rank">{item.rank}</span>
+                  <span className="min-w-0 flex-1"><strong>{item.name}</strong><small>当日顧客投稿 {item.postCount}件 · 直近3時間 {item.recentThreeHourCount}件</small></span>
+                  <span className="text-right"><strong>{item.score}点</strong><small>比較指数</small></span>
                 </button>
               ))}
             </div>
-            {comparedBar && <button type="button" className="nr-secondary-btn mt-3 flex w-full" onClick={() => onOpen(comparedBar.id)}>{comparedBar.name}の詳細を開く</button>}
           </GlassCard>
         </aside>
       </div>
@@ -350,18 +412,18 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           >
             <div className="flex items-start justify-between gap-4 border-b border-white/[0.08] p-5">
               <div>
-                <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-accent-soft)' }}>レーダー比較</span>
-                <h2 id="compare-store-title" className="nr-heading mt-1 text-[20px]" style={{ color: 'var(--nr-text-hi)' }}>比較する店舗を選ぶ</h2>
-                <p className="mt-1 text-[11px]" style={{ color: 'var(--nr-text-low)' }}>女性書き込み数の多い順です。未判定が多い店舗は参考表示になります。</p>
+                <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-accent-soft)' }}>店舗一覧</span>
+                <h2 id="compare-store-title" className="nr-heading mt-1 text-[20px]" style={{ color: 'var(--nr-text-hi)' }}>開く店舗を選ぶ</h2>
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--nr-text-low)' }}>当日顧客投稿数の順位です。選択すると店舗詳細へ切り替わります。</p>
               </div>
               <button type="button" className="nr-chip grid !p-2 place-items-center" aria-label="閉じる" onClick={() => setCompareModalOpen(false)}><X size={16} /></button>
             </div>
             <div className="grid gap-2 overflow-y-auto p-3">
-              {others.map((item, index) => (
-                <button key={item.id} type="button" className="nr-compare-option" data-active={comparedBar?.id === item.id} onClick={() => { setCompareId(item.id); setCompareModalOpen(false); }}>
-                  <span className="nr-compare-rank">{index + 1}</span>
-                  <span className="min-w-0 flex-1"><strong>{item.name}</strong><small>総投稿 {item.postCount}件 · 判定対象 {item.genderSampleCount}件</small></span>
-                  <span className="text-right"><strong>{femaleMetricLabel(item)}</strong><small>女性</small></span>
+              {others.map((item) => (
+                <button key={item.id} type="button" className="nr-compare-option" onClick={() => { setCompareModalOpen(false); onOpen(item.id); }}>
+                  <span className="nr-compare-rank">{item.rank}</span>
+                  <span className="min-w-0 flex-1"><strong>{item.name}</strong><small>当日顧客投稿 {item.postCount}件 · 直近3時間 {item.recentThreeHourCount}件</small></span>
+                  <span className="text-right"><strong>{item.score}点</strong><small>比較指数</small></span>
                 </button>
               ))}
             </div>
