@@ -246,8 +246,6 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
         </div>
       </GlassCard>
 
-      <DailyStoreComparisonIndex bars={bars} activeId={bar.id} onOpen={onOpen} />
-
       {/* Radar, facts and comparison */}
       <div className="nr-detail-analysis-heading" aria-live="polite">
         <div>
@@ -398,6 +396,8 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           </div>
         </GlassCard>
       </div>
+
+      <DailyStoreComparisonIndex bars={bars} activeId={bar.id} onOpen={onOpen} />
 
       {compareModalOpen && typeof document !== 'undefined' && createPortal((
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm xl:hidden" role="presentation" onMouseDown={() => setCompareModalOpen(false)}>

@@ -10,6 +10,7 @@ import { decisionDateKeyInJapan, isStructurallyValidCustomerNormalizedPost } fro
 import { resolvedStoreMapUrl, resolvedStoreMetadata, resolvedStoreOfficialUrl } from './store-catalog'
 import { matchesStoreSearch } from './store-search'
 import { createSupabaseAdminClient } from './supabase/server'
+import { buildWeeklyMomentumDataset, weeklyComparisonWindow } from './weekly-store-momentum'
 import type {
   BbsNormalizedPost,
   BbsSnapshot,
@@ -20,6 +21,7 @@ import type {
   StoreDailyInsight,
   StoreProfile,
   StoreRadarPoint,
+  WeeklyMomentumDataset,
 } from './types'
 
 type DbRow = Record<string, unknown>
@@ -133,6 +135,7 @@ export type PublicDirectoryState = {
   events: EventInput[]
   sources: BbsSource[]
   normalizedPosts: BbsNormalizedPost[]
+  weeklyMomentum: WeeklyMomentumDataset
   dailyInsights: StoreDailyInsight[]
   summaries: PublicStoreSummary[]
   generatedAt: string
@@ -314,6 +317,7 @@ function demoPublicState(): PublicDirectoryState {
 }
 
 function unavailablePublicState(): PublicDirectoryState {
+  const generatedAt = new Date().toISOString()
   return {
     mode: 'unavailable',
     connectionNote: '最新の店舗データを取得できませんでした。時間をおいて再読み込みしてください。',
@@ -321,9 +325,10 @@ function unavailablePublicState(): PublicDirectoryState {
     events: [],
     sources: [],
     normalizedPosts: [],
+    weeklyMomentum: buildWeeklyMomentumDataset({ stores: [], normalizedPosts: [], referenceAt: generatedAt }),
     dailyInsights: [],
     summaries: [],
-    generatedAt: new Date().toISOString(),
+    generatedAt,
   }
 }
 
@@ -336,6 +341,9 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
   const supabase = createSupabaseAdminClient()
   if (!supabase) return process.env.NODE_ENV === 'production' ? unavailablePublicState() : demoPublicState()
 
+  const generatedAt = new Date().toISOString()
+  const weeklyWindow = weeklyComparisonWindow(generatedAt)
+
   let storeResult = (await supabase.from('stores').select(storeSelectColumns).order('name', { ascending: true })) as DbListResult
   if (isMissingColumnError(storeResult.error)) {
     storeResult = (await supabase.from('stores').select(legacyStoreSelectColumns).order('name', { ascending: true })) as DbListResult
@@ -344,7 +352,7 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
 
   const storeIds = (storeResult.data ?? []).map((row) => String(row.id)).filter(Boolean)
   const recentPostThreshold = isoHoursAgo(recentPostWindowHours)
-  const normalizedPostUpperBound = new Date().toISOString()
+  const normalizedPostUpperBound = generatedAt
   const [eventResult, postResult, sourceResult, snapshotResult, snapshotContextResult, normalizedPostResult] = await Promise.all([
     storeIds.length
       ? supabase
@@ -388,7 +396,7 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
             .from('bbs_normalized_posts')
             .select(normalizedPostSelectColumns)
             .in('store_id', storeIds)
-            .gte('posted_at', recentPostThreshold)
+            .gte('posted_at', weeklyWindow.previousStartsAt)
             .lte('posted_at', normalizedPostUpperBound)
             .order('posted_at', { ascending: false })
             .order('id', { ascending: false })
@@ -413,6 +421,13 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
       seenContextStores.add(post.storeId)
       return true
     })
+  const weeklyNormalizedPosts = normalizedPostResult.error
+    ? []
+    : (normalizedPostResult.data ?? []).map(toBbsNormalizedPost)
+  const normalizedPosts = weeklyNormalizedPosts.filter((post) => {
+    if (!post.postedAt) return false
+    return new Date(post.postedAt).getTime() >= new Date(recentPostThreshold).getTime()
+  })
 
   return buildPublicState({
     stores: (storeResult.data ?? []).map(toStore),
@@ -420,12 +435,14 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
     rawPosts: (postResult.data ?? []).map(toPost),
     sources: (sourceResult.data ?? []).map(toBbsSource),
     snapshots: (snapshotResult.data ?? []).map(toBbsSnapshot),
-    normalizedPosts: normalizedPostResult.error ? [] : (normalizedPostResult.data ?? []).map(toBbsNormalizedPost),
+    normalizedPosts,
+    weeklyNormalizedPosts,
     businessContextPosts,
+    referenceAt: generatedAt,
   })
 }
 
-const loadCachedPublicDirectoryState = unstable_cache(loadPublicDirectoryState, ['public-directory-state-stable-posted-at-2026-07-11'], {
+const loadCachedPublicDirectoryState = unstable_cache(loadPublicDirectoryState, ['public-directory-state-weekly-momentum-2026-07-15'], {
   revalidate: 60,
   tags: [PUBLIC_DIRECTORY_CACHE_TAG],
 })
@@ -481,9 +498,11 @@ function buildPublicState(input: {
   sources: BbsSource[]
   snapshots: BbsSnapshot[]
   normalizedPosts: BbsNormalizedPost[]
+  weeklyNormalizedPosts?: BbsNormalizedPost[]
   businessContextPosts: PostRecord[]
+  referenceAt?: string
 }): PublicDirectoryState {
-  const generatedAt = new Date().toISOString()
+  const generatedAt = input.referenceAt ?? new Date().toISOString()
   const dailyDataset = buildDailyStoreDataset({
     stores: input.stores,
     events: input.events,
@@ -501,6 +520,11 @@ function buildPublicState(input: {
       posts: dailyDataset.businessPosts.filter((post) => post.storeId === insight.store.id),
     }),
   )
+  const weeklyMomentum = buildWeeklyMomentumDataset({
+    stores: input.stores,
+    normalizedPosts: input.weeklyNormalizedPosts ?? input.normalizedPosts,
+    referenceAt: generatedAt,
+  })
 
   return {
     mode: input.mode ?? 'database',
@@ -508,6 +532,7 @@ function buildPublicState(input: {
     events: input.events,
     sources: input.sources,
     normalizedPosts: input.normalizedPosts,
+    weeklyMomentum,
     dailyInsights: dailyDataset.insights,
     summaries,
     generatedAt,

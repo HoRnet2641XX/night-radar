@@ -2,12 +2,13 @@
 
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import type { NightRadarViewData } from './adapter'
-import { RUNTIME_META, tickerFromBars } from './mock'
+import { EMPTY_WEEKLY_MOMENTUM, RUNTIME_META, tickerFromBars } from './mock'
 
 const fallbackData: NightRadarViewData = {
   bars: [],
   events: [],
   posts: [],
+  weeklyMomentum: EMPTY_WEEKLY_MOMENTUM,
   meta: RUNTIME_META,
 }
 

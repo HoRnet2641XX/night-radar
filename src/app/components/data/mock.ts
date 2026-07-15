@@ -98,6 +98,27 @@ export type CalendarEventItem = {
   detail?: string
 }
 
+export type WeeklyMomentumItem = {
+  storeId: string
+  storeName: string
+  currentPostCount: number
+  previousPostCount: number
+  postDelta: number
+  momentumPercent: number
+  weekOverWeekRatio: number
+  changePercent: number
+  rank: number
+}
+
+export type WeeklyMomentumView = {
+  currentPeriodLabel: string
+  previousPeriodLabel: string
+  minimumComparisonCount: number
+  measuredStoreCount: number
+  newActivityStoreCount: number
+  ranking: WeeklyMomentumItem[]
+}
+
 export type RuntimeMeta = {
   generatedAt: string
   generatedAtLabel: string
@@ -194,6 +215,14 @@ export const EVENTS: CalendarEventItem[] = []
 export const POSTS: RadarPost[] = []
 export const TICKER: { name: string; signal: number; area: string }[] = tickerFromBars(fallbackBars)
 export const RUNTIME_META: RuntimeMeta = createFallbackMeta()
+export const EMPTY_WEEKLY_MOMENTUM: WeeklyMomentumView = {
+  currentPeriodLabel: '今週の同期間',
+  previousPeriodLabel: '先週の同期間',
+  minimumComparisonCount: 3,
+  measuredStoreCount: 0,
+  newActivityStoreCount: 0,
+  ranking: [],
+}
 
 export const RADAR_KEYS = [
   { key: 'vibe', label: '当日投稿量' },

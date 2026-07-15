@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildDailyStoreDataset } from '@/lib/daily-store-insights'
+import type { PublicDirectoryState } from '@/lib/public-directory'
 import { normalizedBbsPostsToPostRecords } from '@/lib/scoring'
 import type { BbsNormalizedPost, DashboardState, EventInput, StoreProfile } from '@/lib/types'
-import { adaptDashboardToBars } from './adapter'
+import { adaptDashboardToBars, adaptPublicDirectoryToBars } from './adapter'
 
 const store: StoreProfile = {
   id: 'store-1',
@@ -311,4 +312,45 @@ test('adapter does not assign confidence without a source or measured posts', ()
 
   assert.equal(result.bars[0].dataConfidence, 0)
   assert.equal(result.bars[0].reliability, 'unknown')
+})
+
+test('public adapter exposes the server-calculated weekly momentum without raw history', () => {
+  const dashboard = withDailyInsights(state)
+  const publicState: PublicDirectoryState = {
+    mode: 'database',
+    stores: dashboard.stores,
+    events: dashboard.events,
+    sources: dashboard.bbsSources,
+    normalizedPosts: dashboard.bbsNormalizedPosts,
+    dailyInsights: dashboard.dailyInsights,
+    summaries: [],
+    generatedAt: dashboard.setupStatus.generatedAt,
+    weeklyMomentum: {
+      currentStartsAt: '2026-07-05T15:00:00.000Z',
+      currentEndsAt: '2026-07-10T12:00:00.000Z',
+      previousStartsAt: '2026-06-28T15:00:00.000Z',
+      previousEndsAt: '2026-07-03T12:00:00.000Z',
+      minimumComparisonCount: 3,
+      measuredStoreCount: 1,
+      newActivityStoreCount: 0,
+      stores: [{
+        storeId: store.id,
+        currentPostCount: 9,
+        previousPostCount: 6,
+        postDelta: 3,
+        momentumPercent: 60,
+        weekOverWeekRatio: 150,
+        changePercent: 50,
+        status: 'measured',
+        rank: 1,
+      }],
+    },
+  }
+  const result = adaptPublicDirectoryToBars(publicState)
+
+  assert.equal(result.weeklyMomentum.ranking.length, 1)
+  assert.equal(result.weeklyMomentum.ranking[0].storeName, 'bar BAR TEST')
+  assert.equal(result.weeklyMomentum.ranking[0].momentumPercent, 60)
+  assert.equal(result.weeklyMomentum.ranking[0].weekOverWeekRatio, 150)
+  assert.match(result.weeklyMomentum.currentPeriodLabel, /7\/6/)
 })

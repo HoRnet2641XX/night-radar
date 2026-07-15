@@ -9,12 +9,13 @@ import {
   resolvedNormalizedPostGender,
 } from '@/lib/scoring'
 import type { DashboardState, EventInput, StoreDailyInsight, StoreProfile } from '@/lib/types'
-import type { Bar, CalendarEventItem, RadarPost, RuntimeMeta } from './mock'
+import type { Bar, CalendarEventItem, RadarPost, RuntimeMeta, WeeklyMomentumView } from './mock'
 
 export type NightRadarViewData = {
   bars: Bar[]
   events: CalendarEventItem[]
   posts: RadarPost[]
+  weeklyMomentum: WeeklyMomentumView
   meta: RuntimeMeta
 }
 
@@ -36,6 +37,27 @@ function formatGeneratedAt(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(validDate(value) ?? new Date())
+}
+
+function formatWeeklyPeriod(startsAt: string, endsAt: string) {
+  const start = validDate(startsAt)
+  const end = validDate(endsAt)
+  if (!start || !end) return '期間を確認中'
+
+  const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    month: 'numeric',
+    day: 'numeric',
+    weekday: 'short',
+  })
+  const timeFormatter = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  })
+
+  return `${dateFormatter.format(start)} 0:00〜${dateFormatter.format(end)} ${timeFormatter.format(end)}`
 }
 
 function priceNumber(store: StoreProfile) {
@@ -345,6 +367,14 @@ export function adaptDashboardToBars(state: DashboardState, calendarEvents: Even
     bars,
     events,
     posts,
+    weeklyMomentum: {
+      currentPeriodLabel: '今週の同期間',
+      previousPeriodLabel: '先週の同期間',
+      minimumComparisonCount: 3,
+      measuredStoreCount: 0,
+      newActivityStoreCount: 0,
+      ranking: [],
+    },
     meta: {
       generatedAt,
       generatedAtLabel: formatGeneratedAt(generatedAt),
@@ -382,7 +412,7 @@ export function adaptPublicDirectoryToBars(
   state: PublicDirectoryState,
   calendarEvents: EventInput[] = [],
 ): NightRadarViewData {
-  return adaptDashboardToBars({
+  const data = adaptDashboardToBars({
     mode: state.mode,
     connectionNote: state.connectionNote,
     setupStatus: {
@@ -410,4 +440,34 @@ export function adaptPublicDirectoryToBars(
     subscription: { plan: 'free', status: 'public' },
     wordCategories: [],
   }, calendarEvents)
+  const namesByStore = new Map(data.bars.map((bar) => [bar.id, bar.name]))
+  const weeklyMomentum: WeeklyMomentumView = {
+    currentPeriodLabel: formatWeeklyPeriod(
+      state.weeklyMomentum.currentStartsAt,
+      state.weeklyMomentum.currentEndsAt,
+    ),
+    previousPeriodLabel: formatWeeklyPeriod(
+      state.weeklyMomentum.previousStartsAt,
+      state.weeklyMomentum.previousEndsAt,
+    ),
+    minimumComparisonCount: state.weeklyMomentum.minimumComparisonCount,
+    measuredStoreCount: state.weeklyMomentum.measuredStoreCount,
+    newActivityStoreCount: state.weeklyMomentum.newActivityStoreCount,
+    ranking: state.weeklyMomentum.stores
+      .filter((store) => store.rank !== null && store.weekOverWeekRatio !== null && store.changePercent !== null)
+      .toSorted((left, right) => (left.rank ?? Number.MAX_SAFE_INTEGER) - (right.rank ?? Number.MAX_SAFE_INTEGER))
+      .map((store) => ({
+        storeId: store.storeId,
+        storeName: namesByStore.get(store.storeId) ?? '店舗名未確認',
+        currentPostCount: store.currentPostCount,
+        previousPostCount: store.previousPostCount,
+        postDelta: store.postDelta,
+        momentumPercent: store.momentumPercent ?? 0,
+        weekOverWeekRatio: store.weekOverWeekRatio ?? 0,
+        changePercent: store.changePercent ?? 0,
+        rank: store.rank ?? 0,
+      })),
+  }
+
+  return { ...data, weeklyMomentum }
 }

@@ -206,6 +206,31 @@ export type StoreDailyInsight = {
   excludedUntimestampedCount: number
 }
 
+export type WeeklyMomentumStatus = 'measured' | 'new_activity' | 'low_sample' | 'no_activity'
+
+export type StoreWeeklyMomentum = {
+  storeId: string
+  currentPostCount: number
+  previousPostCount: number
+  postDelta: number
+  momentumPercent: number | null
+  weekOverWeekRatio: number | null
+  changePercent: number | null
+  status: WeeklyMomentumStatus
+  rank: number | null
+}
+
+export type WeeklyMomentumDataset = {
+  currentStartsAt: string
+  currentEndsAt: string
+  previousStartsAt: string
+  previousEndsAt: string
+  minimumComparisonCount: number
+  measuredStoreCount: number
+  newActivityStoreCount: number
+  stores: StoreWeeklyMomentum[]
+}
+
 export type WatchedWordHit = {
   id: string
   label: string
