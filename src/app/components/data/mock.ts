@@ -104,6 +104,9 @@ export type WeeklyMomentumItem = {
   currentPostCount: number
   previousPostCount: number
   postDelta: number
+  currentDailyAverage: number
+  previousDailyAverage: number
+  dailyAverageDelta: number
   momentumPercent: number
   weekOverWeekRatio: number
   changePercent: number
@@ -113,6 +116,7 @@ export type WeeklyMomentumItem = {
 export type WeeklyMomentumView = {
   currentPeriodLabel: string
   previousPeriodLabel: string
+  comparisonDayCount: number
   minimumComparisonCount: number
   measuredStoreCount: number
   newActivityStoreCount: number
@@ -218,6 +222,7 @@ export const RUNTIME_META: RuntimeMeta = createFallbackMeta()
 export const EMPTY_WEEKLY_MOMENTUM: WeeklyMomentumView = {
   currentPeriodLabel: '今週の同期間',
   previousPeriodLabel: '先週の同期間',
+  comparisonDayCount: 1,
   minimumComparisonCount: 3,
   measuredStoreCount: 0,
   newActivityStoreCount: 0,

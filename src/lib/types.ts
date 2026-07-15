@@ -213,6 +213,10 @@ export type StoreWeeklyMomentum = {
   currentPostCount: number
   previousPostCount: number
   postDelta: number
+  comparisonDayCount: number
+  currentDailyAverage: number
+  previousDailyAverage: number
+  dailyAverageDelta: number
   momentumPercent: number | null
   weekOverWeekRatio: number | null
   changePercent: number | null
@@ -225,6 +229,7 @@ export type WeeklyMomentumDataset = {
   currentEndsAt: string
   previousStartsAt: string
   previousEndsAt: string
+  comparisonDayCount: number
   minimumComparisonCount: number
   measuredStoreCount: number
   newActivityStoreCount: number

@@ -53,6 +53,7 @@ function state(
       currentEndsAt: '',
       previousStartsAt: '',
       previousEndsAt: '',
+      comparisonDayCount: 1,
       minimumComparisonCount: 0,
       measuredStoreCount: 0,
       newActivityStoreCount: 0,
@@ -136,19 +137,21 @@ test('evening post ranks only stores with a measured positive weekly change', ()
   const plan = prepareXScheduledPost(state(summaries, 'database', {
     weeklyMomentum: {
       currentStartsAt: '', currentEndsAt: '', previousStartsAt: '', previousEndsAt: '',
+      comparisonDayCount: 3,
       minimumComparisonCount: 3, measuredStoreCount: 4, newActivityStoreCount: 0,
       stores: [
-        { storeId: 'face', currentPostCount: 24, previousPostCount: 12, postDelta: 12, momentumPercent: 67, weekOverWeekRatio: 200, changePercent: 100, status: 'measured', rank: 1 },
-        { storeId: 'agreeable', currentPostCount: 18, previousPostCount: 10, postDelta: 8, momentumPercent: 64, weekOverWeekRatio: 180, changePercent: 80, status: 'measured', rank: 2 },
-        { storeId: 'retreat', currentPostCount: 16, previousPostCount: 12, postDelta: 4, momentumPercent: 57, weekOverWeekRatio: 133, changePercent: 33, status: 'measured', rank: 3 },
-        { storeId: 'flat', currentPostCount: 14, previousPostCount: 14, postDelta: 0, momentumPercent: 50, weekOverWeekRatio: 100, changePercent: 0, status: 'measured', rank: 4 },
+        { storeId: 'face', currentPostCount: 24, previousPostCount: 12, postDelta: 12, comparisonDayCount: 3, currentDailyAverage: 8, previousDailyAverage: 4, dailyAverageDelta: 4, momentumPercent: 67, weekOverWeekRatio: 200, changePercent: 100, status: 'measured', rank: 1 },
+        { storeId: 'agreeable', currentPostCount: 18, previousPostCount: 10, postDelta: 8, comparisonDayCount: 3, currentDailyAverage: 6, previousDailyAverage: 3.3, dailyAverageDelta: 2.7, momentumPercent: 64, weekOverWeekRatio: 180, changePercent: 80, status: 'measured', rank: 2 },
+        { storeId: 'retreat', currentPostCount: 16, previousPostCount: 12, postDelta: 4, comparisonDayCount: 3, currentDailyAverage: 5.3, previousDailyAverage: 4, dailyAverageDelta: 1.3, momentumPercent: 57, weekOverWeekRatio: 133, changePercent: 33, status: 'measured', rank: 3 },
+        { storeId: 'flat', currentPostCount: 14, previousPostCount: 14, postDelta: 0, comparisonDayCount: 3, currentDailyAverage: 4.7, previousDailyAverage: 4.7, dailyAverageDelta: 0, momentumPercent: 50, weekOverWeekRatio: 100, changePercent: 0, status: 'measured', rank: 4 },
       ],
     },
   }), 'evening')
 
   assert.equal(plan.kind, 'weekly_momentum')
   assert.equal(plan.candidates.length, 3)
-  assert.match(plan.text, /先週比\+12件/)
+  assert.match(plan.text, /日平均\+4件/)
+  assert.match(plan.text, /同曜日の日平均 TOP3/)
   assert.ok(plan.weightedLength <= 280)
 })
 

@@ -240,10 +240,10 @@ export function selectXWeeklyCandidates(
       .map((summary) => [summary.store.id, summary]),
   )
   const eligible = state.weeklyMomentum.stores
-    .filter((item) => item.status === 'measured' && item.postDelta > 0 && summaryByStoreId.has(item.storeId))
+    .filter((item) => item.status === 'measured' && item.dailyAverageDelta > 0 && summaryByStoreId.has(item.storeId))
     .toSorted((left, right) =>
       (left.rank ?? Number.MAX_SAFE_INTEGER) - (right.rank ?? Number.MAX_SAFE_INTEGER) ||
-      right.postDelta - left.postDelta,
+      right.dailyAverageDelta - left.dailyAverageDelta,
     )
 
   return {
@@ -256,7 +256,7 @@ export function selectXWeeklyCandidates(
         postCount: item.currentPostCount,
         recentThreeHourCount: summary.recentThreeHourCount,
         dataConfidence: summary.dataConfidence,
-        detail: `先週比+${item.postDelta}件`,
+        detail: `日平均+${Number.isInteger(item.dailyAverageDelta) ? item.dailyAverageDelta : item.dailyAverageDelta.toFixed(1)}件`,
       }, index + 1)
     }),
   }
@@ -375,11 +375,11 @@ function buildScheduledText(input: {
   if (input.slot === 'evening') {
     return [
       input.compact ? '【速報】先週より伸びた3店🍸' : '【速報】先週より盛り上がってるハプBARは？🍸',
-      '◼︎盛り上がり推移 TOP3◼︎',
+      '◼︎同曜日の日平均 TOP3◼︎',
       ...lines,
       '',
       displayCurrentTime(input.generatedAt),
-      input.compact ? '先週同期間との比較👇' : '先週同曜日の同時刻までと比較しています👇',
+      input.compact ? '同じ曜日・同時刻までで比較👇' : '同じ曜日・同時刻までを1日平均に換算👇',
       ...urlLines,
       '#NightRadar',
     ].join('\n')

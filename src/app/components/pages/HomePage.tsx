@@ -31,6 +31,10 @@ function femaleMetricLabel(bar: Bar) {
   return `${bar.femaleCount}件`;
 }
 
+function formatDailyAverage(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
 function genderEvidenceLabel(bar: Bar) {
   if (bar.genderSampleCount === 0) return '性別の記載なし';
   return `判定対象${bar.genderSampleCount}件中、女性${bar.femaleCount}件${bar.genderStatus === 'partial' ? '（参考）' : ''}`;
@@ -53,7 +57,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
   const weeklyTop = weeklyMomentum.ranking.filter((item) => item.momentumPercent > 50).slice(0, 3);
   const weeklyCountMax = Math.max(
     1,
-    ...weeklyTop.flatMap((item) => [item.currentPostCount, item.previousPostCount]),
+    ...weeklyTop.flatMap((item) => [item.currentDailyAverage, item.previousDailyAverage]),
   );
   const businessDateLabel = meta.todayKey.slice(5).replace('-', '/');
 
@@ -235,7 +239,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
               先週より投稿が伸びた店舗
             </h2>
             <p className="mt-1 max-w-[72ch] text-[12px] leading-relaxed" style={{ color: 'var(--nr-text-mid)' }}>
-              今週と先週の同期間に占める今週の投稿比率です。50%が先週同等、50%を超えるほど今週の投稿が増えています。
+              今週と先週の同じ曜日・同じ時刻までの投稿を、{weeklyMomentum.comparisonDayCount}日分の1日平均で比較します。50%が先週同等です。
             </p>
           </div>
           <div className="nr-weekly-periods" aria-label="比較期間">
@@ -259,24 +263,24 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
                   <span className="nr-weekly-rank"><strong>{item.rank}</strong><small>位</small></span>
                   <span className="nr-weekly-store">
                     <strong>{item.storeName}</strong>
-                    <small>顧客投稿の同期間比較</small>
+                    <small>同曜日の1日平均比較</small>
                   </span>
-                  <span className="nr-weekly-bars" aria-label={`今週${item.currentPostCount}件、先週${item.previousPostCount}件`}>
+                  <span className="nr-weekly-bars" aria-label={`今週1日平均${formatDailyAverage(item.currentDailyAverage)}件、先週1日平均${formatDailyAverage(item.previousDailyAverage)}件`}>
                     <span className="nr-weekly-bar-row">
                       <small>今週</small>
-                      <i><b style={{ width: `${Math.max(5, (item.currentPostCount / weeklyCountMax) * 100)}%` }} /></i>
-                      <strong>{item.currentPostCount}件</strong>
+                      <i><b style={{ width: `${Math.max(5, (item.currentDailyAverage / weeklyCountMax) * 100)}%` }} /></i>
+                      <strong>{formatDailyAverage(item.currentDailyAverage)}件</strong>
                     </span>
                     <span className="nr-weekly-bar-row" data-period="previous">
                       <small>先週</small>
-                      <i><b style={{ width: `${Math.max(5, (item.previousPostCount / weeklyCountMax) * 100)}%` }} /></i>
-                      <strong>{item.previousPostCount}件</strong>
+                      <i><b style={{ width: `${Math.max(5, (item.previousDailyAverage / weeklyCountMax) * 100)}%` }} /></i>
+                      <strong>{formatDailyAverage(item.previousDailyAverage)}件</strong>
                     </span>
                   </span>
                   <span className="nr-weekly-change">
                     <small>盛り上がり率</small>
                     <strong>{item.momentumPercent}%</strong>
-                    <em>先週から {item.postDelta >= 0 ? '+' : ''}{item.postDelta}件</em>
+                    <em>1日平均 {item.dailyAverageDelta >= 0 ? '+' : ''}{formatDailyAverage(item.dailyAverageDelta)}件</em>
                   </span>
                   <ArrowUpRight size={16} className="nr-weekly-arrow" aria-hidden="true" />
                 </button>
@@ -297,6 +301,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
         <div className="nr-weekly-footnote">
           <span>比較可能 {weeklyMomentum.measuredStoreCount}店</span>
           <span>最低基準 各週{weeklyMomentum.minimumComparisonCount}件</span>
+          <span>同じ曜日区間の{weeklyMomentum.comparisonDayCount}日分を1日平均へ換算</span>
           <span>50% = 先週と同じ投稿数</span>
           {weeklyMomentum.newActivityStoreCount > 0 && (
             <span>今週から投稿が増えた{weeklyMomentum.newActivityStoreCount}店は、前週の母数が少ないため率順位から除外</span>

@@ -330,6 +330,7 @@ test('public adapter exposes the server-calculated weekly momentum without raw h
       currentEndsAt: '2026-07-10T12:00:00.000Z',
       previousStartsAt: '2026-06-28T15:00:00.000Z',
       previousEndsAt: '2026-07-03T12:00:00.000Z',
+      comparisonDayCount: 5,
       minimumComparisonCount: 3,
       measuredStoreCount: 1,
       newActivityStoreCount: 0,
@@ -338,6 +339,10 @@ test('public adapter exposes the server-calculated weekly momentum without raw h
         currentPostCount: 9,
         previousPostCount: 6,
         postDelta: 3,
+        comparisonDayCount: 5,
+        currentDailyAverage: 1.8,
+        previousDailyAverage: 1.2,
+        dailyAverageDelta: 0.6,
         momentumPercent: 60,
         weekOverWeekRatio: 150,
         changePercent: 50,
@@ -352,5 +357,7 @@ test('public adapter exposes the server-calculated weekly momentum without raw h
   assert.equal(result.weeklyMomentum.ranking[0].storeName, 'bar BAR TEST')
   assert.equal(result.weeklyMomentum.ranking[0].momentumPercent, 60)
   assert.equal(result.weeklyMomentum.ranking[0].weekOverWeekRatio, 150)
+  assert.equal(result.weeklyMomentum.ranking[0].dailyAverageDelta, 0.6)
+  assert.equal(result.weeklyMomentum.comparisonDayCount, 5)
   assert.match(result.weeklyMomentum.currentPeriodLabel, /7\/6/)
 })

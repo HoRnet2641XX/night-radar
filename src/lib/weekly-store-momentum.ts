@@ -7,6 +7,7 @@ import type {
 } from './types'
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000
+const DAY_MS = 24 * 60 * 60 * 1000
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 export const WEEKLY_MOMENTUM_MINIMUM_COUNT = 3
 const NEW_ACTIVITY_MINIMUM_COUNT = 5
@@ -63,9 +64,13 @@ function momentumForStore(
   storeId: string,
   currentPostCount: number,
   previousPostCount: number,
+  comparisonDayCount: number,
   minimumComparisonCount: number,
 ): StoreWeeklyMomentum {
   const postDelta = currentPostCount - previousPostCount
+  const currentDailyAverage = Math.round((currentPostCount / comparisonDayCount) * 10) / 10
+  const previousDailyAverage = Math.round((previousPostCount / comparisonDayCount) * 10) / 10
+  const dailyAverageDelta = Math.round(((currentPostCount - previousPostCount) / comparisonDayCount) * 10) / 10
   const measured = currentPostCount >= minimumComparisonCount && previousPostCount >= minimumComparisonCount
   const status = measured
     ? 'measured'
@@ -84,6 +89,10 @@ function momentumForStore(
     currentPostCount,
     previousPostCount,
     postDelta,
+    comparisonDayCount,
+    currentDailyAverage,
+    previousDailyAverage,
+    dailyAverageDelta,
     momentumPercent,
     weekOverWeekRatio,
     changePercent: weekOverWeekRatio === null ? null : weekOverWeekRatio - 100,
@@ -100,6 +109,8 @@ export function buildWeeklyMomentumDataset(input: {
 }): WeeklyMomentumDataset {
   const referenceAt = input.referenceAt ?? new Date().toISOString()
   const window = weeklyComparisonWindow(referenceAt)
+  const elapsedMs = new Date(window.currentEndsAt).getTime() - new Date(window.currentStartsAt).getTime()
+  const comparisonDayCount = Math.min(7, Math.max(1, Math.ceil(elapsedMs / DAY_MS)))
   const minimumComparisonCount = Math.max(1, input.minimumComparisonCount ?? WEEKLY_MOMENTUM_MINIMUM_COUNT)
   const validPosts = dedupeNormalizedBbsPosts(input.normalizedPosts).filter(isRankableCustomerNormalizedPost)
   const currentCounts = countPostsByStore(validPosts, window.currentStartsAt, window.currentEndsAt)
@@ -108,13 +119,14 @@ export function buildWeeklyMomentumDataset(input: {
     store.id,
     currentCounts.get(store.id) ?? 0,
     previousCounts.get(store.id) ?? 0,
+    comparisonDayCount,
     minimumComparisonCount,
   ))
   const measuredRanking = stores
     .filter((store) => store.status === 'measured')
     .toSorted((left, right) =>
-      (right.weekOverWeekRatio ?? 0) - (left.weekOverWeekRatio ?? 0)
-      || right.postDelta - left.postDelta
+      right.dailyAverageDelta - left.dailyAverageDelta
+      || (right.weekOverWeekRatio ?? 0) - (left.weekOverWeekRatio ?? 0)
       || right.currentPostCount - left.currentPostCount
       || left.storeId.localeCompare(right.storeId),
     )
@@ -125,6 +137,7 @@ export function buildWeeklyMomentumDataset(input: {
 
   return {
     ...window,
+    comparisonDayCount,
     minimumComparisonCount,
     measuredStoreCount: measuredRanking.length,
     newActivityStoreCount: stores.filter((store) => store.status === 'new_activity').length,

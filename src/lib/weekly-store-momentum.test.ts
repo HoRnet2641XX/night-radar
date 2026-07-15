@@ -119,6 +119,10 @@ test('weekly momentum ranks only stores with a stable comparison sample', () => 
     currentPostCount: 8,
     previousPostCount: 4,
     postDelta: 4,
+    comparisonDayCount: 3,
+    currentDailyAverage: 2.7,
+    previousDailyAverage: 1.3,
+    dailyAverageDelta: 1.3,
     momentumPercent: 67,
     weekOverWeekRatio: 200,
     changePercent: 100,
@@ -133,6 +137,7 @@ test('weekly momentum ranks only stores with a stable comparison sample', () => 
   assert.equal(newActivity?.momentumPercent, null)
   assert.equal(newActivity?.rank, null)
   assert.equal(quiet?.status, 'no_activity')
+  assert.equal(dataset.comparisonDayCount, 3)
   assert.equal(dataset.measuredStoreCount, 2)
   assert.equal(dataset.newActivityStoreCount, 1)
 })
