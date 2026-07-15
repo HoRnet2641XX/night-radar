@@ -49,7 +49,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/',
-        destination: '/lp',
+        destination: '/app',
         permanent: false,
       },
     ]
