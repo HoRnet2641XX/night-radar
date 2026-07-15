@@ -17,6 +17,7 @@ It now includes:
 - weekday posting ratio, store pulse, and event score calculation
 - OpenAI analysis with deterministic heuristic fallback
 - notification preferences and dispatch through in-app, Resend email, or webhook
+- daily aggregate-only X post preview and scheduled publishing with duplicate protection
 - Supabase auth through X OAuth
 - Stripe Checkout, webhook subscription sync, and billing portal
 - Terms and Privacy pages
@@ -99,6 +100,34 @@ Set `RESEND_API_KEY` for email delivery or `NOTIFICATION_WEBHOOK_URL` for user w
 Users can save notification preferences in the app. A saved user webhook URL is used before the global `NOTIFICATION_WEBHOOK_URL`.
 
 Cron crawls send one operator alert and also create notification jobs for configured users when a BBS source returns `blocked` or `failed`, including parser-count drops.
+
+### X automatic posting
+
+The scheduled route `/api/cron/x-post` runs once a day at 18:00 JST. It publishes only when all of the following are true:
+
+- `X_AUTO_POST_ENABLED=true`
+- all four OAuth 1.0a credentials are configured
+- `supabase/migrations/20260715_x_auto_posts.sql` has been applied
+- at least three stores have fresh, successful data above the configured confidence threshold
+
+The post contains store-level aggregates only. BBS author names and post bodies are never sent to X. A unique daily key in `x_auto_posts` prevents duplicate posts.
+
+Preview the exact text without publishing:
+
+```bash
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
+  "https://YOUR_VERCEL_DOMAIN/api/cron/x-post?dryRun=1"
+```
+
+Required environment variables:
+
+- `X_API_KEY` (Consumer Key)
+- `X_API_SECRET` (Consumer Secret)
+- `X_ACCESS_TOKEN`
+- `X_ACCESS_TOKEN_SECRET`
+- `X_AUTO_POST_ENABLED` (`false` until the preview is approved)
+
+Set `X_AUTO_POST_INCLUDE_URL=false` if the post should not include the app link. X API posting is usage-priced, and posts containing a URL may use a different price tier; verify the current amount in the X Developer Console before enabling production posting.
 
 ### Plan limits
 

@@ -41,6 +41,29 @@ X Developer Portal: https://developer.x.com/en/portal/dashboard
    - `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback`
 4. Client ID/SecretをSupabase Authentication > Providers > X に設定する。
 
+### X自動投稿も使う場合
+
+ログイン用OAuth 2.0とは別に、Night Radar公式アカウントへ投稿するOAuth 1.0aの4項目を使う。
+
+1. X Developer PortalのAppでUser authentication settingsをRead and writeにする。
+2. Keys & Tokensで次を発行する。
+   - Consumer Key -> `X_API_KEY`
+   - Consumer Secret -> `X_API_SECRET`
+   - Access Token -> `X_ACCESS_TOKEN`
+   - Access Token Secret -> `X_ACCESS_TOKEN_SECRET`
+3. Supabase SQL Editorで `supabase/migrations/20260715_x_auto_posts.sql` を実行する。
+4. Vercelへ4項目を設定する。この時点では `X_AUTO_POST_ENABLED=false` のままにする。
+5. 本番デプロイ後、次のURLで投稿文だけ確認する。
+
+```bash
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
+  "https://YOUR_VERCEL_DOMAIN/api/cron/x-post?dryRun=1"
+```
+
+6. 文面と上位3店舗が正しければ `X_AUTO_POST_ENABLED=true` に変更する。
+
+自動投稿は毎日18:00（JST）に1回。同日分はDBの一意キーで二重投稿を防止する。投稿者名やBBS本文はXへ送らず、店舗名と当日投稿件数の集計だけを使う。
+
 ## 4. Stripe
 
 Dashboard: https://dashboard.stripe.com/
@@ -102,7 +125,8 @@ Dashboard: https://vercel.com/dashboard
 4. Cron保護用に `CRON_SECRET` を設定する。
 5. 5分おきBBS巡回は外部Cronで `/api/cron/crawl` を叩く。
 6. 1日1回の品質監査は `vercel.json` で毎朝6:30（JST）に設定済み。Vercel本番デプロイ後にCron一覧へ表示されることを確認する。
-7. 解析急減や品質異常をSlack/Discordへ送る場合は `OPERATION_ALERT_WEBHOOK_URL` を設定する。
+7. X自動投稿は `vercel.json` で毎日18:00（JST）に設定済み。最初は `X_AUTO_POST_ENABLED=false` でプレビューする。
+8. 解析急減や品質異常をSlack/Discordへ送る場合は `OPERATION_ALERT_WEBHOOK_URL` を設定する。
 
 Vercel Hobbyでは高頻度Cronが制限されるため、5分おき運用は外部Cron推奨。Vercel Cronで運用したい場合はPro以上にしてから `vercel.json` にCron設定を追加する。
 
@@ -113,6 +137,9 @@ curl -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_VERCEL_DOMAIN/api/
 
 # 1日1回。異常がなければ200、対応が必要な異常があれば502。
 curl -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_VERCEL_DOMAIN/api/cron/audit
+
+# Xには投稿せず、当日分の文面だけ確認。
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" "https://YOUR_VERCEL_DOMAIN/api/cron/x-post?dryRun=1"
 ```
 
 External cron services:
