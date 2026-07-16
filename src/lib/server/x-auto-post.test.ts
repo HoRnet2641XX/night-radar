@@ -177,6 +177,28 @@ test('tomorrow post uses only tomorrow events or visit-intent data', () => {
   assert.ok(plan.weightedLength <= 280)
 })
 
+test('tomorrow post falls back to a shorter complete format when live names are long', () => {
+  const summaries = [
+    summary({ id: 'a', name: 'Communicationbar 珊瑚 東京本店', postCount: 8 }),
+    summary({ id: 'b', name: '荻窪秘密倶楽部スペシャルラウンジ', postCount: 7 }),
+    summary({ id: 'c', name: 'CLUB SCARLET TOKYO ANNEX', postCount: 6 }),
+  ]
+  const plan = prepareXScheduledPost(state(summaries, 'database', {
+    events: [
+      { id: 'e1', storeId: 'a', date: '2026-07-16', weekday: '木曜', startsAt: '19:00', session: 'night', category: 'event', title: 'スペシャルBINGOナイト' },
+      { id: 'e2', storeId: 'b', date: '2026-07-16', weekday: '木曜', startsAt: '13:00', session: 'day', category: 'event', title: 'スタッフ合同誕生日イベント' },
+      { id: 'e3', storeId: 'c', date: '2026-07-16', weekday: '木曜', startsAt: '19:00', session: 'night', category: 'event', title: '月に一度の特別営業イベント' },
+    ],
+  }), 'tomorrow')
+
+  assert.ok(plan.weightedLength <= 280)
+  assert.match(plan.text, /🥇/)
+  assert.match(plan.text, /🥈/)
+  assert.match(plan.text, /🥉/)
+  assert.match(plan.text, /🔥 アツすぎて滅/)
+  assert.match(plan.text, /https:\/\/night-radar\.vercel\.app\/app/)
+})
+
 test('daily post is skipped unless three trustworthy stores are available', () => {
   assert.throws(
     () => prepareXDailyPost(state([

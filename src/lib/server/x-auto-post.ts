@@ -396,6 +396,43 @@ function buildScheduledText(input: {
   ].join('\n')
 }
 
+function buildTightScheduledText(input: {
+  slot: XAutoPostSlot
+  generatedAt: string
+  targetDateKey: string
+  candidates: XDailyCandidate[]
+  includeUrl: boolean
+  targetUrl: string
+  storeNameLength: number
+  detailLength: number
+}) {
+  const headline = input.slot === 'midday'
+    ? '【速報】今日の注目3店🍸'
+    : input.slot === 'evening'
+      ? '【速報】先週比で伸びた3店🍸'
+      : '【明日予想】注目3店🍸'
+  const context = input.slot === 'midday'
+    ? `${displayCurrentTime(input.generatedAt)}｜来店意向順`
+    : input.slot === 'evening'
+      ? `${displayCurrentTime(input.generatedAt)}｜同曜日・同時刻の日平均比較`
+      : `${displayDate(`${input.targetDateKey}T12:00:00+09:00`)}｜予定・来店予告から算出`
+  const lines = input.candidates.map((item, index) => {
+    const medal = medalByRank[index] ?? `${index + 1}位`
+    const storeName = truncateCodePoints(item.storeName, input.storeNameLength)
+    const sourceDetail = input.slot === 'midday' ? `${item.postCount}組` : item.detail
+    const detail = input.detailLength > 0 ? truncateCodePoints(sourceDetail, input.detailLength) : ''
+    return `${medal} ${storeName}｜${item.heatLabel}${detail ? ` ${detail}` : ''}`
+  })
+
+  return [
+    headline,
+    ...lines,
+    context,
+    ...(input.includeUrl ? [input.targetUrl] : []),
+    '#NightRadar',
+  ].join('\n')
+}
+
 function selectionForSlot(state: PublicDirectoryState, slot: XAutoPostSlot, targetDateKey: string, minimumDataConfidence: number) {
   if (slot === 'midday') return selectXDailyCandidates(state.summaries, minimumDataConfidence)
   if (slot === 'evening') return selectXWeeklyCandidates(state, minimumDataConfidence)
@@ -436,18 +473,18 @@ export function prepareXScheduledPost(
 
   const includeUrl = options.includeUrl ?? config.includeUrl
   const targetUrl = options.targetUrl ?? config.targetUrl
-  let text = buildScheduledText({
-    slot,
-    generatedAt: state.generatedAt,
-    targetDateKey,
-    candidates,
-    includeUrl,
-    targetUrl,
-    storeNameLength: 18,
-    compact: false,
-  })
-  if (xWeightedLength(text) > X_SAFE_WEIGHTED_LENGTH) {
-    text = buildScheduledText({
+  const textCandidates = [
+    buildScheduledText({
+      slot,
+      generatedAt: state.generatedAt,
+      targetDateKey,
+      candidates,
+      includeUrl,
+      targetUrl,
+      storeNameLength: 18,
+      compact: false,
+    }),
+    buildScheduledText({
       slot,
       generatedAt: state.generatedAt,
       targetDateKey,
@@ -456,10 +493,8 @@ export function prepareXScheduledPost(
       targetUrl,
       storeNameLength: 18,
       compact: true,
-    })
-  }
-  if (xWeightedLength(text) > X_SAFE_WEIGHTED_LENGTH) {
-    text = buildScheduledText({
+    }),
+    buildScheduledText({
       slot,
       generatedAt: state.generatedAt,
       targetDateKey,
@@ -468,8 +503,30 @@ export function prepareXScheduledPost(
       targetUrl,
       storeNameLength: 12,
       compact: true,
-    })
-  }
+    }),
+    buildTightScheduledText({
+      slot,
+      generatedAt: state.generatedAt,
+      targetDateKey,
+      candidates,
+      includeUrl,
+      targetUrl,
+      storeNameLength: 12,
+      detailLength: 6,
+    }),
+    buildTightScheduledText({
+      slot,
+      generatedAt: state.generatedAt,
+      targetDateKey,
+      candidates,
+      includeUrl,
+      targetUrl,
+      storeNameLength: 9,
+      detailLength: 0,
+    }),
+  ]
+  const text = textCandidates.find((candidateText) => xWeightedLength(candidateText) <= X_SAFE_WEIGHTED_LENGTH)
+    ?? textCandidates.at(-1)!
   const weightedLength = xWeightedLength(text)
   if (weightedLength > X_MAX_WEIGHTED_LENGTH) {
     throw new XAutoPostPlanError('post_too_long', `X投稿文が上限を超えています（${weightedLength}/280）。`)
