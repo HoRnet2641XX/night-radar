@@ -700,6 +700,27 @@ describe('BBS radar signals', () => {
     assert.equal(new Date(windows[0].start).toISOString(), '2026-07-12T11:00:00.000Z')
   })
 
+  it('keeps the registered night session when BBS text only yields the daytime range', () => {
+    const store: StoreProfile = {
+      ...stores[0],
+      id: 'partial-bbs-hours-store',
+      hasDaytime: true,
+      hasNight: true,
+      openingHourDay: '13:00',
+      openingHourNight: '19:00',
+    }
+    const context = [
+      '昼の部 13時〜19時夜の部 19時〜翌朝5時 フリータイム・フリードリンク',
+    ]
+
+    const windows = inferStoreBusinessWindows(store, '2026-07-16T15:05:00.000Z', context)
+
+    assert.equal(windows.length, 1)
+    assert.equal(windows[0].label, '夜部')
+    assert.equal(new Date(windows[0].start).toISOString(), '2026-07-16T10:00:00.000Z')
+    assert.equal(new Date(windows[0].end).toISOString(), '2026-07-16T20:00:00.000Z')
+  })
+
   it('prefers irregular BBS schedule text such as morning sessions over the store defaults', () => {
     const store: StoreProfile = {
       ...stores[0],

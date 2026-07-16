@@ -36,50 +36,50 @@ function series(storeId: string, prefix: string, timestamps: string[]) {
   }))
 }
 
-test('weekly window compares Monday-to-now with the same elapsed period last week in Japan', () => {
+test('weekly window compares the current business day with exactly seven days earlier at the same elapsed time', () => {
   const window = weeklyComparisonWindow('2026-07-15T03:00:00.000Z')
 
-  assert.equal(window.currentStartsAt, '2026-07-12T15:00:00.000Z')
+  assert.equal(window.currentStartsAt, '2026-07-14T21:00:00.000Z')
   assert.equal(window.currentEndsAt, '2026-07-15T03:00:00.000Z')
-  assert.equal(window.previousStartsAt, '2026-07-05T15:00:00.000Z')
+  assert.equal(window.previousStartsAt, '2026-07-07T21:00:00.000Z')
   assert.equal(window.previousEndsAt, '2026-07-08T03:00:00.000Z')
 })
 
-test('weekly momentum ranks only stores with a stable comparison sample', () => {
+test('weekly momentum ranks exact business-day post-count deltas only when both dates have a stable sample', () => {
   const normalizedPosts = [
     ...series('rising', 'rising-previous', [
-      '2026-07-06T01:00:00.000Z',
-      '2026-07-06T03:00:00.000Z',
-      '2026-07-07T01:00:00.000Z',
+      '2026-07-07T22:00:00.000Z',
+      '2026-07-07T23:00:00.000Z',
+      '2026-07-08T01:00:00.000Z',
       '2026-07-08T02:00:00.000Z',
     ]),
     ...series('rising', 'rising-current', [
-      '2026-07-13T01:00:00.000Z',
-      '2026-07-13T03:00:00.000Z',
-      '2026-07-14T01:00:00.000Z',
-      '2026-07-14T03:00:00.000Z',
-      '2026-07-14T05:00:00.000Z',
+      '2026-07-14T21:10:00.000Z',
+      '2026-07-14T22:00:00.000Z',
+      '2026-07-14T23:00:00.000Z',
       '2026-07-15T00:00:00.000Z',
       '2026-07-15T01:00:00.000Z',
+      '2026-07-15T01:30:00.000Z',
       '2026-07-15T02:00:00.000Z',
+      '2026-07-15T02:30:00.000Z',
     ]),
     ...series('steady', 'steady-previous', [
-      '2026-07-06T01:10:00.000Z',
-      '2026-07-06T03:10:00.000Z',
-      '2026-07-07T01:10:00.000Z',
+      '2026-07-07T22:10:00.000Z',
+      '2026-07-07T23:10:00.000Z',
+      '2026-07-08T01:10:00.000Z',
       '2026-07-08T02:10:00.000Z',
     ]),
     ...series('steady', 'steady-current', [
-      '2026-07-13T01:10:00.000Z',
-      '2026-07-13T03:10:00.000Z',
-      '2026-07-14T01:10:00.000Z',
+      '2026-07-14T22:10:00.000Z',
+      '2026-07-14T23:10:00.000Z',
+      '2026-07-15T01:10:00.000Z',
       '2026-07-15T02:10:00.000Z',
     ]),
     ...series('new', 'new-current', [
-      '2026-07-13T01:20:00.000Z',
-      '2026-07-13T03:20:00.000Z',
-      '2026-07-14T01:20:00.000Z',
-      '2026-07-14T03:20:00.000Z',
+      '2026-07-14T22:20:00.000Z',
+      '2026-07-14T23:20:00.000Z',
+      '2026-07-15T00:20:00.000Z',
+      '2026-07-15T01:20:00.000Z',
       '2026-07-15T02:20:00.000Z',
     ]),
     post({
@@ -119,10 +119,6 @@ test('weekly momentum ranks only stores with a stable comparison sample', () => 
     currentPostCount: 8,
     previousPostCount: 4,
     postDelta: 4,
-    comparisonDayCount: 3,
-    currentDailyAverage: 2.7,
-    previousDailyAverage: 1.3,
-    dailyAverageDelta: 1.3,
     momentumPercent: 67,
     weekOverWeekRatio: 200,
     changePercent: 100,
@@ -137,7 +133,7 @@ test('weekly momentum ranks only stores with a stable comparison sample', () => 
   assert.equal(newActivity?.momentumPercent, null)
   assert.equal(newActivity?.rank, null)
   assert.equal(quiet?.status, 'no_activity')
-  assert.equal(dataset.comparisonDayCount, 3)
+  assert.equal(dataset.comparisonDayCount, 1)
   assert.equal(dataset.measuredStoreCount, 2)
   assert.equal(dataset.newActivityStoreCount, 1)
 })

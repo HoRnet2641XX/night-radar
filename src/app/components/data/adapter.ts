@@ -57,7 +57,7 @@ function formatWeeklyPeriod(startsAt: string, endsAt: string) {
     hourCycle: 'h23',
   })
 
-  return `${dateFormatter.format(start)} 0:00〜${dateFormatter.format(end)} ${timeFormatter.format(end)}`
+  return `${dateFormatter.format(start)} ${timeFormatter.format(start)}〜${dateFormatter.format(end)} ${timeFormatter.format(end)}`
 }
 
 function priceNumber(store: StoreProfile) {
@@ -472,9 +472,6 @@ export function adaptPublicDirectoryToBars(
         currentPostCount: store.currentPostCount,
         previousPostCount: store.previousPostCount,
         postDelta: store.postDelta,
-        currentDailyAverage: store.currentDailyAverage,
-        previousDailyAverage: store.previousDailyAverage,
-        dailyAverageDelta: store.dailyAverageDelta,
         momentumPercent: store.momentumPercent ?? 0,
         weekOverWeekRatio: store.weekOverWeekRatio ?? 0,
         changePercent: store.changePercent ?? 0,

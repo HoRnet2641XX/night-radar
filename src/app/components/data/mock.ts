@@ -110,9 +110,6 @@ export type WeeklyMomentumItem = {
   currentPostCount: number
   previousPostCount: number
   postDelta: number
-  currentDailyAverage: number
-  previousDailyAverage: number
-  dailyAverageDelta: number
   momentumPercent: number
   weekOverWeekRatio: number
   changePercent: number

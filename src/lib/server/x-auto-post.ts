@@ -240,10 +240,10 @@ export function selectXWeeklyCandidates(
       .map((summary) => [summary.store.id, summary]),
   )
   const eligible = state.weeklyMomentum.stores
-    .filter((item) => item.status === 'measured' && item.dailyAverageDelta > 0 && summaryByStoreId.has(item.storeId))
+    .filter((item) => item.status === 'measured' && item.postDelta > 0 && summaryByStoreId.has(item.storeId))
     .toSorted((left, right) =>
       (left.rank ?? Number.MAX_SAFE_INTEGER) - (right.rank ?? Number.MAX_SAFE_INTEGER) ||
-      right.dailyAverageDelta - left.dailyAverageDelta,
+      right.postDelta - left.postDelta,
     )
 
   return {
@@ -256,7 +256,7 @@ export function selectXWeeklyCandidates(
         postCount: item.currentPostCount,
         recentThreeHourCount: summary.recentThreeHourCount,
         dataConfidence: summary.dataConfidence,
-        detail: `日平均+${Number.isInteger(item.dailyAverageDelta) ? item.dailyAverageDelta : item.dailyAverageDelta.toFixed(1)}件`,
+        detail: `7日前比+${item.postDelta}件`,
       }, index + 1)
     }),
   }
@@ -386,12 +386,12 @@ function buildScheduledText(input: {
   }
   if (input.slot === 'evening') {
     return [
-      input.compact ? '【速報】先週より伸びた3店🍸' : '【速報】先週より盛り上がってるハプBARは？🍸',
-      '◼︎同曜日の日平均 TOP3◼︎',
+      input.compact ? '【速報】7日前より伸びた3店🍸' : '【速報】7日前より投稿が増えたハプBARは？🍸',
+      '◼︎本日 vs 7日前 TOP3◼︎',
       ...lines,
       '',
       displayCurrentTime(input.generatedAt),
-      input.compact ? '同じ曜日・同時刻までで比較👇' : '同じ曜日・同時刻までを1日平均に換算👇',
+      input.compact ? '同じ営業日・経過時間で比較👇' : '日本時間6時区切り・同じ経過時間の投稿数を比較👇',
       ...urlLines,
       '#NightRadar',
     ].join('\n')
@@ -421,12 +421,12 @@ function buildTightScheduledText(input: {
   const headline = input.slot === 'midday'
     ? '【速報】今日の注目3店🍸'
     : input.slot === 'evening'
-      ? '【速報】先週比で伸びた3店🍸'
+      ? '【速報】7日前より伸びた3店🍸'
       : '【明日予想】注目3店🍸'
   const context = input.slot === 'midday'
     ? `${displayCurrentTime(input.generatedAt)}｜来店予告順`
     : input.slot === 'evening'
-      ? `${displayCurrentTime(input.generatedAt)}｜同曜日・同時刻の日平均比較`
+      ? `${displayCurrentTime(input.generatedAt)}｜本日と7日前の同じ経過時間で比較`
       : `${displayDate(`${input.targetDateKey}T12:00:00+09:00`)}｜予定・来店予告から算出`
   const lines = input.candidates.map((item, index) => {
     const medal = medalByRank[index] ?? `${index + 1}位`

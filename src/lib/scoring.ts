@@ -503,17 +503,15 @@ function storeBusinessRanges(store: StoreProfile, contextTexts: string[] = []) {
   contextTexts.slice(0, 24).forEach((text) => {
     extractBusinessTimeRangesFromText(text).forEach((range) => pushUniqueRange(bbsRanges, range))
   })
-  if (bbsRanges.length) {
-    const firstRangeByLabel = new Map<string, BusinessTimeRange>()
-    bbsRanges.forEach((range) => {
-      if (!firstRangeByLabel.has(range.label)) firstRangeByLabel.set(range.label, range)
-    })
-    return [...firstRangeByLabel.values()]
-  }
-
-  const ranges: BusinessTimeRange[] = []
-  businessTimeRangesFromStore(store).forEach((range) => pushUniqueRange(ranges, range))
-  return ranges
+  const rangesByLabel = new Map<string, BusinessTimeRange>()
+  businessTimeRangesFromStore(store).forEach((range) => rangesByLabel.set(range.label, range))
+  bbsRanges.forEach((range) => {
+    // A page can expose only one of several sessions. Override the matching
+    // session without discarding the other registered business hours.
+    if (!rangesByLabel.has(range.label)) rangesByLabel.set(range.label, range)
+    else if (rangesByLabel.get(range.label)?.source !== 'bbs') rangesByLabel.set(range.label, range)
+  })
+  return [...rangesByLabel.values()]
 }
 
 function addDaysToJapanParts(parts: ReturnType<typeof japanDateParts>, days: number) {

@@ -450,7 +450,7 @@ async function loadPublicDirectoryState(): Promise<PublicDirectoryState> {
   })
 }
 
-const loadCachedPublicDirectoryState = unstable_cache(loadPublicDirectoryState, ['public-directory-state-weekly-momentum-2026-07-15'], {
+const loadCachedPublicDirectoryState = unstable_cache(loadPublicDirectoryState, ['public-directory-state-exact-week-2026-07-16'], {
   revalidate: 60,
   tags: [PUBLIC_DIRECTORY_CACHE_TAG],
 })
