@@ -2,10 +2,17 @@ import type { Metadata, Viewport } from 'next'
 import { PwaRegistration } from '@/components/pwa-registration'
 import './globals.css'
 
+const siteTitle = 'ナイトレーダー | 今日の行き先を投稿数で見極める'
+const siteDescription =
+  '公開BBSの女性書き込み数、直近3時間の投稿、店舗イベントを同じ条件で比較し、今日の行き先を判断できるアプリ。'
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3010'),
-  title: 'ナイトレーダー',
-  description: '公開BBSの女性書き込み数、直近3時間の投稿、店舗イベントを同じ条件で比較できるアプリ。',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://night-radar.vercel.app'),
+  title: siteTitle,
+  description: siteDescription,
+  alternates: {
+    canonical: '/app',
+  },
   manifest: '/manifest.webmanifest',
   icons: {
     icon: [
@@ -16,9 +23,26 @@ export const metadata: Metadata = {
     apple: '/icons/apple-touch-icon.png',
   },
   openGraph: {
-    title: 'ナイトレーダー',
-    description: '公開BBSの女性書き込み数、直近3時間の投稿、店舗イベントを同じ条件で比較できるアプリ。',
+    title: siteTitle,
+    description: siteDescription,
     type: 'website',
+    url: '/app',
+    siteName: 'ナイトレーダー',
+    locale: 'ja_JP',
+    images: [
+      {
+        url: '/social/night-radar-og.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'ナイトレーダー。今日の行き先を投稿数で見極めるアプリ画面。',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: siteTitle,
+    description: siteDescription,
+    images: ['/social/night-radar-x.jpg'],
   },
 }
 

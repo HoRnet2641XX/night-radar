@@ -43,6 +43,15 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: '/social/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=3600, stale-while-revalidate=86400',
+          },
+        ],
+      },
     ]
   },
   async redirects() {
@@ -51,6 +60,11 @@ const nextConfig: NextConfig = {
         source: '/',
         destination: '/app',
         permanent: false,
+      },
+      {
+        source: '/lp',
+        destination: '/app',
+        permanent: true,
       },
     ]
   },
