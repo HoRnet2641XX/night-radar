@@ -223,7 +223,7 @@ export function PublicSummaryStrip({ state }: { state: PublicDirectoryState }) {
       <article>
         <span>女性投稿</span>
         <strong>{femalePostTotal}件</strong>
-        <p>直近24時間の性別表記から集計</p>
+        <p>当日顧客投稿の投稿者欄から集計</p>
       </article>
       <article>
         <span>巡回対象</span>
@@ -427,6 +427,7 @@ function DecisionLeaderCard({ summary }: { summary: PublicStoreSummary }) {
         <span>温度</span>
       </div>
       <PublicStoreRadar summary={summary} variant="leader" />
+      <PublicAudienceBreakdown summary={summary} />
       <dl className={styles.decisionFacts}>
         <div>
           <dt>当日投稿</dt>
@@ -470,6 +471,7 @@ function DecisionMiniCard({ summary, rank }: { summary: PublicStoreSummary; rank
       </h2>
       <p>{summary.primaryReason}</p>
       <PublicStoreRadar summary={summary} variant="mini" />
+      <PublicAudienceBreakdown summary={summary} compact />
       <div className={styles.miniMeter} aria-hidden="true">
         <span style={{ inlineSize: width }} />
       </div>
@@ -512,6 +514,18 @@ function DecisionListRow({ summary, rank }: { summary: PublicStoreSummary; rank:
           <dt>集計</dt>
           <dd>{summary.dataConfidence}点</dd>
         </div>
+        <div>
+          <dt>男性</dt>
+          <dd>{summary.malePostCount}件</dd>
+        </div>
+        <div>
+          <dt>女性</dt>
+          <dd>{summary.femalePostCount}件</dd>
+        </div>
+        <div>
+          <dt>カップル</dt>
+          <dd>{summary.couplePostCount}件</dd>
+        </div>
       </dl>
       <Link href={storeDetailPath(summary.store)}>確認</Link>
     </article>
@@ -537,6 +551,7 @@ export function PublicStoreCard({ summary, rank }: { summary: PublicStoreSummary
         <strong>{summary.point.score}</strong>
       </div>
       <p className={styles.reasonText}>{summary.insight.rankingReason}</p>
+      <PublicAudienceBreakdown summary={summary} compact />
       <dl className={styles.storeFacts}>
         <div>
           <dt>当日投稿</dt>
@@ -592,11 +607,34 @@ export function PublicStoreCard({ summary, rank }: { summary: PublicStoreSummary
   )
 }
 
+function PublicAudienceBreakdown({ summary, compact = false }: { summary: PublicStoreSummary; compact?: boolean }) {
+  return (
+    <section className={styles.audienceBreakdown} data-compact={compact || undefined} aria-label="当日顧客投稿の区分">
+      <div className={styles.audienceBreakdownHeading}>
+        <span>当日投稿の区分</span>
+        <small>投稿者欄に明記された内容のみ</small>
+      </div>
+      <dl>
+        <div><dt>男性</dt><dd>{summary.malePostCount}<small>件</small></dd></div>
+        <div><dt>女性</dt><dd>{summary.femalePostCount}<small>件</small></dd></div>
+        <div><dt>カップル</dt><dd>{summary.couplePostCount}<small>件</small></dd></div>
+        <div><dt>未判定</dt><dd>{summary.genderUnknownCount}<small>件</small></dd></div>
+      </dl>
+      {!compact ? (
+        <p>
+          来店を明言した投稿は {summary.estimatedVisitIntentCount}件
+          （男性 {summary.maleVisitIntentCount} / 女性 {summary.femaleVisitIntentCount} / カップル {summary.coupleVisitIntentCount} / 未判定 {summary.unknownVisitIntentCount}）
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
 export function PublicDecisionGuide() {
   const items = [
     {
       title: 'ランキングは当日の顧客投稿数です',
-      body: '日本時間で今日の来店判断に含めた顧客投稿を、男女・性別未記載を含めて集計します。同数の場合のみ直近3時間の投稿数を比較します。',
+      body: '日本時間で今日の来店判断に含めた顧客投稿を、男性・女性・カップル・区分未記載を含めて集計します。同数の場合のみ直近3時間の投稿数を比較します。',
     },
     {
       title: '地図だけで決めない',
@@ -752,10 +790,11 @@ export function StoreDetailView({ detail }: { detail: PublicStoreDetail }) {
       <section className={styles.detailRadarPanel} aria-label="店舗レーダー">
         <div>
           <p className={styles.kicker}>店舗レーダー</p>
-          <h2>男女比率と動きを同じ目盛りで見る</h2>
-          <p>円は判定できた投稿の女性率、縦グラフは投稿温度・直近3時間・当日顧客投稿・本日イベントを示します。</p>
+          <h2>投稿者区分と動きを同じ画面で見る</h2>
+          <p>円は男女判定済み投稿（カップルを除く）の女性率、縦グラフは投稿温度・直近3時間・当日顧客投稿・本日イベントを示します。</p>
         </div>
         <PublicStoreRadar summary={summary} variant="detail" />
+        <PublicAudienceBreakdown summary={summary} />
       </section>
 
       <section className={styles.confirmGrid} aria-label="行く前確認">
@@ -879,7 +918,7 @@ function PublicStoreRadar({
 
   return (
     <div className={`${styles.publicStoreRadar} ${styles[`publicStoreRadar_${variant}`]}`} style={style}>
-      <div className={styles.publicRadarDonut} aria-label={hasGender ? `女性率 ${womenRatio}%、男性率 ${menRatio}%、${genderEvidence}` : '女性率は観測中'}>
+      <div className={styles.publicRadarDonut} aria-label={hasGender ? `男女判定内の女性率 ${womenRatio}%、男性率 ${menRatio}%、${genderEvidence}、カップルは比率から除外` : '女性率は観測中'}>
         <strong>{hasGender ? womenRatio : '--'}<small>%</small></strong>
         <span>{partialGender ? '女性率・参考' : '女性率'}</span>
       </div>
@@ -906,7 +945,7 @@ function PublicStoreRadar({
         </span>
       </div>
       <p>
-        {hasGender ? `女性 ${womenRatio}% / 男性 ${menRatio}%（${genderEvidence}）` : '男女比率は観測中'}・直近3時間 {recentCount}件
+        {hasGender ? `男女判定内 女性 ${womenRatio}% / 男性 ${menRatio}%（${genderEvidence}・カップル除外）` : '男女比率は観測中'}・直近3時間 {recentCount}件
       </p>
     </div>
   )

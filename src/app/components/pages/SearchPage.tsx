@@ -19,7 +19,8 @@ const POST_GENDERS: Array<{ key: 'all' | RadarPostGender; label: string }> = [
   { key: 'all', label: 'すべての性別' },
   { key: 'female', label: '女性' },
   { key: 'male', label: '男性' },
-  { key: 'unknown', label: '性別未記載' },
+  { key: 'couple', label: 'カップル' },
+  { key: 'unknown', label: '区分未記載' },
 ];
 const ease = [0.22, 1, 0.36, 1] as const;
 
@@ -41,12 +42,6 @@ function normalizeSearchText(value: string) {
 function includesQuery(value: string, query: string) {
   const normalizedQuery = normalizeSearchText(query);
   return !normalizedQuery || normalizeSearchText(value).includes(normalizedQuery);
-}
-
-function femaleValue(bar: Bar) {
-  if (bar.genderStatus === 'unavailable') return '判定不可';
-  if (bar.genderStatus === 'partial') return `${bar.femaleCount}件（参考）`;
-  return `${bar.femaleCount}件`;
 }
 
 function PostRow({ post, onOpen }: { post: RadarPost; onOpen: (id: string) => void }) {
@@ -293,8 +288,8 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
                     <div className="text-[14px]" style={{ color: 'var(--nr-text-hi)' }}>{bar.rank}位 · {bar.name}</div>
                     <div className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--nr-text-low)' }}><MapPin size={10} /> {bar.area}</div>
                   </div>
-                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>当日投稿 / 投稿者 / 来店意向</span><br /><span className="nr-mono text-[14px]">{bar.postCount}件 / {bar.uniqueAuthorCount}名 / 約{bar.estimatedVisitIntentCount}組</span></div>
-                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{bar.genderSampleCount ? `判定対象${bar.genderSampleCount}件中` : '性別記載なし'}</span><br /><span className="nr-mono text-[14px]">女性 {femaleValue(bar)}</span></div>
+                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>当日投稿 / 来店予告</span><br /><span className="nr-mono text-[14px]">{bar.postCount}件 / {bar.estimatedVisitIntentCount}件</span></div>
+                  <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>投稿者欄の区分</span><br /><span className="nr-mono text-[12px]">男性 {bar.maleCount} / 女性 {bar.femaleCount} / カップル {bar.coupleCount}</span></div>
                   <div><span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>今日の予定</span><br /><span className="nr-mono text-[14px]">{bar.eventStatus === 'external' ? '公式で確認' : bar.eventStatus === 'unverified' ? '未確認' : `${bar.eventCount}件`}</span></div>
                   <span className="nr-chip"><Activity size={10} />店舗詳細</span>
                 </button>

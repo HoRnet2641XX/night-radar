@@ -120,7 +120,7 @@ test('midday post uses rank labels, is aggregate-only, and stays within the X li
 
   assert.equal(plan.idempotencyKey, 'today_ranking:2026-07-15')
   assert.equal(plan.scheduledFor, '2026-07-15T03:00:00.000Z')
-  assert.match(plan.text, /🥇 bar FILT SHIBUYA｜🔥 アツすぎて滅 約57組/)
+  assert.match(plan.text, /🥇 bar FILT SHIBUYA｜🔥 アツすぎて滅 来店予告57件/)
   assert.match(plan.text, /🚀 テンアゲ/)
   assert.match(plan.text, /👀 じわアツ/)
   assert.doesNotMatch(plan.text, /投稿者|本文|author|body/)

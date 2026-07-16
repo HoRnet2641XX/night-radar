@@ -7,6 +7,7 @@ import {
   buildBbsSnapshotMetrics,
   buildEffectiveBbsPostRecords,
   buildSearchableBbsRecords,
+  buildStoreActivityMetrics,
   buildStoreBbsAnalytics,
   buildStoreRadarPoints,
   buildVisitForecasts,
@@ -22,6 +23,7 @@ import {
   filterSnapshotsForStoreBusinessWindows,
   inferStoreBusinessWindows,
   isExplicitlyEmptyBbsText,
+  isExplicitVisitIntentBody,
   isSuspiciousNormalizedPostDrop,
   isStructurallyValidCustomerNormalizedPost,
   normalizeWatchedSearchText,
@@ -40,7 +42,66 @@ it('resolves explicit gender markers in author names without guessing ordinary n
   assert.equal(resolvedNormalizedPostGender({ authorName: '尋〜Hiro〜👩', authorGender: '記載なし' }), 'female')
   assert.equal(resolvedNormalizedPostGender({ authorName: 'くるちゃん👱‍♀️', authorGender: '記載なし' }), 'female')
   assert.equal(resolvedNormalizedPostGender({ authorName: 'タロウ（男性）', authorGender: '記載なし' }), 'male')
+  assert.equal(resolvedNormalizedPostGender({ authorName: 'ふたり', authorGender: 'カップル' }), 'couple')
+  assert.equal(resolvedNormalizedPostGender({ authorName: '夫婦ペア', authorGender: '記載なし' }), 'couple')
   assert.equal(resolvedNormalizedPostGender({ authorName: 'あやか', authorGender: '記載なし' }), 'unknown')
+})
+
+it('persists an explicit couple classification while normalizing a BBS post', () => {
+  const normalized = extractNormalizedBbsPostsFromText(
+    [
+      '[[NR_POST]]',
+      '投稿者： よし＆まい（カップル）',
+      '投稿日： 2026/07/16 18:20',
+      '記事番号： 8801',
+      'これから二人で伺います',
+      '[[/NR_POST]]',
+    ].join('\n'),
+    '2026-07-16T09:30:00.000Z',
+  )
+
+  assert.equal(normalized.length, 1)
+  assert.equal(normalized[0]?.authorName, 'よし＆まい')
+  assert.equal(normalized[0]?.authorGender, 'カップル')
+})
+
+it('counts explicit visit intent separately from all customer posts and dedupes the same author', () => {
+  const normalizedPosts: BbsNormalizedPost[] = [
+    { id: 'male-info', storeId: 'store-a', authorName: '男性A', authorGender: '男性', postedAt: '2026-07-16T09:00:00.000Z', observedAt: '2026-07-16T09:05:00.000Z', body: '今日はイベントなんですね。', bodyHash: '1', contentKey: '1' },
+    { id: 'female-intent-1', storeId: 'store-a', authorName: '女性A', authorGender: '女性', postedAt: '2026-07-16T09:10:00.000Z', observedAt: '2026-07-16T09:15:00.000Z', body: '今夜伺います。', bodyHash: '2', contentKey: '2' },
+    { id: 'female-intent-2', storeId: 'store-a', authorName: '女性A', authorGender: '女性', postedAt: '2026-07-16T09:20:00.000Z', observedAt: '2026-07-16T09:25:00.000Z', body: 'これから行きます。', bodyHash: '3', contentKey: '3' },
+    { id: 'couple-intent', storeId: 'store-a', authorName: 'ふたり', authorGender: 'カップル', postedAt: '2026-07-16T09:30:00.000Z', observedAt: '2026-07-16T09:35:00.000Z', body: '19時に行きます。', bodyHash: '4', contentKey: '4' },
+    { id: 'question', storeId: 'store-a', authorName: '質問者', authorGender: '記載なし', postedAt: '2026-07-16T09:40:00.000Z', observedAt: '2026-07-16T09:45:00.000Z', body: '営業時間を教えてください。', bodyHash: '5', contentKey: '5' },
+    { id: 'uncertain', storeId: 'store-a', authorName: '未定', authorGender: '記載なし', postedAt: '2026-07-16T09:50:00.000Z', observedAt: '2026-07-16T09:55:00.000Z', body: '時間があれば行きます。', bodyHash: '6', contentKey: '6' },
+  ]
+  const businessPosts: PostRecord[] = normalizedPosts.map((post) => ({
+    id: `normalized-${post.id}`,
+    storeId: post.storeId,
+    source: 'scrape',
+    postedAt: post.postedAt!,
+    body: post.body,
+    keywords: [],
+  }))
+
+  const metrics = buildStoreActivityMetrics({
+    storeId: 'store-a',
+    businessPosts,
+    normalizedPosts,
+    referenceAt: '2026-07-16T10:00:00.000Z',
+  })
+
+  assert.equal(metrics.recentPostCount, 6)
+  assert.equal(metrics.malePostCount, 1)
+  assert.equal(metrics.femalePostCount, 2)
+  assert.equal(metrics.couplePostCount, 1)
+  assert.equal(metrics.estimatedVisitIntentCount, 2)
+  assert.equal(metrics.femaleVisitIntentCount, 1)
+  assert.equal(metrics.coupleVisitIntentCount, 1)
+  assert.equal(metrics.maleVisitIntentCount, 0)
+  assert.equal(metrics.unknownVisitIntentCount, 0)
+  assert.equal(metrics.repeatPostCount, 1)
+  assert.equal(isExplicitVisitIntentBody('時間があれば行きます。'), false)
+  assert.equal(isExplicitVisitIntentBody('文章を書きました。'), false)
 })
 
 it('distinguishes an empty board from a parser that rejected every extracted post', () => {

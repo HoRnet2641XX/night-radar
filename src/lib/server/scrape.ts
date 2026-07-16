@@ -2,6 +2,7 @@ import type { PostRecord, ScrapeResult } from '../types'
 import { storageSafeText } from '../text'
 import {
   extractBbsPageContent,
+  extractApageReaderContent,
   extractHarnesCurrentCalendarPostId,
   extractHarnesPopupComments,
   extractNeoReaderContent,
@@ -83,9 +84,14 @@ async function scrapeReadableTextViaReader(url: URL): Promise<ScrapeResult | nul
     const title = text.match(/^Title:\s*(.+)$/m)?.[1]?.trim() ?? ''
     const content = text.split(/Markdown Content:\s*/).at(1) ?? text
     const compactContent = compactText(content)
-    const canonicalContent = url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com')
+    const isNeo = url.hostname === 'neo-bbs.com' || url.hostname.endsWith('.neo-bbs.com')
+    const isApage = url.hostname === 'millefeuillesby.apage.jp' || url.hostname.endsWith('.millefeuillesby.apage.jp')
+    const canonicalContent = isNeo
       ? extractNeoReaderContent(compactContent)
-      : ''
+      : isApage
+        ? extractApageReaderContent(compactContent)
+        : ''
+    if ((isNeo || isApage) && !canonicalContent) return null
     const extractedText = [canonicalContent, compactContent].filter(Boolean).join('\n')
     if (extractedText.length < 80) return null
 

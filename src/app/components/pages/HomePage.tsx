@@ -37,7 +37,7 @@ function formatDailyAverage(value: number) {
 
 function genderEvidenceLabel(bar: Bar) {
   if (bar.genderSampleCount === 0) return '性別の記載なし';
-  return `判定対象${bar.genderSampleCount}件中、女性${bar.femaleCount}件${bar.genderStatus === 'partial' ? '（参考）' : ''}`;
+  return `男女判定${bar.genderSampleCount}件中、女性${bar.femaleCount}件${bar.genderStatus === 'partial' ? '（参考）' : ''}（カップル除外）`;
 }
 
 export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void; onNavigate: (tab: 'search' | 'schedule' | 'account') => void }) {
@@ -50,8 +50,6 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
   const currentMonthEventCount = meta.eventCount;
   const activeRecentStores = bars.filter((bar) => bar.recentThreeHourCount > 0).length;
   const postMax = Math.max(1, ...bars.map((bar) => bar.postCount));
-  const femaleMax = Math.max(1, ...bars.map((bar) => bar.femaleCount));
-  const recentMax = Math.max(1, ...bars.map((bar) => bar.recentThreeHourCount));
   const topBar = bars[0];
   const topHeatLabel = topBar ? heatLabelForRank(topBar.rank) : null;
   const weeklyTop = weeklyMomentum.ranking.filter((item) => item.momentumPercent > 50).slice(0, 3);
@@ -117,7 +115,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
           <div className="grid w-full grid-cols-3 gap-2 pt-2 text-left">
             <div><span>当日投稿</span><strong>{topBar?.postCount ?? 0}件</strong></div>
             <div><span>直近3時間</span><strong>{topBar?.recentThreeHourCount ?? 0}件</strong></div>
-            <div><span>{topBar ? `判定対象 ${topBar.genderSampleCount}件` : '女性判定'}</span><strong>{topBar ? `女性 ${femaleMetricLabel(topBar)}` : '確認中'}</strong></div>
+            <div><span>{topBar ? `男女判定 ${topBar.genderSampleCount}件` : '女性判定'}</span><strong>{topBar ? `女性 ${femaleMetricLabel(topBar)}` : '確認中'}</strong></div>
           </div>
           <button
             className="nr-accent-btn mt-2 flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px]"
@@ -137,7 +135,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
           {[
             { label: '当日顧客投稿', value: meta.postCount, suffix: '件', hint: '店側投稿を除外' },
             { label: '直近3時間', value: meta.recentThreeHourCount, suffix: '件', hint: 'BBS投稿' },
-            { label: '女性書き込み', value: totalFemale, suffix: '件', hint: `判定対象 ${totalGenderSamples}件` },
+            { label: '女性書き込み', value: totalFemale, suffix: '件', hint: `男女判定 ${totalGenderSamples}件・カップル除外` },
             { label: '今日の予定', value: meta.todayEventCount, suffix: '件', hint: `${meta.eventCoverageStoreCount}店舗を確認` },
           ].map((k, i) => (
             <StaggerItem key={i}>
@@ -169,7 +167,7 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
             return (
               <StaggerItem key={b.id}>
               <GlassCard interactive onClick={() => onOpen(b.id)} className="nr-rank-card nr-focus nr-hairline nr-sheen p-4 sm:p-5" data-rank={b.rank}>
-                  <div className="grid grid-cols-1 items-center gap-5 sm:grid-cols-2 xl:grid-cols-[64px_minmax(220px,1.35fr)_repeat(3,minmax(92px,0.72fr))_minmax(170px,0.95fr)] xl:gap-4">
+                  <div className="grid grid-cols-1 items-center gap-5 sm:grid-cols-2 xl:grid-cols-[64px_minmax(220px,1.35fr)_minmax(92px,0.72fr)_minmax(230px,1.55fr)_minmax(170px,0.95fr)] xl:gap-4">
                     <div className="nr-rank-medal sm:col-span-2 xl:col-span-1">
                       <span>{b.rank}</span>
                       <small>RANK</small>
@@ -197,15 +195,26 @@ export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void;
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>
                         <span className="flex items-center gap-1"><MapPin size={10} /> {b.area}</span>
                         <span className="flex items-center gap-1 nr-mono"><Clock size={10} /> {b.businessWindowLabel}</span>
-                        <span className="flex items-center gap-1 nr-mono"><Users size={10} /> 投稿者 {b.uniqueAuthorCount}名・来店意向 約{b.estimatedVisitIntentCount}組{b.repeatPostCount ? `・再投稿 ${b.repeatPostCount}件` : ''}</span>
+                        <span className="flex items-center gap-1 nr-mono"><Users size={10} /> 投稿者 {b.uniqueAuthorCount}名・来店予告 {b.estimatedVisitIntentCount}件{b.repeatPostCount ? `・予告の再投稿 ${b.repeatPostCount}件` : ''}</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5 mt-1">
                         {b.tags.slice(0, 3).map(t => <span key={t} className="text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{t}</span>)}
                       </div>
                     </div>
                     <MetricRing value={b.postCount} max={postMax} label="当日総書き込み" valueSuffix="件" color="var(--nr-accent)" />
-                    <MetricRing value={b.femaleCount} max={femaleMax} label={b.genderSampleCount ? `判定${b.genderSampleCount}件中の女性` : '性別記載なし'} displayValue={femaleMetricLabel(b)} color="var(--nr-accent-2)" />
-                    <MetricRing value={b.recentThreeHourCount} max={recentMax} label="直近3時間" color="var(--nr-accent-soft)" />
+                    <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-white/[0.08] bg-black/15 p-2 sm:col-span-2 xl:col-span-1" aria-label="当日投稿の区分">
+                      {[
+                        ['男性', b.maleCount],
+                        ['女性', b.femaleCount],
+                        ['カップル', b.coupleCount],
+                        ['未判定', b.genderUnknownCount],
+                      ].map(([label, value]) => (
+                        <div key={String(label)} className="min-w-0 rounded-lg border border-white/[0.07] bg-white/[0.025] px-1.5 py-2 text-center">
+                          <span className="block truncate text-[9px]" style={{ color: 'var(--nr-text-low)' }}>{label}</span>
+                          <strong className="nr-mono mt-1 block text-[15px]" style={{ color: 'var(--nr-text-hi)' }}>{value}<small className="ml-0.5 text-[8px]">件</small></strong>
+                        </div>
+                      ))}
+                    </div>
                     <div className="flex flex-col gap-2 items-start sm:items-end sm:col-span-2 xl:col-span-1">
                       <div className="flex items-center gap-1.5 nr-mono text-[10px]" style={{ color: 'var(--nr-text-mid)' }}>
                         <TrendingUp size={10} color="var(--nr-accent)" /> 当日顧客投稿の推移

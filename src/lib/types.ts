@@ -149,6 +149,7 @@ export type StoreActivityMetrics = {
   recentThreeHourFemaleCount: number
   femalePostCount: number
   malePostCount: number
+  couplePostCount: number
   genderSampleCount: number
   womenRatio: number | null
   firstVisitCount: number
@@ -156,6 +157,10 @@ export type StoreActivityMetrics = {
   attentionPostCount: number
   uniqueAuthorCount: number
   estimatedVisitIntentCount: number
+  maleVisitIntentCount: number
+  femaleVisitIntentCount: number
+  coupleVisitIntentCount: number
+  unknownVisitIntentCount: number
   repeatPostCount: number
   repeatAuthorRatio: number | null
   normalizedCoverage: number

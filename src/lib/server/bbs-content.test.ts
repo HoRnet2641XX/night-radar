@@ -3,6 +3,7 @@ import test from 'node:test'
 import { extractNormalizedBbsPostsFromText } from '../scoring'
 import {
   extractBbsPageContent,
+  extractApageReaderContent,
   extractHarnesCurrentCalendarPostId,
   extractHarnesPopupComments,
   extractNeoReaderContent,
@@ -169,6 +170,25 @@ test('normalizes Neo reader threads into stable customer posts with target dates
   assert.match(normalized[0].body, /^\[\[NR_TARGET_DATE:2026-07-11\]\]/)
   assert.equal(normalized[1].authorGender, '女性')
   assert.match(normalized[2].body, /^\[\[NR_TARGET_DATE:2026-07-12\]\]/)
+})
+
+test('normalizes APAGE parent posts without mixing staff replies into customers', () => {
+  const text = [
+    'レ レイ さん (9wbul98n)2026/7/16 18:58 (No.1650451)削除 スタッフのレイです！ 19:00から出勤します。今夜も皆様のご来店お待ちしてます♪ 返信',
+    'え えま さん (9znqkl6d)2026/7/15 23:08 (No.1650209)削除 いまからいきます',
+    'レ レイ さん (9wbul98n)2026/7/15 23:14 削除 えまさん いらっしゃいませ♡ 返信',
+    'ま まり さん (9uz71td2)2026/7/15 18:49 (No.1650112)削除 ちょっとだけお邪魔しますー！',
+    'レ レイ さん (9wbul98n)2026/7/15 18:53 削除 まりちゃん お待ちしてます♪ 返信',
+  ].join(' ')
+  const normalized = extractNormalizedBbsPostsFromText(extractApageReaderContent(text), '2026-07-16T10:00:00.000Z')
+
+  assert.equal(normalized.length, 2)
+  assert.equal(normalized[0].articleNo, '1650209')
+  assert.equal(normalized[0].authorName, 'えま')
+  assert.equal(normalized[0].body, 'いまからいきます')
+  assert.equal(normalized[1].articleNo, '1650112')
+  assert.equal(normalized[1].authorName, 'まり')
+  assert.doesNotMatch(normalized.map((post) => post.body).join(' '), /スタッフ|いらっしゃいませ|お待ちしてます/)
 })
 
 test('normalizes dated article cards', () => {

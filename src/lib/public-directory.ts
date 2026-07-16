@@ -109,8 +109,16 @@ export type PublicStoreSummary = {
   sessionLabel: string
   womenRatio: number | null
   femalePostCount: number
+  malePostCount: number
+  couplePostCount: number
+  genderUnknownCount: number
   genderSampleCount: number
   genderCoverage: number
+  estimatedVisitIntentCount: number
+  maleVisitIntentCount: number
+  femaleVisitIntentCount: number
+  coupleVisitIntentCount: number
+  unknownVisitIntentCount: number
   recentPostCount: number
   recentThreeHourCount: number
   todayEventCount: number
@@ -611,8 +619,19 @@ function buildPublicStoreSummary(input: {
     sessionLabel: formatStoreSessionLabel(point.store),
     womenRatio,
     femalePostCount,
+    malePostCount: insight.activity.malePostCount,
+    couplePostCount: insight.activity.couplePostCount,
+    genderUnknownCount: Math.max(
+      0,
+      recentPosts.length - insight.activity.femalePostCount - insight.activity.malePostCount - insight.activity.couplePostCount,
+    ),
     genderSampleCount: insight.activity.genderSampleCount,
     genderCoverage: insight.activity.genderCoverage,
+    estimatedVisitIntentCount: insight.activity.estimatedVisitIntentCount,
+    maleVisitIntentCount: insight.activity.maleVisitIntentCount,
+    femaleVisitIntentCount: insight.activity.femaleVisitIntentCount,
+    coupleVisitIntentCount: insight.activity.coupleVisitIntentCount,
+    unknownVisitIntentCount: insight.activity.unknownVisitIntentCount,
     recentPostCount: recentPosts.length,
     recentThreeHourCount,
     todayEventCount,

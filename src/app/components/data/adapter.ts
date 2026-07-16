@@ -93,6 +93,8 @@ function toBar(
   const reliability = insight.reliability
   const storeActivity = insight.activity
   const femaleCount = storeActivity.femalePostCount
+  const maleCount = storeActivity.malePostCount
+  const coupleCount = storeActivity.couplePostCount
   const femaleRatio = storeActivity.womenRatio
   const firstVisitCount = storeActivity.firstVisitCount
   const groupCount = storeActivity.groupVisitCount
@@ -181,6 +183,8 @@ function toBar(
     eventCount,
     eventStatus,
     femaleCount,
+    maleCount,
+    coupleCount,
     femaleRatio,
     genderSampleCount: storeActivity.genderSampleCount,
     recentThreeHourCount: storeActivity.recentThreeHourCount,
@@ -189,6 +193,10 @@ function toBar(
     groupCount,
     uniqueAuthorCount: storeActivity.uniqueAuthorCount,
     estimatedVisitIntentCount: storeActivity.estimatedVisitIntentCount,
+    maleVisitIntentCount: storeActivity.maleVisitIntentCount,
+    femaleVisitIntentCount: storeActivity.femaleVisitIntentCount,
+    coupleVisitIntentCount: storeActivity.coupleVisitIntentCount,
+    unknownVisitIntentCount: storeActivity.unknownVisitIntentCount,
     repeatPostCount: storeActivity.repeatPostCount,
     repeatAuthorRatio: storeActivity.repeatAuthorRatio,
     normalizedCoverage: storeActivity.normalizedCoverage,
@@ -211,7 +219,7 @@ function toBar(
     rank: insight.rank,
     rankingBasisLabel: '当日顧客投稿数',
     excludedUntimestampedCount: insight.excludedUntimestampedCount,
-    genderUnknownCount: Math.max(0, postCount - storeActivity.genderSampleCount),
+    genderUnknownCount: Math.max(0, postCount - storeActivity.genderSampleCount - storeActivity.couplePostCount),
     genderStatus:
       storeActivity.genderSampleCount === 0 || storeActivity.genderCoverage < 20
         ? 'unavailable'
@@ -259,7 +267,7 @@ export function adaptEventsToCalendar(events: EventInput[], stores: StoreProfile
 function cleanPostBody(value: string) {
   return value
     .replace(/^\[\[NR_TARGET_DATE:\d{4}-\d{2}-\d{2}\]\]\s*/u, '')
-    .replace(/^投稿者[:：]\s*[^（(\n]{1,80}[（(](?:女性|女|単女|単独女性|男性|男|単男|単独男性|♀|♂)[）)]\s*/u, '')
+    .replace(/^投稿者[:：]\s*[^（(\n]{1,80}[（(](?:女性|女|単女|単独女性|男性|男|単男|単独男性|カップル|夫婦|ペア|複数|♀|♂)[）)]\s*/u, '')
     .trim()
 }
 
@@ -294,7 +302,7 @@ export function adaptNormalizedPostsToRadar(
         storeName: storeNames.get(post.storeId) ?? '店舗名未確認',
         authorName: post.authorName.trim() || '記載なし',
         gender,
-        genderLabel: gender === 'female' ? '女性' : gender === 'male' ? '男性' : '性別未記載',
+        genderLabel: gender === 'female' ? '女性' : gender === 'male' ? '男性' : gender === 'couple' ? 'カップル' : '区分未記載',
         postedAt: post.postedAt,
         postedAtLabel: formatPostTime(post.postedAt, post.observedAt),
         body,

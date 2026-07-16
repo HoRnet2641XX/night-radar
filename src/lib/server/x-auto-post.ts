@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { Client, OAuth1 } from '@xdevplatform/xdk'
 import { formatHeatLabel } from '@/lib/heat-labels'
 import { formatPublicStoreName, type PublicDirectoryState, type PublicStoreSummary } from '@/lib/public-directory'
-import { isRankableCustomerNormalizedPost, postDecisionDateKeyForStore } from '@/lib/scoring'
+import { isExplicitVisitIntentBody, isRankableCustomerNormalizedPost, postDecisionDateKeyForStore } from '@/lib/scoring'
 import type { PostRecord } from '@/lib/types'
 
 const DEFAULT_TARGET_URL = 'https://night-radar.vercel.app/app'
@@ -224,7 +224,7 @@ export function selectXDailyCandidates(
         postCount: intentCount,
         recentThreeHourCount: summary.recentThreeHourCount,
         dataConfidence: summary.dataConfidence,
-        detail: `来店意向 約${intentCount}組`,
+        detail: `来店予告 ${intentCount}件`,
       }, index + 1)
     }),
   }
@@ -273,7 +273,7 @@ export function selectXTomorrowCandidates(
       .filter((summary) => isReliableSummary(summary, minimumDataConfidence))
       .map((summary) => [summary.store.id, summary]),
   )
-  const intentCountByStore = new Map<string, number>()
+  const intentKeysByStore = new Map<string, Set<string>>()
   state.normalizedPosts
     .filter(isRankableCustomerNormalizedPost)
     .forEach((post) => {
@@ -290,7 +290,19 @@ export function selectXTomorrowCandidates(
         keywords: [],
       }
       if (postDecisionDateKeyForStore(record, store) !== targetDateKey) return
-      intentCountByStore.set(post.storeId, (intentCountByStore.get(post.storeId) ?? 0) + 1)
+      if (!isExplicitVisitIntentBody(post.body)) return
+      const normalizedAuthor = post.authorName.normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase('ja-JP')
+      const normalizedBody = post.body
+        .replace(/^\[\[NR_TARGET_DATE:\d{4}-\d{2}-\d{2}\]\]\s*/u, '')
+        .normalize('NFKC')
+        .replace(/\s+/g, '')
+        .toLocaleLowerCase('ja-JP')
+      const intentKey = normalizedAuthor && normalizedAuthor !== '記載なし'
+        ? `author:${normalizedAuthor}`
+        : `body:${normalizedBody}`
+      const keys = intentKeysByStore.get(post.storeId) ?? new Set<string>()
+      keys.add(intentKey)
+      intentKeysByStore.set(post.storeId, keys)
     })
 
   const eventsByStore = new Map<string, typeof state.events>()
@@ -300,7 +312,7 @@ export function selectXTomorrowCandidates(
 
   const eligible = [...summaryByStoreId.values()]
     .map((summary) => {
-      const intentCount = intentCountByStore.get(summary.store.id) ?? 0
+      const intentCount = intentKeysByStore.get(summary.store.id)?.size ?? 0
       const events = eventsByStore.get(summary.store.id) ?? []
       return {
         summary,
@@ -341,7 +353,7 @@ function rankingLines(candidates: XDailyCandidate[], slot: XAutoPostSlot, storeN
   return candidates.flatMap((item, index) => {
     const medal = medalByRank[index] ?? `${index + 1}位`
     const storeName = truncateCodePoints(item.storeName, storeNameLength)
-    if (slot === 'midday') return [`${medal} ${storeName}｜${item.heatLabel} 約${item.postCount}組`]
+    if (slot === 'midday') return [`${medal} ${storeName}｜${item.heatLabel} 来店予告${item.postCount}件`]
     if (slot === 'evening') return [`${medal} ${storeName}｜${item.heatLabel} ${item.detail}`]
     if (compact) return [`${medal} ${storeName}｜${item.heatLabel} ${item.detail}`]
     return [`${medal} ${storeName}｜${item.heatLabel}`, `└ ${item.detail}`]
@@ -363,7 +375,7 @@ function buildScheduledText(input: {
   if (input.slot === 'midday') {
     return [
       input.compact ? '【速報】盛り上がりTOP3🍸' : '【速報】今どこのハプBARが盛り上がってる？🍸',
-      '◼︎来店意向 TOP3◼︎',
+      '◼︎来店予告 TOP3◼︎',
       ...lines,
       '',
       displayCurrentTime(input.generatedAt),
@@ -412,14 +424,14 @@ function buildTightScheduledText(input: {
       ? '【速報】先週比で伸びた3店🍸'
       : '【明日予想】注目3店🍸'
   const context = input.slot === 'midday'
-    ? `${displayCurrentTime(input.generatedAt)}｜来店意向順`
+    ? `${displayCurrentTime(input.generatedAt)}｜来店予告順`
     : input.slot === 'evening'
       ? `${displayCurrentTime(input.generatedAt)}｜同曜日・同時刻の日平均比較`
       : `${displayDate(`${input.targetDateKey}T12:00:00+09:00`)}｜予定・来店予告から算出`
   const lines = input.candidates.map((item, index) => {
     const medal = medalByRank[index] ?? `${index + 1}位`
     const storeName = truncateCodePoints(item.storeName, input.storeNameLength)
-    const sourceDetail = input.slot === 'midday' ? `${item.postCount}組` : item.detail
+    const sourceDetail = input.slot === 'midday' ? `予告${item.postCount}件` : item.detail
     const detail = input.detailLength > 0 ? truncateCodePoints(sourceDetail, input.detailLength) : ''
     return `${medal} ${storeName}｜${item.heatLabel}${detail ? ` ${detail}` : ''}`
   })

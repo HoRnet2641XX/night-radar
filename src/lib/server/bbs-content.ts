@@ -312,6 +312,51 @@ export function extractNeoReaderContent(value: string) {
   return [...new Set(posts)].join('\n')
 }
 
+function isApageStaffPost(body: string) {
+  return /スタッフ(?:の|です)|今夜も皆様のご来店お待ち|出勤(?:します|しました)/i.test(body)
+}
+
+export function extractApageReaderContent(value: string) {
+  const markerPattern = /\(([a-z0-9]+)\)(?:NEW\s*)?(20\d{2}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2})(?:\s+\(No\.(\d+)\))?\s*[]?削除\s*/gi
+  const markers = [...value.matchAll(markerPattern)].flatMap((match) => {
+    const markerIndex = match.index ?? 0
+    const prefixStart = Math.max(0, markerIndex - 96)
+    const prefix = value.slice(prefixStart, markerIndex)
+    const authorMatch = prefix.match(/(?:^|\s)((?:\S+\s+)?\S{1,40})\s*さん\s*$/u)
+    if (!authorMatch || authorMatch.index == null) return []
+    const leadingSpace = authorMatch[0].length - authorMatch[0].trimStart().length
+    return [{
+      author: cleanNeoAuthor(authorMatch[1] ?? ''),
+      authorStart: prefixStart + authorMatch.index + leadingSpace,
+      date: match[2] ?? '',
+      articleNo: match[3],
+      bodyStart: markerIndex + match[0].length,
+    }]
+  })
+  const posts: string[] = []
+
+  markers.forEach((marker, index) => {
+    if (!marker.articleNo || !marker.author) return
+    const bodyEnd = markers[index + 1]?.authorStart ?? value.length
+    const body = value
+      .slice(marker.bodyStart, bodyEnd)
+      .replace(/\s*返信\s*$/i, '')
+      .replace(/\s*Copyright ©[\s\S]*$/i, '')
+      .trim()
+    if (!body || isApageStaffPost(body)) return
+
+    const post = canonicalPost({
+      author: marker.author,
+      body,
+      date: marker.date,
+      articleNo: marker.articleNo,
+    })
+    if (post) posts.push(post)
+  })
+
+  return [...new Set(posts)].join('\n')
+}
+
 function extractLegacyContributorPosts($: cheerio.CheerioAPI) {
   const posts: string[] = []
 

@@ -20,7 +20,7 @@ const detailMetrics: Array<{
   hint: string;
 }> = [
   { k: 'vibe', label: '当日顧客投稿', color: 'var(--nr-accent-2)', hint: '今日の来店日として判定した顧客投稿' },
-  { k: 'drinks', label: '女性書き込み', color: 'var(--nr-accent)', hint: '投稿者の性別を判定できた投稿から集計' },
+  { k: 'drinks', label: '女性書き込み', color: 'var(--nr-accent)', hint: '男女判定できた投稿から集計。カップルは比率から除外' },
   { k: 'service', label: '集計信頼度', color: 'var(--nr-accent-soft)', hint: '取得鮮度・正規化・投稿時刻・件数から算出' },
   { k: 'music', label: '今日の予定', color: 'var(--nr-accent-deep)', hint: '当日の登録イベント' },
   { k: 'crowd', label: '直近3時間', color: 'var(--nr-accent)', hint: '現在時刻から3時間以内の投稿' },
@@ -33,8 +33,47 @@ function femaleMetricLabel(bar: Bar) {
 }
 
 function genderEvidenceLabel(bar: Bar) {
-  if (bar.genderSampleCount === 0) return '性別の記載なし';
-  return `判定対象${bar.genderSampleCount}件中、女性${bar.femaleCount}件${bar.genderStatus === 'partial' ? '（参考）' : ''}`;
+  const classifiedCount = bar.femaleCount + bar.maleCount + bar.coupleCount;
+  if (classifiedCount === 0) return '投稿者区分の記載なし';
+  return `男性${bar.maleCount}件・女性${bar.femaleCount}件・カップル${bar.coupleCount}件・未判定${bar.genderUnknownCount}件`;
+}
+
+function AudienceBreakdown({ bar }: { bar: Bar }) {
+  const items = [
+    { label: '男性', value: bar.maleCount },
+    { label: '女性', value: bar.femaleCount },
+    { label: 'カップル', value: bar.coupleCount },
+    { label: '未判定', value: bar.genderUnknownCount },
+  ];
+
+  return (
+    <GlassCard className="nr-hairline p-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日顧客投稿の内訳</div>
+          <h2 className="nr-heading mt-1 text-[20px]" style={{ color: 'var(--nr-text-hi)' }}>男性・女性・カップル</h2>
+        </div>
+        <span className="text-[10px]" style={{ color: 'var(--nr-text-low)' }}>投稿者欄に明記された区分だけを集計し、推測では補完しません。</span>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {items.map((item) => (
+          <div key={item.label} className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
+            <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{item.label}</span>
+            <strong className="nr-heading mt-1 block text-[24px]" style={{ color: 'var(--nr-text-hi)' }}>{item.value}<small className="ml-1 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>件</small></strong>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[12px] font-semibold" style={{ color: 'var(--nr-text-hi)' }}>来店を明言した投稿</span>
+          <strong className="nr-heading text-[20px]" style={{ color: 'var(--nr-accent)' }}>{bar.estimatedVisitIntentCount}件</strong>
+        </div>
+        <p className="mt-1 text-[10px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>
+          男性 {bar.maleVisitIntentCount}件 / 女性 {bar.femaleVisitIntentCount}件 / カップル {bar.coupleVisitIntentCount}件 / 未判定 {bar.unknownVisitIntentCount}件。曖昧な「行けたら」「行くかも」は含めません。
+        </p>
+      </div>
+    </GlassCard>
+  );
 }
 
 function DailyStoreComparisonIndex({ bars, activeId, onOpen }: { bars: Bar[]; activeId: string; onOpen: (id: string) => void }) {
@@ -159,7 +198,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
           >
             <span className="flex items-center gap-1"><MapPin size={11} /> {bar.area}</span>
             <span className="flex items-center gap-1 nr-mono"><Clock size={11} /> {bar.businessWindowLabel} · 最多 {bar.peakHour}</span>
-            <span className="flex items-center gap-1 nr-mono"><Users size={11} /> 投稿者 {bar.uniqueAuthorCount}名 · 来店意向 約{bar.estimatedVisitIntentCount}組 · 再投稿 {bar.repeatPostCount}件 · 総投稿 {bar.postCount}件 · 3h {bar.recentThreeHourCount}件</span>
+            <span className="flex items-center gap-1 nr-mono"><Users size={11} /> 投稿者 {bar.uniqueAuthorCount}名 · 来店予告 {bar.estimatedVisitIntentCount}件 · 予告の再投稿 {bar.repeatPostCount}件 · 総投稿 {bar.postCount}件 · 3h {bar.recentThreeHourCount}件</span>
             <span className="flex items-center gap-1 nr-mono"><Users size={11} /> {genderEvidenceLabel(bar)}</span>
           </motion.div>
           <motion.div className="flex flex-wrap gap-1.5 mt-4"
@@ -210,10 +249,12 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
             </div>
           </div>
           <div className="nr-mono text-[11px] flex items-center gap-1 md:max-w-[280px]" style={{ color: 'var(--nr-text-mid)' }}>
-            <Info size={11} /> 順位は投稿 {bar.postCount}件で算出 · 投稿者 {bar.uniqueAuthorCount}名 · 再投稿をまとめた来店意向 約{bar.estimatedVisitIntentCount}組 · 時刻解析 {bar.timestampCoverage}% · 解析保留 {bar.excludedUntimestampedCount}件
+            <Info size={11} /> 順位は当日顧客投稿 {bar.postCount}件で算出 · 来店を明言した投稿 {bar.estimatedVisitIntentCount}件 · 時刻解析 {bar.timestampCoverage}% · 解析保留 {bar.excludedUntimestampedCount}件
           </div>
         </GlassCard>
       </motion.div>
+
+      <AudienceBreakdown bar={bar} />
 
       <GlassCard className="nr-hairline p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -269,7 +310,7 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
                 <span className="flex items-center gap-1.5" style={{ color: 'var(--nr-text-mid)' }}><i className="h-0.5 w-5" style={{ background: 'var(--nr-accent)' }} />{bar.name}</span>
               </div>
               <p className="mt-4 max-w-[360px] text-center text-[11px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>
-                投稿・直近3時間・予定は当日の最大店舗を100として換算。女性比率と集計信頼度は実測値です。件数そのものに上限はありません。
+                投稿・直近3時間・予定は当日の最大店舗を100として換算。女性率は男女判定済み投稿（カップル除外）内の実測値、集計信頼度も実測値です。件数そのものに上限はありません。
               </p>
             </GlassCard>
 

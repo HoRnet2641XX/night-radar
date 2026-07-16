@@ -1767,13 +1767,12 @@ async function crawlSourceRowSafely(
     : 1
   const retryDelayMs = Math.max(0, Math.min(2_000, Number(process.env.CRAWL_RETRY_DELAY_MS) || 250))
   let lastError: unknown
-  let lastResult: CrawlSourceResult | null = null
 
   for (let attempt = 0; attempt <= retryCount; attempt += 1) {
     try {
-      const result = await crawlSourceRow(supabase, row, options)
-      lastResult = result
-      if (result.run.status === 'ok' || attempt === retryCount) return result
+      // A completed crawl already persisted its status. Retry only thrown transport/DB
+      // exceptions so one parser failure cannot create duplicate crawl history rows.
+      return await crawlSourceRow(supabase, row, options)
     } catch (error) {
       lastError = error
       if (attempt === retryCount) break
@@ -1781,7 +1780,6 @@ async function crawlSourceRowSafely(
     if (retryDelayMs) await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
   }
 
-  if (lastResult) return lastResult
   try {
     return await saveFailedCrawlRun(supabase, row, lastError)
   } catch {

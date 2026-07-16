@@ -12,6 +12,7 @@ export function getCronAuthorizationError(request: Request, purpose: string) {
     : `${purpose}の認証に失敗しました。`
 }
 
-export function cronCrawlHttpStatus(failureCount: number) {
-  return failureCount > 0 ? 502 : 200
+export function cronCrawlHttpStatus(failureCount: number, attemptedCount: number) {
+  if (failureCount <= 0 || attemptedCount <= 0) return 200
+  return failureCount >= attemptedCount ? 502 : 207
 }

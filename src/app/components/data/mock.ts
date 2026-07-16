@@ -33,6 +33,8 @@ export type Bar = {
   eventCount: number
   eventStatus: EventRegistrationStatus
   femaleCount: number
+  maleCount: number
+  coupleCount: number
   femaleRatio: number | null
   genderSampleCount: number
   recentThreeHourCount: number
@@ -41,6 +43,10 @@ export type Bar = {
   groupCount: number
   uniqueAuthorCount: number
   estimatedVisitIntentCount: number
+  maleVisitIntentCount: number
+  femaleVisitIntentCount: number
+  coupleVisitIntentCount: number
+  unknownVisitIntentCount: number
   repeatPostCount: number
   repeatAuthorRatio: number | null
   normalizedCoverage: number
@@ -66,7 +72,7 @@ export type Bar = {
   genderStatus: 'measured' | 'partial' | 'unavailable'
 }
 
-export type RadarPostGender = 'female' | 'male' | 'unknown'
+export type RadarPostGender = 'female' | 'male' | 'couple' | 'unknown'
 
 export type RadarPost = {
   id: string
@@ -182,6 +188,8 @@ const fallbackBars: Bar[] = [
     eventCount: 0,
     eventStatus: 'external',
     femaleCount: 0,
+    maleCount: 0,
+    coupleCount: 0,
     femaleRatio: null,
     genderSampleCount: 0,
     recentThreeHourCount: 0,
@@ -190,6 +198,10 @@ const fallbackBars: Bar[] = [
     groupCount: 0,
     uniqueAuthorCount: 0,
     estimatedVisitIntentCount: 0,
+    maleVisitIntentCount: 0,
+    femaleVisitIntentCount: 0,
+    coupleVisitIntentCount: 0,
+    unknownVisitIntentCount: 0,
     repeatPostCount: 0,
     repeatAuthorRatio: null,
     normalizedCoverage: 0,
@@ -231,7 +243,7 @@ export const EMPTY_WEEKLY_MOMENTUM: WeeklyMomentumView = {
 
 export const RADAR_KEYS = [
   { key: 'vibe', label: '当日投稿量' },
-  { key: 'drinks', label: '女性比率' },
+  { key: 'drinks', label: '女性率（男女判定内）' },
   { key: 'service', label: '集計信頼度' },
   { key: 'music', label: '予定件数' },
   { key: 'crowd', label: '直近投稿' },

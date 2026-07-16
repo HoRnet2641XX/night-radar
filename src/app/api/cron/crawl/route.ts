@@ -43,6 +43,7 @@ function getCronCrawlOptions(request: Request): CronCrawlOptions {
 
 function compactCronCrawlResult(result: CronCrawlResult, elapsedMs: number) {
   const failedResults = result.results.filter(({ run }) => run.status === 'failed' || run.status === 'blocked')
+  const successCount = result.results.length - failedResults.length
   return {
     mode: result.mode,
     elapsedMs,
@@ -56,6 +57,8 @@ function compactCronCrawlResult(result: CronCrawlResult, elapsedMs: number) {
     failureNotificationCount: result.failureNotificationCount,
     screenshotFailureCount: result.screenshotFailureCount,
     failureCount: failedResults.length,
+    successCount,
+    degraded: failedResults.length > 0 && successCount > 0,
     results: result.results.map(({ source, run, post, snapshot, normalizedPosts }) => ({
       source: {
         id: source.id,
@@ -116,7 +119,7 @@ export async function GET(request: Request) {
     const result = await crawlDueBbsSourcesForCron(getCronCrawlOptions(request))
     if (result.crawled > 0) revalidateTag(PUBLIC_DIRECTORY_CACHE_TAG, { expire: 0 })
     const response = compactCronCrawlResult(result, Date.now() - startedAt)
-    return Response.json(response, { status: cronCrawlHttpStatus(response.failureCount) })
+    return Response.json(response, { status: cronCrawlHttpStatus(response.failureCount, response.crawled) })
   } catch (error) {
     if (error instanceof RepositoryError && error.status === 503) {
       return jsonError(error.message, 503)
