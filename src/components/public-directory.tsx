@@ -920,7 +920,7 @@ function PublicStoreRadar({
     <div className={`${styles.publicStoreRadar} ${styles[`publicStoreRadar_${variant}`]}`} style={style}>
       <div className={styles.publicRadarDonut} aria-label={hasGender ? `男女判定内の女性率 ${womenRatio}%、男性率 ${menRatio}%、${genderEvidence}、カップルは比率から除外` : '女性率は観測中'}>
         <strong>{hasGender ? womenRatio : '--'}<small>%</small></strong>
-        <span>{partialGender ? '女性率・参考' : '女性率'}</span>
+        <span>女性率</span>
       </div>
       <div className={styles.publicRadarBars} aria-label="店舗レーダー縦グラフ">
         <span>
