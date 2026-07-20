@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { MapPin, Clock, Users, ArrowUpRight, Sparkles, Info, CalendarDays, ChevronsUpDown, X, Phone, WalletCards, Navigation, BookmarkCheck, BookmarkPlus, RefreshCw } from 'lucide-react';
 import { GlassCard } from '../ui-nr/GlassCard';
 import { RadarChart } from '../ui-nr/RadarChart';
@@ -119,24 +119,33 @@ function useFemaleRetention(storeId: string) {
 
 function FemaleRetentionPanel({ storeId }: { storeId: string }) {
   const { data, error, loading, retry } = useFemaleRetention(storeId);
+  const shouldReduceMotion = useReducedMotion();
   const statusLabel = data?.status === 'measured'
     ? '集計済み'
     : data?.status === 'low_sample'
       ? '母数少なめ'
       : 'データ不足';
+  const strongestWeekday = data && [...data.weekdays]
+    .filter((item) => item.status !== 'unavailable' && item.eligibleAuthorCount > 0)
+    .sort((left, right) => (
+      right.retentionRate - left.retentionRate ||
+      right.returningAuthorCount - left.returningAuthorCount ||
+      right.eligibleAuthorCount - left.eligibleAuthorCount
+    ))[0];
 
   return (
-    <GlassCard className="nr-retention nr-hairline p-5" aria-busy={loading}>
+    <GlassCard className="nr-retention nr-hairline" aria-busy={loading}>
       <div className="nr-retention-header">
-        <div>
-          <div className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>過去8週間 · 06:00区切り</div>
-          <h2 className="nr-heading mt-1 text-[20px]" style={{ color: 'var(--nr-text-hi)' }}>女性投稿者の曜日別定着傾向</h2>
-          <p className="mt-1 text-[11px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>同じ投稿者名が、同じ曜日に別週でも書き込んだ割合を確認します。</p>
+        <div className="nr-retention-heading">
+          <span>女性定着の参考値</span>
+          <h2>女性投稿者の曜日別定着傾向</h2>
+          <p>同じ投稿者名が、別の週にも同じ曜日に書き込んだ割合です。</p>
         </div>
-        <div className="nr-retention-total" aria-live="polite">
-          <span>同曜日再登場率</span>
-          <strong>{data?.status === 'unavailable' || !data ? '—' : `${data.retentionRate}%`}</strong>
-          <small>{data ? statusLabel : loading ? '集計中…' : '未取得'}</small>
+        <div className="nr-retention-status" aria-live="polite" data-status={data?.status ?? 'loading'}>
+          <i aria-hidden="true" />
+          <span>過去8週間</span>
+          <span>06:00区切り</span>
+          <strong>{data ? statusLabel : loading ? '集計中…' : '未取得'}</strong>
         </div>
       </div>
 
@@ -151,38 +160,74 @@ function FemaleRetentionPanel({ storeId }: { storeId: string }) {
         </div>
       ) : data ? (
         <div className="nr-retention-layout">
-          <div className="nr-retention-facts">
-            <div><span>再登場</span><strong>{data.returningAuthorWeekdayCount}<small>組</small></strong></div>
-            <div><span>判定対象</span><strong>{data.eligibleAuthorWeekdayCount}<small>組</small></strong></div>
-            <div><span>対象投稿</span><strong>{data.eligiblePostCount}<small>件</small></strong></div>
-            <div><span>確認週</span><strong>{data.observedWeekCount}<small>週</small></strong></div>
+          <div className="nr-retention-summary">
+            <span>同曜日再登場率</span>
+            <strong>
+              {data.status === 'unavailable' ? '—' : data.retentionRate}
+              {data.status !== 'unavailable' && <small>%</small>}
+            </strong>
+            <p>判定した{data.eligibleAuthorWeekdayCount}組のうち、{data.returningAuthorWeekdayCount}組を別週でも確認</p>
+            <div className="nr-retention-peak" data-available={Boolean(strongestWeekday)}>
+              <span>最も高い曜日</span>
+              {strongestWeekday ? (
+                <>
+                  <strong>{strongestWeekday.weekday.replace('曜', '曜日')}</strong>
+                  <em>{strongestWeekday.retentionRate}%</em>
+                  <small>{strongestWeekday.returningAuthorCount}/{strongestWeekday.eligibleAuthorCount}組</small>
+                </>
+              ) : (
+                <strong>判定できません</strong>
+              )}
+            </div>
           </div>
-          <div
-            className="nr-retention-chart"
-            role="img"
-            aria-label={`女性投稿者の曜日別再登場率。全体${data.retentionRate}パーセント。${data.weekdays
-              .map((item) => `${item.weekday}${item.status === 'unavailable' ? '未集計' : `${item.retentionRate}パーセント`}`)
-              .join('、')}`}
-          >
-            {data.weekdays.map((item, index) => (
-              <div key={item.weekday} className="nr-retention-day" data-status={item.status}>
-                <strong>{item.status === 'unavailable' ? '—' : `${item.retentionRate}%`}</strong>
-                <div className="nr-retention-bar" aria-hidden="true">
-                  <motion.i
-                    initial={{ height: 0 }}
-                    animate={{ height: item.status === 'unavailable' ? '0%' : `${Math.max(4, item.retentionRate)}%` }}
-                    transition={{ duration: 0.75, ease, delay: 0.04 * index }}
-                  />
-                </div>
-                <span>{item.weekday.replace('曜', '')}</span>
-                <small>{item.returningAuthorCount}/{item.eligibleAuthorCount}組</small>
-              </div>
-            ))}
-          </div>
-          <div className="nr-retention-note">
-            <p>{data.methodology}</p>
-            <p>{data.caution}</p>
-          </div>
+          <figure className="nr-retention-figure">
+            <figcaption>
+              <strong>曜日別の再登場率</strong>
+              <span><i aria-hidden="true" /> 最も高い曜日</span>
+              <small>0〜100%</small>
+            </figcaption>
+            <div
+              className="nr-retention-chart"
+              role="img"
+              aria-label={`女性投稿者の曜日別再登場率。全体${data.retentionRate}パーセント。${data.weekdays
+                .map((item) => `${item.weekday}${item.status === 'unavailable' ? '未集計' : `${item.retentionRate}パーセント`}`)
+                .join('、')}`}
+            >
+              {data.weekdays.map((item, index) => {
+                const isPeak = strongestWeekday?.weekday === item.weekday;
+                const barScale = item.status === 'unavailable' ? 0 : Math.max(0.04, item.retentionRate / 100);
+                return (
+                  <div key={item.weekday} className="nr-retention-day" data-status={item.status} data-peak={isPeak}>
+                    <strong>{item.status === 'unavailable' ? '—' : `${item.retentionRate}%`}</strong>
+                    <div className="nr-retention-bar" aria-hidden="true">
+                      <motion.i
+                        initial={shouldReduceMotion ? false : { scaleY: 0 }}
+                        animate={{ scaleY: barScale }}
+                        transition={{ duration: shouldReduceMotion ? 0 : 0.42, ease, delay: shouldReduceMotion ? 0 : 0.03 * index }}
+                      />
+                    </div>
+                    <span>{item.weekday.replace('曜', '')}</span>
+                    <small>{item.returningAuthorCount}/{item.eligibleAuthorCount}組</small>
+                  </div>
+                );
+              })}
+            </div>
+          </figure>
+
+          <dl className="nr-retention-ledger">
+            <div><dt>再登場した組合せ</dt><dd>{data.returningAuthorWeekdayCount}<small>組</small></dd></div>
+            <div><dt>判定した組合せ</dt><dd>{data.eligibleAuthorWeekdayCount}<small>組</small></dd></div>
+            <div><dt>対象となる女性投稿</dt><dd>{data.eligiblePostCount}<small>件</small></dd></div>
+            <div><dt>データのある週</dt><dd>{data.observedWeekCount}<small>週</small></dd></div>
+          </dl>
+
+          <details className="nr-retention-note">
+            <summary>集計方法と注意点</summary>
+            <div>
+              <p>{data.methodology}</p>
+              <p>{data.caution}</p>
+            </div>
+          </details>
         </div>
       ) : null}
     </GlassCard>
