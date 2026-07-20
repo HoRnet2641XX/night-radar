@@ -45,7 +45,9 @@ function publicPlan(plan: ReturnType<typeof prepareXScheduledPost>) {
     text: plan.text,
     weightedLength: plan.weightedLength,
     candidates: plan.candidates,
+    hiddenGemCandidates: plan.hiddenGemCandidates,
     eligibleStoreCount: plan.eligibleStoreCount,
+    hiddenGemEligibleStoreCount: plan.hiddenGemEligibleStoreCount,
   }
 }
 
@@ -154,7 +156,9 @@ export async function GET(request: Request) {
         source_generated_at: plan.sourceGeneratedAt,
         metrics: {
           candidates: plan.candidates,
+          hiddenGemCandidates: plan.hiddenGemCandidates,
           eligibleStoreCount: plan.eligibleStoreCount,
+          hiddenGemEligibleStoreCount: plan.hiddenGemEligibleStoreCount,
           weightedLength: plan.weightedLength,
         },
         attempts: 1,

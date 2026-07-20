@@ -8,6 +8,7 @@ import {
   prepareXDailyPost,
   prepareXScheduledPost,
   selectXDailyCandidates,
+  selectXHiddenGemCandidates,
   XAutoPostPlanError,
   xWeightedLength,
 } from './x-auto-post'
@@ -22,11 +23,18 @@ function summary(input: {
   sourceStatus?: 'pending' | 'ok' | 'blocked' | 'failed'
   score?: number
   intentCount?: number
+  femaleCount?: number
+  genderSampleCount?: number
+  todayEventCount?: number
 }) {
   return {
     store: { id: input.id, name: input.name },
     recentPostCount: input.postCount,
     recentThreeHourCount: input.threeHourCount ?? 0,
+    femalePostCount: input.femaleCount ?? 0,
+    genderSampleCount: input.genderSampleCount ?? input.femaleCount ?? 0,
+    estimatedVisitIntentCount: input.intentCount ?? input.postCount,
+    todayEventCount: input.todayEventCount ?? 0,
     dataConfidence: input.confidence ?? 90,
     insight: {
       reliability: input.reliability ?? 'fresh',
@@ -35,6 +43,14 @@ function summary(input: {
     source: { lastStatus: input.sourceStatus ?? 'ok' },
     point: { score: input.score ?? 70 },
   } as unknown as PublicStoreSummary
+}
+
+function hiddenSummaries() {
+  return [
+    summary({ id: 'hidden-a', name: 'HIDDEN A', postCount: 5, intentCount: 0, femaleCount: 3, genderSampleCount: 4 }),
+    summary({ id: 'hidden-b', name: 'HIDDEN B', postCount: 4, intentCount: 0, femaleCount: 2, genderSampleCount: 3 }),
+    summary({ id: 'hidden-c', name: 'HIDDEN C', postCount: 3, intentCount: 0, femaleCount: 1, genderSampleCount: 2 }),
+  ]
 }
 
 function state(
@@ -116,15 +132,36 @@ test('midday post uses rank labels, is aggregate-only, and stays within the X li
     summary({ id: 'filt', name: 'FILT SHIBUYA', postCount: 57 }),
     summary({ id: 'agreeable', name: 'AgreeAble', postCount: 33 }),
     summary({ id: 'face', name: 'BAR FACE', postCount: 20 }),
+    ...hiddenSummaries(),
   ]), { includeUrl: true, targetUrl: 'https://night-radar.vercel.app/app' })
 
   assert.equal(plan.idempotencyKey, 'today_ranking:2026-07-15')
   assert.equal(plan.scheduledFor, '2026-07-15T03:00:00.000Z')
-  assert.match(plan.text, /🥇 bar FILT SHIBUYA｜🔥 アツすぎて滅 来店予告57件/)
-  assert.match(plan.text, /🚀 テンアゲ/)
-  assert.match(plan.text, /👀 じわアツ/)
+  assert.match(plan.text, /🔥盛り上がり/)
+  assert.match(plan.text, /🥇FILT SHIBUYA 予告57/)
+  assert.match(plan.text, /👀比較で見つけた穴場/)
+  assert.equal(plan.hiddenGemCandidates.length, 3)
+  assert.deepEqual(plan.hiddenGemCandidates.map((item) => item.storeId), ['hidden-a', 'hidden-b', 'hidden-c'])
+  assert.equal(new Set([...plan.candidates, ...plan.hiddenGemCandidates].map((item) => item.storeId)).size, 6)
   assert.doesNotMatch(plan.text, /投稿者|本文|author|body/)
   assert.ok(plan.weightedLength <= 280)
+})
+
+test('hidden gems stay outside the headline top three and prefer lower-volume stores with evidence', () => {
+  const summaries = [
+    summary({ id: 'hot-a', name: 'HOT A', postCount: 30, femaleCount: 9, genderSampleCount: 12 }),
+    summary({ id: 'hot-b', name: 'HOT B', postCount: 24, femaleCount: 7, genderSampleCount: 10 }),
+    summary({ id: 'hot-c', name: 'HOT C', postCount: 20, femaleCount: 6, genderSampleCount: 9 }),
+    summary({ id: 'gem-a', name: 'GEM A', postCount: 8, intentCount: 0, femaleCount: 4, genderSampleCount: 5 }),
+    summary({ id: 'gem-b', name: 'GEM B', postCount: 6, intentCount: 0, femaleCount: 2, genderSampleCount: 3 }),
+    summary({ id: 'gem-c', name: 'GEM C', postCount: 4, intentCount: 0, threeHourCount: 2 }),
+    summary({ id: 'quiet', name: 'QUIET', postCount: 3, intentCount: 0 }),
+  ]
+  const result = selectXHiddenGemCandidates(summaries, new Set(['hot-a', 'hot-b', 'hot-c']))
+
+  assert.equal(result.eligibleStoreCount, 3)
+  assert.deepEqual(new Set(result.candidates.map((item) => item.storeId)), new Set(['gem-a', 'gem-b', 'gem-c']))
+  assert.ok(result.candidates.every((item) => item.heatLabel === '👀 穴場'))
 })
 
 test('evening post ranks only stores with a measured positive change from exactly seven days earlier', () => {
@@ -133,6 +170,7 @@ test('evening post ranks only stores with a measured positive change from exactl
     summary({ id: 'agreeable', name: 'AgreeAble', postCount: 18 }),
     summary({ id: 'retreat', name: 'RETREAT BAR', postCount: 16 }),
     summary({ id: 'flat', name: 'FLAT', postCount: 14 }),
+    ...hiddenSummaries(),
   ]
   const plan = prepareXScheduledPost(state(summaries, 'database', {
     weeklyMomentum: {
@@ -150,8 +188,9 @@ test('evening post ranks only stores with a measured positive change from exactl
 
   assert.equal(plan.kind, 'weekly_momentum')
   assert.equal(plan.candidates.length, 3)
-  assert.match(plan.text, /7日前比\+4件/)
-  assert.match(plan.text, /本日 vs 7日前 TOP3/)
+  assert.match(plan.text, /7日前\+4/)
+  assert.match(plan.text, /🔥伸び/)
+  assert.match(plan.text, /比較で見つけた穴場/)
   assert.ok(plan.weightedLength <= 280)
 })
 
@@ -160,6 +199,7 @@ test('tomorrow post uses only tomorrow events or visit-intent data', () => {
     summary({ id: 'a', name: 'A', postCount: 8 }),
     summary({ id: 'b', name: 'B', postCount: 7 }),
     summary({ id: 'c', name: 'C', postCount: 6 }),
+    ...hiddenSummaries(),
   ]
   const plan = prepareXScheduledPost(state(summaries, 'database', {
     events: [
@@ -173,7 +213,8 @@ test('tomorrow post uses only tomorrow events or visit-intent data', () => {
   assert.equal(plan.targetDateKey, '2026-07-16')
   assert.equal(plan.scheduledFor, '2026-07-15T14:00:00.000Z')
   assert.match(plan.text, /BINGO/)
-  assert.match(plan.text, /7\/16\(木\)の予想/)
+  assert.match(plan.text, /7\/16\(木\)予想/)
+  assert.match(plan.text, /比較で見つけた穴場/)
   assert.ok(plan.weightedLength <= 280)
 })
 
@@ -182,6 +223,9 @@ test('tomorrow post falls back to a shorter complete format when live names are 
     summary({ id: 'a', name: 'Communicationbar 珊瑚 東京本店', postCount: 8 }),
     summary({ id: 'b', name: '荻窪秘密倶楽部スペシャルラウンジ', postCount: 7 }),
     summary({ id: 'c', name: 'CLUB SCARLET TOKYO ANNEX', postCount: 6 }),
+    summary({ id: 'hidden-a', name: 'Secret comparison candidate eastern branch', postCount: 5, intentCount: 0, femaleCount: 3 }),
+    summary({ id: 'hidden-b', name: 'Another very long hidden bar candidate', postCount: 4, intentCount: 0, femaleCount: 2 }),
+    summary({ id: 'hidden-c', name: 'Third extended hidden store candidate', postCount: 3, intentCount: 0, femaleCount: 1 }),
   ]
   const plan = prepareXScheduledPost(state(summaries, 'database', {
     events: [
@@ -195,7 +239,7 @@ test('tomorrow post falls back to a shorter complete format when live names are 
   assert.match(plan.text, /🥇/)
   assert.match(plan.text, /🥈/)
   assert.match(plan.text, /🥉/)
-  assert.match(plan.text, /🔥 アツすぎて滅/)
+  assert.match(plan.text, /比較で見つけた穴場/)
   assert.match(plan.text, /https:\/\/night-radar\.vercel\.app\/app/)
 })
 

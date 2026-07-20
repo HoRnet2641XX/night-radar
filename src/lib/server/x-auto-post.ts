@@ -45,7 +45,9 @@ export type XDailyPostPlan = {
   weightedLength: number
   contentHash: string
   candidates: XDailyCandidate[]
+  hiddenGemCandidates: XDailyCandidate[]
   eligibleStoreCount: number
+  hiddenGemEligibleStoreCount: number
 }
 
 export class XAutoPostPlanError extends Error {
@@ -129,8 +131,17 @@ function displayCurrentTime(value: string | Date) {
   return `${displayDate(value)} ${parts.hour}:${parts.minute}現在`
 }
 
+function displayCompactCurrentTime(value: string | Date) {
+  const parts = dateParts(value, 'ja-JP')
+  return `${Number(parts.month)}/${Number(parts.day)} ${parts.hour}:${parts.minute}時点`
+}
+
 function sanitizeSingleLine(value: string) {
   return value.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function xStoreName(summary: PublicStoreSummary) {
+  return sanitizeSingleLine(formatPublicStoreName(summary.store)).replace(/^bar\s+/i, '')
 }
 
 function truncateCodePoints(value: string, maximum: number) {
@@ -198,11 +209,92 @@ function compareDailyCandidates(left: PublicStoreSummary, right: PublicStoreSumm
   )
 }
 
-function candidate(input: Omit<XDailyCandidate, 'rank' | 'heatLabel'>, rank: number): XDailyCandidate {
+function candidate(
+  input: Omit<XDailyCandidate, 'rank' | 'heatLabel'>,
+  rank: number,
+  heatLabel = formatHeatLabel(rank),
+): XDailyCandidate {
   return {
     ...input,
     rank,
-    heatLabel: formatHeatLabel(rank),
+    heatLabel,
+  }
+}
+
+function safeCount(value: number | null | undefined) {
+  return Number.isFinite(value) ? Math.max(0, Number(value)) : 0
+}
+
+function median(values: number[]) {
+  if (values.length === 0) return 0
+  const sorted = values.toSorted((left, right) => left - right)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
+}
+
+function hiddenGemDetail(summary: PublicStoreSummary) {
+  const details = [
+    summary.femalePostCount > 0 ? `女性${summary.femalePostCount}件` : '',
+    summary.recentThreeHourCount > 0 ? `直近3h ${summary.recentThreeHourCount}件` : '',
+    summary.estimatedVisitIntentCount > 0 ? `予告${summary.estimatedVisitIntentCount}件` : '',
+    summary.todayEventCount > 0 ? `予定${summary.todayEventCount}件` : '',
+  ].filter(Boolean)
+  return details.slice(0, 2).join('・') || `投稿${summary.recentPostCount}件`
+}
+
+export function selectXHiddenGemCandidates(
+  summaries: PublicStoreSummary[],
+  excludedStoreIds: ReadonlySet<string>,
+  minimumDataConfidence = 60,
+): { candidates: XDailyCandidate[]; eligibleStoreCount: number } {
+  const reliable = summaries.filter((summary) => isReliableSummary(summary, minimumDataConfidence))
+  const medianPostCount = median(reliable.map((summary) => safeCount(summary.recentPostCount)))
+  const eligible = reliable.filter((summary) => {
+    if (excludedStoreIds.has(summary.store.id) || summary.recentPostCount <= 0) return false
+    return (
+      safeCount(summary.femalePostCount) > 0 ||
+      safeCount(summary.recentThreeHourCount) > 0 ||
+      safeCount(summary.estimatedVisitIntentCount) > 0 ||
+      safeCount(summary.todayEventCount) > 0
+    )
+  })
+  const lowerVolume = eligible.filter((summary) => summary.recentPostCount <= medianPostCount)
+  const candidatePool = lowerVolume.length >= 3 ? lowerVolume : eligible
+
+  const ranked = candidatePool.toSorted((left, right) => {
+    const signalScore = (summary: PublicStoreSummary) => {
+      const genderSampleCount = safeCount(summary.genderSampleCount)
+      const femaleRatio = genderSampleCount > 0 ? safeCount(summary.femalePostCount) / genderSampleCount : 0
+      const volumePenalty = Math.max(0, safeCount(summary.recentPostCount) - medianPostCount) * 2
+      return (
+        Math.min(6, safeCount(summary.femalePostCount)) * 7 +
+        Math.min(5, safeCount(summary.recentThreeHourCount)) * 6 +
+        Math.min(5, safeCount(summary.estimatedVisitIntentCount)) * 5 +
+        Math.min(2, safeCount(summary.todayEventCount)) * 4 +
+        femaleRatio * 20 +
+        safeCount(summary.dataConfidence) / 10 -
+        volumePenalty
+      )
+    }
+    return (
+      signalScore(right) - signalScore(left) ||
+      right.femalePostCount - left.femalePostCount ||
+      right.recentThreeHourCount - left.recentThreeHourCount ||
+      left.recentPostCount - right.recentPostCount ||
+      left.store.name.localeCompare(right.store.name, 'ja')
+    )
+  })
+
+  return {
+    eligibleStoreCount: eligible.length,
+    candidates: ranked.slice(0, 3).map((summary, index) => candidate({
+      storeId: summary.store.id,
+      storeName: xStoreName(summary),
+      postCount: summary.recentPostCount,
+      recentThreeHourCount: summary.recentThreeHourCount,
+      dataConfidence: summary.dataConfidence,
+      detail: hiddenGemDetail(summary),
+    }, index + 1, '👀 穴場')),
   }
 }
 
@@ -220,7 +312,7 @@ export function selectXDailyCandidates(
       const intentCount = summary.insight.activity.estimatedVisitIntentCount
       return candidate({
         storeId: summary.store.id,
-        storeName: sanitizeSingleLine(formatPublicStoreName(summary.store)),
+        storeName: xStoreName(summary),
         postCount: intentCount,
         recentThreeHourCount: summary.recentThreeHourCount,
         dataConfidence: summary.dataConfidence,
@@ -252,7 +344,7 @@ export function selectXWeeklyCandidates(
       const summary = summaryByStoreId.get(item.storeId)!
       return candidate({
         storeId: item.storeId,
-        storeName: sanitizeSingleLine(formatPublicStoreName(summary.store)),
+        storeName: xStoreName(summary),
         postCount: item.currentPostCount,
         recentThreeHourCount: summary.recentThreeHourCount,
         dataConfidence: summary.dataConfidence,
@@ -339,7 +431,7 @@ export function selectXTomorrowCandidates(
       ].filter(Boolean).join('・')
       return candidate({
         storeId: item.summary.store.id,
-        storeName: sanitizeSingleLine(formatPublicStoreName(item.summary.store)),
+        storeName: xStoreName(item.summary),
         postCount: item.intentCount,
         recentThreeHourCount: item.summary.recentThreeHourCount,
         dataConfidence: item.summary.dataConfidence,
@@ -349,15 +441,17 @@ export function selectXTomorrowCandidates(
   }
 }
 
-function rankingLines(candidates: XDailyCandidate[], slot: XAutoPostSlot, storeNameLength: number, compact: boolean) {
-  return candidates.flatMap((item, index) => {
-    const medal = medalByRank[index] ?? `${index + 1}位`
-    const storeName = truncateCodePoints(item.storeName, storeNameLength)
-    if (slot === 'midday') return [`${medal} ${storeName}｜${item.heatLabel} 来店予告${item.postCount}件`]
-    if (slot === 'evening') return [`${medal} ${storeName}｜${item.heatLabel} ${item.detail}`]
-    if (compact) return [`${medal} ${storeName}｜${item.heatLabel} ${item.detail}`]
-    return [`${medal} ${storeName}｜${item.heatLabel}`, `└ ${item.detail}`]
-  })
+function scheduledCandidateDetail(candidateItem: XDailyCandidate, slot: XAutoPostSlot) {
+  return slot === 'midday' ? `予告${candidateItem.postCount}件` : candidateItem.detail
+}
+
+function compactMetric(value: string) {
+  return value
+    .split('・')[0]
+    .replace(/来店予告\s*/u, '予告')
+    .replace(/7日前比/u, '7日前')
+    .replace(/\s+/g, '')
+    .replace(/件$/u, '')
 }
 
 function buildScheduledText(input: {
@@ -365,90 +459,76 @@ function buildScheduledText(input: {
   generatedAt: string
   targetDateKey: string
   candidates: XDailyCandidate[]
-  includeUrl: boolean
-  targetUrl: string
-  storeNameLength: number
-  compact: boolean
-}) {
-  const urlLines = input.includeUrl ? [input.targetUrl] : []
-  const lines = rankingLines(input.candidates, input.slot, input.storeNameLength, input.compact)
-  if (input.slot === 'midday') {
-    return [
-      input.compact ? '【速報】盛り上がりTOP3🍸' : '【速報】今どこのハプBARが盛り上がってる？🍸',
-      '◼︎来店予告 TOP3◼︎',
-      ...lines,
-      '',
-      displayCurrentTime(input.generatedAt),
-      input.compact ? 'ランキング詳細👇' : '来店予告数・女性率・常連濃度はこちら👇',
-      ...urlLines,
-      '#NightRadar',
-    ].join('\n')
-  }
-  if (input.slot === 'evening') {
-    return [
-      input.compact ? '【速報】7日前より伸びた3店🍸' : '【速報】7日前より投稿が増えたハプBARは？🍸',
-      '◼︎本日 vs 7日前 TOP3◼︎',
-      ...lines,
-      '',
-      displayCurrentTime(input.generatedAt),
-      input.compact ? '同じ営業日・経過時間で比較👇' : '日本時間6時区切り・同じ経過時間の投稿数を比較👇',
-      ...urlLines,
-      '#NightRadar',
-    ].join('\n')
-  }
-  return [
-    input.compact ? '【明日予想】注目3店🍸' : '【明日予想】どこのハプBARが動きそう？🍸',
-    '◼︎イベント・来店予告 TOP3◼︎',
-    ...lines,
-    '',
-    `${displayDate(`${input.targetDateKey}T12:00:00+09:00`)}の予想`,
-    input.compact ? '明日の予定とBBSを確認👇' : '明日のイベントと公開BBSの来店予告を確認👇',
-    ...urlLines,
-    '#NightRadar',
-  ].join('\n')
-}
-
-function buildTightScheduledText(input: {
-  slot: XAutoPostSlot
-  generatedAt: string
-  targetDateKey: string
-  candidates: XDailyCandidate[]
+  hiddenGemCandidates: XDailyCandidate[]
   includeUrl: boolean
   targetUrl: string
   storeNameLength: number
   detailLength: number
+  includeHeatLabels: boolean
+  compact: boolean
 }) {
-  const headline = input.slot === 'midday'
-    ? '【速報】今日の注目3店🍸'
+  const headline = input.slot === 'tomorrow'
+    ? '【明日予想】注目3＋穴場3🍸'
     : input.slot === 'evening'
-      ? '【速報】7日前より伸びた3店🍸'
-      : '【明日予想】注目3店🍸'
-  const context = input.slot === 'midday'
-    ? `${displayCurrentTime(input.generatedAt)}｜来店予告順`
-    : input.slot === 'evening'
-      ? `${displayCurrentTime(input.generatedAt)}｜本日と7日前の同じ経過時間で比較`
-      : `${displayDate(`${input.targetDateKey}T12:00:00+09:00`)}｜予定・来店予告から算出`
-  const lines = input.candidates.map((item, index) => {
+      ? '【7日前比】伸び3＋穴場3🍸'
+      : '【速報】盛り上がり3＋穴場3🍸'
+  const primaryHeader = input.compact
+    ? input.slot === 'midday' ? '🔥盛り上がり' : input.slot === 'evening' ? '🔥伸び' : '🔥明日注目'
+    : input.slot === 'midday'
+      ? '🔥 盛り上がり｜来店予告順'
+      : input.slot === 'evening'
+        ? '🔥 盛り上がり｜7日前比'
+        : '🔥 盛り上がり｜明日予想'
+  const primaryLines = input.candidates.map((item, index) => {
     const medal = medalByRank[index] ?? `${index + 1}位`
     const storeName = truncateCodePoints(item.storeName, input.storeNameLength)
-    const sourceDetail = input.slot === 'midday' ? `予告${item.postCount}件` : item.detail
-    const detail = input.detailLength > 0 ? truncateCodePoints(sourceDetail, input.detailLength) : ''
-    return `${medal} ${storeName}｜${item.heatLabel}${detail ? ` ${detail}` : ''}`
+    const sourceDetail = scheduledCandidateDetail(item, input.slot)
+    const detail = truncateCodePoints(input.compact ? compactMetric(sourceDetail) : sourceDetail, input.detailLength)
+    return input.compact
+      ? `${medal}${storeName} ${detail}`
+      : `${medal}${storeName}｜${input.includeHeatLabels ? `${item.heatLabel} ` : ''}${detail}`
   })
+  const hiddenLines = input.hiddenGemCandidates.map((item, index) => {
+    const rank = ['①', '②', '③'][index] ?? `${index + 1}`
+    const detail = input.compact ? compactMetric(item.detail) : item.detail
+    return input.compact
+      ? `${rank}${truncateCodePoints(item.storeName, input.storeNameLength)} ${truncateCodePoints(detail, input.detailLength)}`
+      : `${rank}${truncateCodePoints(item.storeName, input.storeNameLength)}｜${truncateCodePoints(detail, input.detailLength)}`
+  })
+  const context = input.slot === 'tomorrow'
+    ? `${displayDate(`${input.targetDateKey}T12:00:00+09:00`)}予想`
+    : input.compact ? displayCompactCurrentTime(input.generatedAt) : displayCurrentTime(input.generatedAt)
+  const evidence = input.slot === 'evening'
+    ? '6時区切り・7日前の同時刻までと比較'
+    : input.slot === 'tomorrow'
+      ? '明日の予定・来店予告から算出'
+      : '公開BBSの来店予告・女性投稿・直近動向から算出'
 
   return [
     headline,
-    ...lines,
+    primaryHeader,
+    ...primaryLines,
+    input.compact ? '👀比較で見つけた穴場' : '👀 比較で見つけた穴場',
+    ...hiddenLines,
     context,
+    ...(input.compact ? [] : [evidence]),
     ...(input.includeUrl ? [input.targetUrl] : []),
     '#NightRadar',
   ].join('\n')
 }
 
 function selectionForSlot(state: PublicDirectoryState, slot: XAutoPostSlot, targetDateKey: string, minimumDataConfidence: number) {
-  if (slot === 'midday') return selectXDailyCandidates(state.summaries, minimumDataConfidence)
-  if (slot === 'evening') return selectXWeeklyCandidates(state, minimumDataConfidence)
-  return selectXTomorrowCandidates(state, targetDateKey, minimumDataConfidence)
+  const primary = slot === 'midday'
+    ? selectXDailyCandidates(state.summaries, minimumDataConfidence)
+    : slot === 'evening'
+      ? selectXWeeklyCandidates(state, minimumDataConfidence)
+      : selectXTomorrowCandidates(state, targetDateKey, minimumDataConfidence)
+  const hiddenGems = selectXHiddenGemCandidates(
+    state.summaries,
+    new Set(primary.candidates.map((item) => item.storeId)),
+    minimumDataConfidence,
+  )
+  return { ...primary, hiddenGemCandidates: hiddenGems.candidates, hiddenGemEligibleStoreCount: hiddenGems.eligibleStoreCount }
 }
 
 function kindForSlot(slot: XAutoPostSlot): XAutoPostKind {
@@ -475,11 +555,16 @@ export function prepareXScheduledPost(
   const minimumDataConfidence = options.minimumDataConfidence ?? config.minimumDataConfidence
   const sourceDateKey = dateKey(state.generatedAt)
   const targetDateKey = slot === 'tomorrow' ? shiftDateKey(sourceDateKey, 1) : sourceDateKey
-  const { candidates, eligibleStoreCount } = selectionForSlot(state, slot, targetDateKey, minimumDataConfidence)
-  if (candidates.length < 3) {
+  const { candidates, eligibleStoreCount, hiddenGemCandidates, hiddenGemEligibleStoreCount } = selectionForSlot(
+    state,
+    slot,
+    targetDateKey,
+    minimumDataConfidence,
+  )
+  if (candidates.length < 3 || hiddenGemCandidates.length < 3) {
     throw new XAutoPostPlanError(
       'insufficient_reliable_stores',
-      `信頼できる${slot === 'tomorrow' ? '翌日候補' : '集計'}が${candidates.length}店舗のため、3店舗そろうまでX投稿を見送ります。`,
+      `信頼できる盛り上がり候補が${candidates.length}店舗、穴場候補が${hiddenGemCandidates.length}店舗のため、各3店舗そろうまでX投稿を見送ります。`,
     )
   }
 
@@ -491,9 +576,12 @@ export function prepareXScheduledPost(
       generatedAt: state.generatedAt,
       targetDateKey,
       candidates,
+      hiddenGemCandidates,
       includeUrl,
       targetUrl,
-      storeNameLength: 18,
+      storeNameLength: 14,
+      detailLength: 9,
+      includeHeatLabels: true,
       compact: false,
     }),
     buildScheduledText({
@@ -501,9 +589,12 @@ export function prepareXScheduledPost(
       generatedAt: state.generatedAt,
       targetDateKey,
       candidates,
+      hiddenGemCandidates,
       includeUrl,
       targetUrl,
       storeNameLength: 18,
+      detailLength: 7,
+      includeHeatLabels: false,
       compact: true,
     }),
     buildScheduledText({
@@ -511,30 +602,65 @@ export function prepareXScheduledPost(
       generatedAt: state.generatedAt,
       targetDateKey,
       candidates,
+      hiddenGemCandidates,
       includeUrl,
       targetUrl,
-      storeNameLength: 12,
+      storeNameLength: 14,
+      detailLength: 7,
+      includeHeatLabels: false,
       compact: true,
     }),
-    buildTightScheduledText({
+    buildScheduledText({
       slot,
       generatedAt: state.generatedAt,
       targetDateKey,
       candidates,
+      hiddenGemCandidates,
       includeUrl,
       targetUrl,
       storeNameLength: 12,
-      detailLength: 6,
+      detailLength: 7,
+      includeHeatLabels: false,
+      compact: true,
     }),
-    buildTightScheduledText({
+    buildScheduledText({
       slot,
       generatedAt: state.generatedAt,
       targetDateKey,
       candidates,
+      hiddenGemCandidates,
       includeUrl,
       targetUrl,
-      storeNameLength: 9,
-      detailLength: 0,
+      storeNameLength: 10,
+      detailLength: 7,
+      includeHeatLabels: false,
+      compact: true,
+    }),
+    buildScheduledText({
+      slot,
+      generatedAt: state.generatedAt,
+      targetDateKey,
+      candidates,
+      hiddenGemCandidates,
+      includeUrl,
+      targetUrl,
+      storeNameLength: 8,
+      detailLength: 6,
+      includeHeatLabels: false,
+      compact: true,
+    }),
+    buildScheduledText({
+      slot,
+      generatedAt: state.generatedAt,
+      targetDateKey,
+      candidates,
+      hiddenGemCandidates,
+      includeUrl,
+      targetUrl,
+      storeNameLength: 6,
+      detailLength: 4,
+      includeHeatLabels: false,
+      compact: true,
     }),
   ]
   const text = textCandidates.find((candidateText) => xWeightedLength(candidateText) <= X_SAFE_WEIGHTED_LENGTH)
@@ -556,7 +682,9 @@ export function prepareXScheduledPost(
     weightedLength,
     contentHash: createHash('sha256').update(text).digest('hex'),
     candidates,
+    hiddenGemCandidates,
     eligibleStoreCount,
+    hiddenGemEligibleStoreCount,
   }
 }
 

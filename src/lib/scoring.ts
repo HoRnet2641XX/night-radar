@@ -156,6 +156,10 @@ function normalizeAuthorName(value: string) {
 
 export type ResolvedPostGender = 'female' | 'male' | 'couple' | 'unknown'
 
+export function hasExplicitFemaleAuthorGender(value: string) {
+  return !coupleAuthorGenderPattern.test(value) && femaleAuthorGenderPattern.test(value)
+}
+
 export function resolvedNormalizedPostGender(post: Pick<BbsNormalizedPost, 'authorName' | 'authorGender'>): ResolvedPostGender {
   if (coupleAuthorGenderPattern.test(post.authorGender)) return 'couple'
   if (femaleAuthorGenderPattern.test(post.authorGender)) return 'female'

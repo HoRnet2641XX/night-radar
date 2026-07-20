@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { MapPin, Clock, Users, ArrowUpRight, Sparkles, Info, CalendarDays, ChevronsUpDown, X, Phone, WalletCards, Navigation, BookmarkCheck, BookmarkPlus } from 'lucide-react';
+import { MapPin, Clock, Users, ArrowUpRight, Sparkles, Info, CalendarDays, ChevronsUpDown, X, Phone, WalletCards, Navigation, BookmarkCheck, BookmarkPlus, RefreshCw } from 'lucide-react';
 import { GlassCard } from '../ui-nr/GlassCard';
 import { RadarChart } from '../ui-nr/RadarChart';
 import { Sparkline } from '../ui-nr/Sparkline';
@@ -10,6 +10,7 @@ import { useNightRadarData } from '../data/runtime';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocalPreferences } from '../data/local-preferences';
+import type { FemaleRetentionDataset } from '@/lib/female-retention';
 
 const ease = [0.22, 1, 0.36, 1] as const;
 type BarMetricKey = Extract<keyof Bar, 'vibe' | 'drinks' | 'service' | 'music' | 'crowd'>;
@@ -72,6 +73,118 @@ function AudienceBreakdown({ bar }: { bar: Bar }) {
           男性 {bar.maleVisitIntentCount}件 / 女性 {bar.femaleVisitIntentCount}件 / カップル {bar.coupleVisitIntentCount}件 / 未判定 {bar.unknownVisitIntentCount}件。曖昧な「行けたら」「行くかも」は含めません。
         </p>
       </div>
+    </GlassCard>
+  );
+}
+
+type FemaleRetentionResponse = FemaleRetentionDataset & { storeId: string };
+
+function useFemaleRetention(storeId: string) {
+  const [requestState, setRequestState] = useState<{
+    data: FemaleRetentionResponse | null;
+    error: string;
+    loading: boolean;
+  }>({ data: null, error: '', loading: true });
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (!storeId) return;
+    const controller = new AbortController();
+    fetch(`/api/store-retention?storeId=${encodeURIComponent(storeId)}`, { signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json() as FemaleRetentionResponse & { error?: string };
+        if (!response.ok) throw new Error(payload.error || '定着率データを取得できませんでした。');
+        return payload;
+      })
+      .then((payload) => setRequestState({ data: payload, error: '', loading: false }))
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted) return;
+        setRequestState({
+          data: null,
+          error: reason instanceof Error ? reason.message : '定着率データを取得できませんでした。',
+          loading: false,
+        });
+      });
+    return () => controller.abort();
+  }, [refreshKey, storeId]);
+
+  return {
+    ...requestState,
+    retry: () => {
+      setRequestState({ data: null, error: '', loading: true });
+      setRefreshKey((value) => value + 1);
+    },
+  };
+}
+
+function FemaleRetentionPanel({ storeId }: { storeId: string }) {
+  const { data, error, loading, retry } = useFemaleRetention(storeId);
+  const statusLabel = data?.status === 'measured'
+    ? '集計済み'
+    : data?.status === 'low_sample'
+      ? '母数少なめ'
+      : 'データ不足';
+
+  return (
+    <GlassCard className="nr-retention nr-hairline p-5" aria-busy={loading}>
+      <div className="nr-retention-header">
+        <div>
+          <div className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>過去8週間 · 06:00区切り</div>
+          <h2 className="nr-heading mt-1 text-[20px]" style={{ color: 'var(--nr-text-hi)' }}>女性投稿者の曜日別定着傾向</h2>
+          <p className="mt-1 text-[11px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>同じ投稿者名が、同じ曜日に別週でも書き込んだ割合を確認します。</p>
+        </div>
+        <div className="nr-retention-total" aria-live="polite">
+          <span>同曜日再登場率</span>
+          <strong>{data?.status === 'unavailable' || !data ? '—' : `${data.retentionRate}%`}</strong>
+          <small>{data ? statusLabel : loading ? '集計中…' : '未取得'}</small>
+        </div>
+      </div>
+
+      {loading && !data ? (
+        <div className="nr-retention-loading" role="status">
+          <span className="nr-pulse" /> 曜日別データを集計しています…
+        </div>
+      ) : error ? (
+        <div className="nr-retention-error" role="alert">
+          <span>{error}</span>
+          <button type="button" className="nr-secondary-btn flex items-center gap-1.5" onClick={retry}><RefreshCw size={13} /> 再読み込み</button>
+        </div>
+      ) : data ? (
+        <div className="nr-retention-layout">
+          <div className="nr-retention-facts">
+            <div><span>再登場</span><strong>{data.returningAuthorWeekdayCount}<small>組</small></strong></div>
+            <div><span>判定対象</span><strong>{data.eligibleAuthorWeekdayCount}<small>組</small></strong></div>
+            <div><span>対象投稿</span><strong>{data.eligiblePostCount}<small>件</small></strong></div>
+            <div><span>確認週</span><strong>{data.observedWeekCount}<small>週</small></strong></div>
+          </div>
+          <div
+            className="nr-retention-chart"
+            role="img"
+            aria-label={`女性投稿者の曜日別再登場率。全体${data.retentionRate}パーセント。${data.weekdays
+              .map((item) => `${item.weekday}${item.status === 'unavailable' ? '未集計' : `${item.retentionRate}パーセント`}`)
+              .join('、')}`}
+          >
+            {data.weekdays.map((item, index) => (
+              <div key={item.weekday} className="nr-retention-day" data-status={item.status}>
+                <strong>{item.status === 'unavailable' ? '—' : `${item.retentionRate}%`}</strong>
+                <div className="nr-retention-bar" aria-hidden="true">
+                  <motion.i
+                    initial={{ height: 0 }}
+                    animate={{ height: item.status === 'unavailable' ? '0%' : `${Math.max(4, item.retentionRate)}%` }}
+                    transition={{ duration: 0.75, ease, delay: 0.04 * index }}
+                  />
+                </div>
+                <span>{item.weekday.replace('曜', '')}</span>
+                <small>{item.returningAuthorCount}/{item.eligibleAuthorCount}組</small>
+              </div>
+            ))}
+          </div>
+          <div className="nr-retention-note">
+            <p>{data.methodology}</p>
+            <p>{data.caution}</p>
+          </div>
+        </div>
+      ) : null}
     </GlassCard>
   );
 }
@@ -255,6 +368,8 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
       </motion.div>
 
       <AudienceBreakdown bar={bar} />
+
+      <FemaleRetentionPanel key={bar.id} storeId={bar.id} />
 
       <GlassCard className="nr-hairline p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">

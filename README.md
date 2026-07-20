@@ -114,9 +114,9 @@ Each route publishes only when all of the following are true:
 - `X_AUTO_POST_ENABLED=true`
 - all four OAuth 1.0a credentials are configured
 - `supabase/migrations/20260715_x_auto_posts.sql` and `20260716_expand_x_auto_post_kinds.sql` have been applied
-- at least three stores have fresh, successful data above the configured confidence threshold
+- at least three headline stores and three non-overlapping hidden-gem stores have fresh, successful data above the configured confidence threshold
 
-The post contains store-level aggregates only. BBS author names and post bodies are never sent to X. A unique key per date and posting slot in `x_auto_posts` prevents duplicate posts. The three relative labels used in X and the app are `🔥 アツすぎて滅`, `🚀 テンアゲ`, and `👀 じわアツ`.
+Every post contains two groups: three headline stores for the slot and three lower-volume hidden gems supported by female posts, recent activity, visit intent, or today's events. The groups never overlap. The post contains store-level aggregates only. BBS author names and post bodies are never sent to X. A unique key per date and posting slot in `x_auto_posts` prevents duplicate posts. The three relative labels used in X and the app are `🔥 アツすぎて滅`, `🚀 テンアゲ`, and `👀 じわアツ`.
 
 Preview the exact text without publishing:
 
@@ -140,6 +140,12 @@ Required environment variables:
 - `X_AUTO_POST_ENABLED` (`false` until the preview is approved)
 
 Set `X_AUTO_POST_INCLUDE_URL=false` if the post should not include the app link. X API posting is usage-priced, and posts containing a URL may use a different price tier; verify the current amount in the X Developer Console before enabling production posting.
+
+### Female weekday retention
+
+The store detail page loads `/api/store-retention?storeId=...` on demand. It uses the last eight weeks of normalized customer posts and counts only posts whose author gender is explicitly female. A return is recorded when the same normalized author name appears at the same store on the same business weekday in a different week. The business day changes at 06:00 JST.
+
+Only aggregate counts and percentages leave the server. Author names and post bodies are never returned by this endpoint. Because identical names can belong to different people and users can change names, the UI labels the result as a reference trend rather than verified identity retention.
 
 ### Plan limits
 
