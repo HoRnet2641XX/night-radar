@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { PublicDirectoryState, PublicStoreSummary } from '@/lib/public-directory'
 import {
+  buildXCreateRequest,
   getXAutoPostConfig,
   inferXAutoPostSlot,
   parseXAutoPostSlot,
@@ -120,6 +121,14 @@ test('X weighted length uses the transformed URL length', () => {
   assert.equal(xWeightedLength('今日'), 4)
 })
 
+test('X reply requests point to the previous post', () => {
+  assert.deepEqual(buildXCreateRequest('先頭投稿'), { text: '先頭投稿' })
+  assert.deepEqual(buildXCreateRequest('返信投稿', '12345'), {
+    text: '返信投稿',
+    reply: { in_reply_to_tweet_id: '12345' },
+  })
+})
+
 test('X post slots are selected in Japan time', () => {
   assert.equal(parseXAutoPostSlot('evening'), 'evening')
   assert.equal(parseXAutoPostSlot('other'), null)
@@ -155,23 +164,29 @@ test('midday post uses rank labels, is aggregate-only, and stays within the X li
 
   assert.equal(plan.idempotencyKey, 'today_ranking:2026-07-15')
   assert.equal(plan.scheduledFor, '2026-07-15T03:00:00.000Z')
-  assert.match(plan.text, /🔥投稿件数順/)
-  assert.match(plan.text, /🥇FILT 57/)
-  assert.match(plan.text, /📈7日前比順/)
-  assert.match(plan.text, /💎穴場順/)
-  assert.match(plan.text, /🥇HIDDEN A.*🥈HIDDEN B.*🥉HIDDEN C/s)
-  assert.match(plan.text, /7\/15 18:00時点での各店の動向をチェック‼️/)
-  assert.match(plan.text, /#NightRadar #ハプバー/)
-  assert.match(plan.text, /https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-15-midday/)
-  assert.doesNotMatch(plan.text, /絶対|満員確定|必ず盛り上がる/)
-  assert.doesNotMatch(plan.text, /。/)
+  const thread = plan.threadTexts.join('\n')
+  assert.match(plan.text, /今夜/)
+  assert.match(thread, /今日の投稿件数ランキング|いま動いている店|当日投稿が多い店/)
+  assert.match(thread, /🥇 bar FILT SHIBUYA｜57件/)
+  assert.match(thread, /7日前同時刻から伸びた店|先週同時刻からの伸び順|7日前比で上向きの店/)
+  assert.match(thread, /まだ見ておきたい穴場 TOP3|上位以外の注目候補 TOP3|比較で浮かんだ穴場 TOP3/)
+  assert.match(thread, /🥇 bar HIDDEN A｜5件.*🥈 bar HIDDEN B｜4件.*🥉 bar HIDDEN C｜3件/s)
+  assert.match(thread, /7\/15 18:00時点での各店の動向をチェック‼️/)
+  assert.match(thread, /#NightRadar #ハプバー/)
+  assert.match(thread, /https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-15-midday/)
+  assert.doesNotMatch(thread, /絶対|満員確定|必ず盛り上がる/)
+  assert.doesNotMatch(thread, /。/)
   assert.equal(plan.weeklyCandidates.length, 3)
   assert.equal(plan.eventHighlights.length, 2)
   assert.equal(plan.hiddenGemCandidates.length, 3)
   assert.deepEqual(plan.hiddenGemCandidates.map((item) => item.storeId), ['hidden-a', 'hidden-b', 'hidden-c'])
   assert.equal(new Set([...plan.candidates, ...plan.hiddenGemCandidates].map((item) => item.storeId)).size, 6)
-  assert.doesNotMatch(plan.text, /投稿者|本文|author|body/)
-  assert.ok(plan.weightedLength <= 280)
+  assert.doesNotMatch(thread, /投稿者|本文|author|body/)
+  assert.equal(plan.text, plan.threadTexts[0])
+  assert.deepEqual(plan.replyTexts, plan.threadTexts.slice(1))
+  assert.ok(plan.replyTexts.length >= 1)
+  assert.ok(plan.weightedLengths.every((length) => length <= 280))
+  assert.ok(plan.candidates.every((item) => item.storeName.startsWith('bar ')))
 })
 
 test('hidden gems stay outside the headline top three and prefer lower-volume stores with evidence', () => {
@@ -216,10 +231,11 @@ test('evening post ranks only stores with a measured positive change from exactl
   assert.equal(plan.kind, 'weekly_momentum')
   assert.equal(plan.candidates.length, 3)
   assert.equal(plan.weeklyCandidates.length, 3)
-  assert.match(plan.text, /🥉RETREAT \+4/)
-  assert.match(plan.text, /📈7日前比順/)
-  assert.match(plan.text, /💎穴場順/)
-  assert.ok(plan.weightedLength <= 280)
+  const thread = plan.threadTexts.join('\n')
+  assert.match(thread, /🥉 bar RETREAT BAR｜\+4件/)
+  assert.match(thread, /7日前同時刻から伸びた店|先週同時刻からの伸び順|7日前比で上向きの店/)
+  assert.match(thread, /まだ見ておきたい穴場 TOP3|上位以外の注目候補 TOP3|比較で浮かんだ穴場 TOP3/)
+  assert.ok(plan.weightedLengths.every((length) => length <= 280))
 })
 
 test('tomorrow post keeps current rankings and highlights tomorrow events for the top two stores', () => {
@@ -232,7 +248,7 @@ test('tomorrow post keeps current rankings and highlights tomorrow events for th
   const plan = prepareXScheduledPost(state(summaries, 'database', {
     events: [
       { id: 'e1', storeId: 'a', date: '2026-07-16', weekday: '木曜', startsAt: '19:00', session: 'night', category: 'event', title: 'BINGO' },
-      { id: 'e2', storeId: 'b', date: '2026-07-16', weekday: '木曜', startsAt: '13:00', session: 'day', category: 'event', title: '昼イベント' },
+      { id: 'e2', storeId: 'b', date: '2026-07-16', weekday: '木曜', startsAt: '13:00', session: 'day', category: 'event', title: 'スーツ割引DAY' },
       { id: 'e3', storeId: 'c', date: '2026-07-16', weekday: '木曜', startsAt: '19:00', session: 'night', category: 'event', title: 'スタッフ誕生日' },
     ],
   }), 'tomorrow')
@@ -240,13 +256,15 @@ test('tomorrow post keeps current rankings and highlights tomorrow events for th
   assert.equal(plan.kind, 'tomorrow_forecast')
   assert.equal(plan.targetDateKey, '2026-07-16')
   assert.equal(plan.scheduledFor, '2026-07-15T14:00:00.000Z')
-  assert.match(plan.text, /🎪明日のイベント/)
-  assert.match(plan.text, /A：BINGO/)
-  assert.match(plan.text, /B：昼イベント/)
-  assert.doesNotMatch(plan.text, /スタッフ誕生日/)
-  assert.match(plan.text, /7\/15 18:00時点での各店の動向をチェック‼️/)
-  assert.match(plan.text, /💎穴場順/)
-  assert.ok(plan.weightedLength <= 280)
+  const thread = plan.threadTexts.join('\n')
+  assert.match(thread, /明日のイベント|明日の注目イベント|明日のイベント予定/)
+  assert.match(thread, /bar A.*BINGO/)
+  assert.match(thread, /bar B.*スーツ割引DAY/)
+  assert.doesNotMatch(thread, /bar B.*スーツ割(?:\n|$)/)
+  assert.doesNotMatch(thread, /スタッフ誕生日/)
+  assert.match(thread, /7\/15 18:00時点での各店の動向をチェック‼️/)
+  assert.match(thread, /まだ見ておきたい穴場 TOP3|上位以外の注目候補 TOP3|比較で浮かんだ穴場 TOP3/)
+  assert.ok(plan.weightedLengths.every((length) => length <= 280))
 })
 
 test('tomorrow post falls back to a shorter complete format when live names are long', () => {
@@ -266,16 +284,22 @@ test('tomorrow post falls back to a shorter complete format when live names are 
     ],
   }), 'tomorrow')
 
-  assert.ok(plan.weightedLength <= 280)
-  assert.match(plan.text, /🥇/)
-  assert.match(plan.text, /🥈/)
-  assert.match(plan.text, /🥉/)
-  assert.match(plan.text, /🔥投稿件数順/)
-  assert.match(plan.text, /📈7日前比順/)
-  assert.match(plan.text, /💎穴場順/)
-  assert.match(plan.text, /🎪/)
-  assert.match(plan.text, /#NightRadar #ハプバー/)
-  assert.match(plan.text, /https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-16-tomorrow/)
+  const thread = plan.threadTexts.join('\n')
+  assert.ok(plan.weightedLengths.every((length) => length <= 280))
+  assert.match(thread, /🥇/)
+  assert.match(thread, /🥈/)
+  assert.match(thread, /🥉/)
+  assert.match(thread, /bar Communicationbar 珊瑚 東京本店/)
+  assert.match(thread, /bar 荻窪秘密倶楽部スペシャルラウンジ/)
+  assert.match(thread, /bar CLUB SCARLET TOKYO ANNEX/)
+  assert.match(thread, /今日の投稿件数ランキング|いま動いている店|当日投稿が多い店/)
+  assert.match(thread, /7日前同時刻から伸びた店|先週同時刻からの伸び順|7日前比で上向きの店/)
+  assert.match(thread, /まだ見ておきたい穴場 TOP3|上位以外の注目候補 TOP3|比較で浮かんだ穴場 TOP3/)
+  assert.match(thread, /スペシャルBINGOナイト/)
+  assert.match(thread, /スタッフ合同誕生日イベント/)
+  assert.doesNotMatch(thread, /スペシャルBINGOナイ…|スタッフ合同誕生日イベ…/)
+  assert.match(thread, /#NightRadar #ハプバー/)
+  assert.match(thread, /https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-16-tomorrow/)
 })
 
 test('scheduled copy variation is deterministic for retries in the same slot', () => {
@@ -289,7 +313,23 @@ test('scheduled copy variation is deterministic for retries in the same slot', (
   const retry = prepareXDailyPost(currentState)
 
   assert.equal(first.text, retry.text)
+  assert.deepEqual(first.threadTexts, retry.threadTexts)
   assert.equal(first.contentHash, retry.contentHash)
+})
+
+test('scheduled titles vary across dates without changing during a retry', () => {
+  const summaries = [
+    summary({ id: 'filt', name: 'FILT SHIBUYA', postCount: 57 }),
+    summary({ id: 'agreeable', name: 'AgreeAble', postCount: 33 }),
+    summary({ id: 'face', name: 'BAR FACE', postCount: 20 }),
+    ...hiddenSummaries(),
+  ]
+  const titles = new Set(Array.from({ length: 7 }, (_, offset) => {
+    const generatedAt = new Date(Date.UTC(2026, 6, 15 + offset, 9)).toISOString()
+    return prepareXDailyPost(state(summaries, 'database', { generatedAt })).text.split('\n')[0]
+  }))
+
+  assert.ok(titles.size >= 2)
 })
 
 test('daily post is skipped unless three trustworthy stores are available', () => {

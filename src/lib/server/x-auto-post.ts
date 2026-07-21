@@ -16,9 +16,45 @@ export type XAutoPostSlot = (typeof xAutoPostSlots)[number]
 export type XAutoPostKind = 'today_ranking' | 'weekly_momentum' | 'tomorrow_forecast'
 
 const memoTitlesBySlot: Record<XAutoPostSlot, readonly string[]> = {
-  midday: ['🍸今夜の店選び', '🔎今夜の動き', '🌙今夜の候補'],
-  evening: ['🍸今夜の店選び', '📡今夜の速報', '🌙今夜の候補'],
-  tomorrow: ['🌙明日の店選び', '🔮明日の候補', '📅明日の動き'],
+  midday: [
+    '🌪️速報🌪️ 今夜、盛り上がるハプバーは？🍸',
+    '🍸今夜の動きをチェック📡 盛り上がり上位はこちら',
+    '🌙今夜の店選びメモ🔥 投稿が動く3店を確認',
+  ],
+  evening: [
+    '🔥今夜の途中経過🔥 いま投稿が集まるハプバーは？',
+    '🌪️夜の速報🌪️ このあと注目したい3店🍸',
+    '📡今夜の動向更新🍸 投稿が動いている店はこちら',
+  ],
+  tomorrow: [
+    '🔮明日のハプバー予報🍸 今の動きから先読み',
+    '🌙明日の店選び速報📡 今夜のデータを確認',
+    '📅明日の候補を先取り🍸 注目店をチェック',
+  ],
+}
+
+const dailyHeadings = [
+  '🔥今日の投稿件数ランキング',
+  '📊いま動いている店',
+  '🍸当日投稿が多い店',
+] as const
+
+const weeklyHeadings = [
+  '📈7日前同時刻から伸びた店',
+  '🚀先週同時刻からの伸び順',
+  '🌡️7日前比で上向きの店',
+] as const
+
+const hiddenGemHeadings = [
+  '💎まだ見ておきたい穴場 TOP3',
+  '👀上位以外の注目候補 TOP3',
+  '✨比較で浮かんだ穴場 TOP3',
+] as const
+
+const eventHeadingsBySlot: Record<XAutoPostSlot, readonly string[]> = {
+  midday: ['🎪今日のイベント', '🎟️今日の注目イベント', '🍸今夜のイベント'],
+  evening: ['🎪今日のイベント', '🎟️今夜の注目イベント', '🍸このあとのイベント'],
+  tomorrow: ['🎪明日のイベント', '🎟️明日の注目イベント', '📅明日のイベント予定'],
 }
 
 export type XAutoPostConfig = {
@@ -54,7 +90,10 @@ export type XDailyPostPlan = {
   scheduledFor: string
   sourceGeneratedAt: string
   text: string
+  replyTexts: string[]
+  threadTexts: string[]
   weightedLength: number
+  weightedLengths: number[]
   contentHash: string
   candidates: XDailyCandidate[]
   weeklyCandidates: XDailyCandidate[]
@@ -145,25 +184,8 @@ function sanitizeSingleLine(value: string) {
   return value.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-const xStoreAliases: Record<string, string> = {
-  'FILT SHIBUYA': 'FILT',
-  'RETREAT BAR': 'RETREAT',
-  'BAR CANELO': 'CANELO',
-  'BAR RUSK': 'RUSK',
-  'BAR FACE': 'FACE',
-  'BAR SPEAR': 'SPEAR',
-  'CAMPO BAR': 'CAMPO',
-  'COLORS BAR': 'COLORS',
-  'CLUB SCARLET TOKYO': 'SCARLET',
-  'HARNES TOKYO': 'HARNES',
-  '荻窪秘密倶楽部': '荻窪秘密',
-}
-
 function xStoreName(summary: PublicStoreSummary) {
-  const name = sanitizeSingleLine(formatPublicStoreName(summary.store))
-    .replace(/^bar\s+/i, '')
-    .replace(/^communication\s*bar\s+/i, '')
-  return xStoreAliases[name] ?? name
+  return sanitizeSingleLine(formatPublicStoreName(summary.store))
 }
 
 function truncateCodePoints(value: string, maximum: number) {
@@ -199,20 +221,6 @@ export function xWeightedLength(value: string) {
     cursor = index + match[0].length
   }
   return total + weightedLengthWithoutUrls(value.slice(cursor))
-}
-
-function truncateWeightedText(value: string, maximumWeight: number) {
-  if (weightedLengthWithoutUrls(value) <= maximumWeight) return value
-  const ellipsisWeight = characterWeight('…'.codePointAt(0) ?? 0)
-  let weight = 0
-  let result = ''
-  for (const character of value) {
-    const nextWeight = characterWeight(character.codePointAt(0) ?? 0)
-    if (weight + nextWeight + ellipsisWeight > maximumWeight) break
-    result += character
-    weight += nextWeight
-  }
-  return `${result.trimEnd() || Array.from(value)[0] || ''}…`
 }
 
 export function parseXAutoPostSlot(value?: string | null): XAutoPostSlot | null {
@@ -479,9 +487,12 @@ function deterministicIndex(seed: string, length: number) {
   return createHash('sha256').update(seed).digest().readUInt32BE(0) % length
 }
 
+function deterministicCopy<T>(values: readonly T[], seed: string) {
+  return values[deterministicIndex(seed, values.length)] ?? values[0]
+}
+
 function memoTitle(slot: XAutoPostSlot, targetDateKey: string) {
-  const titles = memoTitlesBySlot[slot]
-  return titles[deterministicIndex(`${slot}:${targetDateKey}:memo`, titles.length)] ?? titles[0]
+  return deterministicCopy(memoTitlesBySlot[slot], `${slot}:${targetDateKey}:memo`)
 }
 
 function weeklyIncrease(candidateItem: XDailyCandidate) {
@@ -490,19 +501,6 @@ function weeklyIncrease(candidateItem: XDailyCandidate) {
 
 function sanitizedEventTitle(value: string) {
   return sanitizeSingleLine(value)
-    .replace(/[。．]+/gu, ' ')
-    .replace(/[!！?？]+$/gu, '')
-    .replace(/割引(?:DAY|デー)$/iu, '割')
-    .replace(/の日$/u, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function truncateEventTitle(value: string, maximumWeight: number) {
-  if (weightedLengthWithoutUrls(value) <= maximumWeight) return value
-  const firstTopic = value.split(/[＆&]/u)[0]?.trim() ?? ''
-  if (firstTopic && weightedLengthWithoutUrls(firstTopic) <= maximumWeight) return firstTopic
-  return truncateWeightedText(value, maximumWeight)
 }
 
 export function buildXShareTargetUrl(targetUrl: string, targetDateKey: string, slot: XAutoPostSlot) {
@@ -522,7 +520,62 @@ export function buildXShareTargetUrl(targetUrl: string, targetDateKey: string, s
   }
 }
 
-function buildScheduledText(input: {
+function splitCopyBlock(lines: string[]) {
+  const [heading, ...details] = lines
+  if (!heading) return []
+  if (xWeightedLength(heading) > X_SAFE_WEIGHTED_LENGTH) {
+    throw new XAutoPostPlanError('post_too_long', `X投稿の見出しが上限を超えています（${xWeightedLength(heading)}/280）。`)
+  }
+  if (!details.length) return [heading]
+
+  const chunks: string[] = []
+  let current = heading
+  for (const detail of details) {
+    const next = `${current}\n${detail}`
+    if (xWeightedLength(next) <= X_SAFE_WEIGHTED_LENGTH) {
+      current = next
+      continue
+    }
+    if (current === heading) {
+      throw new XAutoPostPlanError('post_too_long', `X投稿の1行が上限を超えています（${xWeightedLength(detail)}/280）。`)
+    }
+    chunks.push(current)
+    current = `${heading}\n${detail}`
+    if (xWeightedLength(current) > X_SAFE_WEIGHTED_LENGTH) {
+      throw new XAutoPostPlanError('post_too_long', `X投稿の1行が上限を超えています（${xWeightedLength(detail)}/280）。`)
+    }
+  }
+  chunks.push(current)
+  return chunks
+}
+
+function packCopyBlocks(blocks: string[][]) {
+  const messages: string[] = []
+  let current = ''
+  for (const block of blocks.flatMap(splitCopyBlock)) {
+    const next = current ? `${current}\n${block}` : block
+    if (xWeightedLength(next) <= X_SAFE_WEIGHTED_LENGTH) {
+      current = next
+      continue
+    }
+    if (current) messages.push(current)
+    current = block
+  }
+  if (current) messages.push(current)
+  return messages
+}
+
+function eventLine(item: XEventHighlight, slot: XAutoPostSlot, targetDateKey: string, index: number) {
+  const title = item.title ? sanitizedEventTitle(item.title) : ''
+  const variants = [
+    `🎟️${item.storeName}｜${title}`,
+    `🍸${item.storeName}では「${title}」を開催`,
+    `🎪${item.storeName}の予定｜${title}`,
+  ] as const
+  return deterministicCopy(variants, `${slot}:${targetDateKey}:event:${item.storeId}:${index}`)
+}
+
+function buildScheduledThread(input: {
   slot: XAutoPostSlot
   generatedAt: string
   targetDateKey: string
@@ -532,44 +585,40 @@ function buildScheduledText(input: {
   eventHighlights: XEventHighlight[]
   includeUrl: boolean
   targetUrl: string
-  storeNameWeight: number
-  eventTitleWeight: number
-  includeMemoTitle: boolean
 }) {
   const dailyLines = input.candidates.map((item, index) => {
     const medal = medalByRank[index] ?? `${index + 1}位`
-    const storeName = truncateWeightedText(item.storeName, input.storeNameWeight)
-    return `${medal}${storeName} ${item.postCount}`
+    return `${medal} ${item.storeName}｜${item.postCount}件`
   })
   const weeklyLines = input.weeklyCandidates.map((item, index) => {
     const medal = medalByRank[index] ?? `${index + 1}位`
-    return `${medal}${truncateWeightedText(item.storeName, input.storeNameWeight)} +${weeklyIncrease(item)}`
+    return `${medal} ${item.storeName}｜+${weeklyIncrease(item)}件`
   })
   const hiddenLines = input.hiddenGemCandidates.map((item, index) => {
     const medal = medalByRank[index] ?? `${index + 1}位`
-    return `${medal}${truncateWeightedText(item.storeName, input.storeNameWeight)}`
+    return `${medal} ${item.storeName}｜${item.postCount}件`
   })
-  const eventLines = input.eventHighlights.filter((item) => Boolean(item.title)).map((item) => {
-    const storeName = truncateWeightedText(item.storeName, input.storeNameWeight)
-    const title = truncateEventTitle(item.title!, input.eventTitleWeight)
-    return `${storeName}：${title}`
-  })
-  const eventHeader = eventLines.length ? [`🎪${input.slot === 'tomorrow' ? '明日' : '今日'}のイベント`] : []
+  const eventLines = input.eventHighlights
+    .filter((item) => Boolean(item.title))
+    .map((item, index) => eventLine(item, input.slot, input.targetDateKey, index))
+  const dailyHeading = deterministicCopy(dailyHeadings, `${input.slot}:${input.targetDateKey}:daily-heading`)
+  const weeklyHeading = deterministicCopy(weeklyHeadings, `${input.slot}:${input.targetDateKey}:weekly-heading`)
+  const hiddenHeading = deterministicCopy(hiddenGemHeadings, `${input.slot}:${input.targetDateKey}:hidden-heading`)
+  const eventHeading = deterministicCopy(eventHeadingsBySlot[input.slot], `${input.slot}:${input.targetDateKey}:event-heading`)
+  const callToAction = input.slot === 'tomorrow' ? '明日の候補はこちら👇' : '今日のランキングはこちら👇'
 
-  return [
-    ...(input.includeMemoTitle ? [memoTitle(input.slot, input.targetDateKey)] : []),
-    '🔥投稿件数順',
-    ...dailyLines,
-    '📈7日前比順',
-    ...weeklyLines,
-    '💎穴場順',
-    ...hiddenLines,
-    ...eventHeader,
-    ...eventLines,
-    displayTrendTime(input.generatedAt),
-    ...(input.includeUrl ? [input.targetUrl] : []),
-    '#NightRadar #ハプバー',
-  ].join('\n').replace(/[。．]/gu, '✨')
+  const headlinePosts = packCopyBlocks([
+    [memoTitle(input.slot, input.targetDateKey)],
+    [dailyHeading, ...dailyLines],
+    [weeklyHeading, ...weeklyLines],
+    [displayTrendTime(input.generatedAt)],
+  ])
+  const followUpPosts = packCopyBlocks([
+    [hiddenHeading, ...hiddenLines],
+    ...(eventLines.length ? [[eventHeading, ...eventLines]] : []),
+    [callToAction, ...(input.includeUrl ? [input.targetUrl] : []), '#NightRadar #ハプバー'],
+  ])
+  return [...headlinePosts, ...followUpPosts]
 }
 
 function selectionForSlot(state: PublicDirectoryState, slot: XAutoPostSlot, targetDateKey: string, minimumDataConfidence: number) {
@@ -654,20 +703,7 @@ export function prepareXScheduledPost(
 
   const includeUrl = options.includeUrl ?? config.includeUrl
   const targetUrl = buildXShareTargetUrl(options.targetUrl ?? config.targetUrl, targetDateKey, slot)
-  const copyVariants: Array<{ storeNameWeight: number; eventTitleWeight: number; includeMemoTitle: boolean }> = [
-    { storeNameWeight: 28, eventTitleWeight: 20, includeMemoTitle: true },
-    { storeNameWeight: 28, eventTitleWeight: 20, includeMemoTitle: false },
-    { storeNameWeight: 24, eventTitleWeight: 18, includeMemoTitle: false },
-    { storeNameWeight: 20, eventTitleWeight: 16, includeMemoTitle: false },
-    { storeNameWeight: 18, eventTitleWeight: 14, includeMemoTitle: false },
-    { storeNameWeight: 16, eventTitleWeight: 12, includeMemoTitle: false },
-    { storeNameWeight: 14, eventTitleWeight: 10, includeMemoTitle: false },
-    { storeNameWeight: 12, eventTitleWeight: 10, includeMemoTitle: false },
-    { storeNameWeight: 10, eventTitleWeight: 8, includeMemoTitle: false },
-    { storeNameWeight: 8, eventTitleWeight: 6, includeMemoTitle: false },
-    { storeNameWeight: 6, eventTitleWeight: 4, includeMemoTitle: false },
-  ]
-  const textCandidates = copyVariants.map((variant) => buildScheduledText({
+  const threadTexts = buildScheduledThread({
     slot,
     generatedAt: state.generatedAt,
     targetDateKey,
@@ -677,14 +713,14 @@ export function prepareXScheduledPost(
     eventHighlights,
     includeUrl,
     targetUrl,
-    ...variant,
-  }))
-  const text = textCandidates.find((candidateText) => xWeightedLength(candidateText) <= X_SAFE_WEIGHTED_LENGTH)
-    ?? textCandidates.at(-1)!
-  const weightedLength = xWeightedLength(text)
-  if (weightedLength > X_MAX_WEIGHTED_LENGTH) {
-    throw new XAutoPostPlanError('post_too_long', `X投稿文が上限を超えています（${weightedLength}/280）。`)
+  })
+  const weightedLengths = threadTexts.map(xWeightedLength)
+  const invalidLength = weightedLengths.find((length) => length > X_MAX_WEIGHTED_LENGTH)
+  if (invalidLength) {
+    throw new XAutoPostPlanError('post_too_long', `X投稿文が上限を超えています（${invalidLength}/280）。`)
   }
+  const text = threadTexts[0] ?? ''
+  const weightedLength = weightedLengths[0] ?? 0
 
   const kind = kindForSlot(slot)
   return {
@@ -695,8 +731,11 @@ export function prepareXScheduledPost(
     scheduledFor: scheduledFor(sourceDateKey, slot),
     sourceGeneratedAt: state.generatedAt,
     text,
+    replyTexts: threadTexts.slice(1),
+    threadTexts,
     weightedLength,
-    contentHash: createHash('sha256').update(text).digest('hex'),
+    weightedLengths,
+    contentHash: createHash('sha256').update(threadTexts.join('\n\n---\n\n')).digest('hex'),
     candidates,
     weeklyCandidates,
     hiddenGemCandidates,
@@ -714,7 +753,14 @@ export function prepareXDailyPost(
   return prepareXScheduledPost(state, 'midday', options)
 }
 
-export async function publishXPost(text: string) {
+export function buildXCreateRequest(text: string, replyToPostId?: string) {
+  return {
+    text,
+    ...(replyToPostId ? { reply: { in_reply_to_tweet_id: replyToPostId } } : {}),
+  }
+}
+
+export async function publishXPost(text: string, replyToPostId?: string) {
   const config = getXAutoPostConfig()
   if (!config.credentialsConfigured) throw new Error('X APIの4つの認証情報が不足しています。')
 
@@ -726,7 +772,7 @@ export async function publishXPost(text: string) {
     accessTokenSecret: process.env.X_ACCESS_TOKEN_SECRET!,
   })
   const client = new Client({ oauth1, timeout: 15_000, retry: true, maxRetries: 2 })
-  const response = await client.posts.create({ text })
+  const response = await client.posts.create(buildXCreateRequest(text, replyToPostId))
   const postId = typeof response.data?.id === 'string' ? response.data.id : ''
   if (!postId) {
     const detail = response.errors?.map((error) => error.detail || error.title).filter(Boolean).join(' / ')
