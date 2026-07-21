@@ -1,352 +1,242 @@
-import { motion } from 'motion/react';
-import { ArrowUpRight, MapPin, TrendingUp, Sparkles, Clock, Users } from 'lucide-react';
-import { GlassCard } from '../ui-nr/GlassCard';
-import { MetricRing } from '../ui-nr/MetricRing';
-import { Sparkline } from '../ui-nr/Sparkline';
-import { DigitRoll } from '../ui-nr/DigitRoll';
-import { WordReveal, Stagger, StaggerItem } from '../ui-nr/Reveal';
-import { Ticker } from '../ui-nr/Ticker';
-import { type Bar } from '../data/mock';
-import { useNightRadarData, useNightRadarTicker } from '../data/runtime';
+import {
+  ArrowUpRight,
+  CalendarDays,
+  Clock3,
+  MapPin,
+  SlidersHorizontal,
+  Sparkles,
+  UserRoundCheck,
+} from 'lucide-react';
 import { useState } from 'react';
-import { heatLabelForRank } from '@/lib/heat-labels';
+import { GlassCard } from '../ui-nr/GlassCard';
+import { AudienceSignals } from '../ui-nr/AudienceSignals';
+import { HeatBadge } from '../ui-nr/HeatBadge';
+import { type Bar } from '../data/mock';
+import { useNightRadarData } from '../data/runtime';
 
-const FILTERS = ['すべて', '営業時間内', '直近3時間', '女性書き込みあり', '初回来店の記述', '複数来店の記述', '予定あり', '集計信頼度80点以上'];
-const ease = [0.22, 1, 0.36, 1] as const;
+const QUICK_FILTERS = [
+  { key: 'open', label: '今から行ける', icon: Clock3 },
+  { key: 'female', label: '女性投稿あり', icon: UserRoundCheck },
+  { key: 'event', label: '予定あり', icon: CalendarDays },
+  { key: 'first', label: '初めて向け', icon: Sparkles },
+] as const;
 
-function matchesFilter(bar: Bar, filter: string) {
-  if (filter === '女性書き込みあり') return bar.femaleCount > 0;
-  if (filter === '営業時間内') return bar.isWithinBusinessHours;
-  if (filter === '直近3時間') return bar.recentThreeHourCount > 0;
-  if (filter === '初回来店の記述') return bar.firstVisitCount > 0;
-  if (filter === '複数来店の記述') return bar.groupCount > 0;
-  if (filter === '予定あり') return bar.eventCount > 0;
-  if (filter === '集計信頼度80点以上') return bar.dataConfidence >= 80;
+type QuickFilterKey = (typeof QUICK_FILTERS)[number]['key'];
+
+function matchesFilter(bar: Bar, filter: QuickFilterKey | null) {
+  if (filter === 'open') return bar.isWithinBusinessHours;
+  if (filter === 'female') return bar.femaleCount > 0;
+  if (filter === 'event') return bar.eventCount > 0;
+  if (filter === 'first') return bar.firstVisitCount > 0;
   return true;
 }
 
-function femaleMetricLabel(bar: Bar) {
-  if (bar.genderStatus === 'unavailable') return '判定不可';
-  if (bar.genderStatus === 'partial') return `${bar.femaleCount}件・参考`;
-  return `${bar.femaleCount}件`;
+function eventMetricLabel(bar: Bar) {
+  if (bar.eventStatus === 'external') return '公式確認';
+  if (bar.eventStatus === 'unverified') return '未確認';
+  return `${bar.eventCount}件`;
 }
 
-function formatComparisonRatio(value: number) {
-  const ratio = value / 100;
-  return `${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(1).replace(/\.0$/, '')}倍`;
+function decisionReason(bar: Bar) {
+  if (bar.recentThreeHourCount > 0 && bar.eventCount > 0) {
+    return `直近3時間に${bar.recentThreeHourCount}件、今日の予定も確認済み`;
+  }
+  if (bar.recentThreeHourCount > 0) {
+    return `直近3時間に${bar.recentThreeHourCount}件、いま投稿が動いています`;
+  }
+  if (bar.eventCount > 0) {
+    return `今日の予定${bar.eventCount}件、当日投稿と合わせて確認`;
+  }
+  return `当日顧客投稿${bar.postCount}件で現在の上位候補`;
 }
 
-function genderEvidenceLabel(bar: Bar) {
-  if (bar.genderSampleCount === 0) return '性別の記載なし';
-  return `男女判定${bar.genderSampleCount}件中、女性${bar.femaleCount}件${bar.genderStatus === 'partial' ? '（参考）' : ''}（カップル除外）`;
-}
-
-export function HomePage({ onOpen, onNavigate }: { onOpen: (id: string) => void; onNavigate: (tab: 'search' | 'schedule' | 'account') => void }) {
-  const { bars, meta, weeklyMomentum } = useNightRadarData();
-  const ticker = useNightRadarTicker();
-  const [filter, setFilter] = useState('すべて');
-  const visibleBars = bars.filter((bar) => matchesFilter(bar, filter));
-  const totalFemale = bars.reduce((sum, bar) => sum + bar.femaleCount, 0);
-  const totalGenderSamples = bars.reduce((sum, bar) => sum + bar.genderSampleCount, 0);
-  const currentMonthEventCount = meta.eventCount;
-  const activeRecentStores = bars.filter((bar) => bar.recentThreeHourCount > 0).length;
-  const postMax = Math.max(1, ...bars.map((bar) => bar.postCount));
-  const topBar = bars[0];
-  const topHeatLabel = topBar ? heatLabelForRank(topBar.rank) : null;
-  const weeklyTop = weeklyMomentum.ranking.filter((item) => item.postDelta > 0).slice(0, 3);
-  const weeklyCountMax = Math.max(
-    1,
-    ...weeklyTop.flatMap((item) => [item.currentPostCount, item.previousPostCount]),
-  );
-  const businessDateLabel = meta.todayKey.slice(5).replace('-', '/');
+function CandidateCard({
+  bar,
+  index,
+  onOpen,
+}: {
+  bar: Bar;
+  index: number;
+  onOpen: (id: string) => void;
+}) {
+  const roleLabel = index === 0 ? '今日行くならここ' : index === 1 ? '迷うなら比較' : 'もう1つの候補';
 
   return (
-    <div className="flex flex-col gap-7">
-      {/* Ticker */}
-      <Ticker items={ticker} />
+    <article
+      className="nr-decision-card"
+      data-primary={index === 0}
+    >
+      <header className="nr-decision-card-header">
+        <div>
+          <span>{roleLabel}</span>
+          <small>当日顧客投稿 {bar.rank}位</small>
+        </div>
+        <HeatBadge rank={bar.rank} large={index === 0} />
+      </header>
 
-      {/* Hero — measured city signal */}
-      <motion.section
-        className="nr-home-hero relative overflow-hidden rounded-[24px] border border-white/[0.1]"
-        initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease }}
-      >
+      <div className="nr-decision-store">
+        <div>
+          <h2>{bar.name}</h2>
+          <p><MapPin size={12} aria-hidden="true" />{bar.area}<span aria-hidden="true">·</span>{bar.businessStatusLabel}</p>
+        </div>
+        <p className="nr-decision-reason">{decisionReason(bar)}</p>
+      </div>
+
+      <dl className="nr-decision-metrics">
+        <div><dt>当日投稿</dt><dd>{bar.postCount}<small>件</small></dd></div>
+        <div><dt>直近3時間</dt><dd>{bar.recentThreeHourCount}<small>件</small></dd></div>
+        <div><dt>今日の予定</dt><dd>{eventMetricLabel(bar)}</dd></div>
+      </dl>
+
+      <AudienceSignals
+        compact
+        counts={{ male: bar.maleCount, female: bar.femaleCount, couple: bar.coupleCount }}
+        label={`${bar.name}の当日顧客投稿の区分`}
+      />
+
+      <footer className="nr-decision-card-footer">
+        <span className="nr-freshness" data-reliability={bar.reliability}>
+          <i aria-hidden="true" />{bar.freshnessLabel} · {bar.dataConfidenceLabel}
+        </span>
+        <button type="button" className={index === 0 ? 'nr-accent-btn' : 'nr-secondary-btn'} onClick={() => onOpen(bar.id)}>
+          店舗詳細を見る <ArrowUpRight size={14} aria-hidden="true" />
+        </button>
+      </footer>
+    </article>
+  );
+}
+
+export function HomePage({
+  onOpen,
+  onNavigate,
+}: {
+  onOpen: (id: string) => void;
+  onNavigate: (tab: 'search' | 'schedule' | 'account') => void;
+}) {
+  const { bars, meta } = useNightRadarData();
+  const [filter, setFilter] = useState<QuickFilterKey | null>(null);
+  const visibleBars = bars.filter((bar) => matchesFilter(bar, filter));
+  const candidates = visibleBars.slice(0, 3);
+  const topBar = bars[0];
+  const businessDateLabel = meta.todayKey.slice(5).replace('-', '/');
+  const activeFilter = QUICK_FILTERS.find((item) => item.key === filter);
+
+  return (
+    <div className="flex flex-col gap-5 sm:gap-6">
+      <section className="nr-home-hero relative overflow-hidden rounded-[24px] border border-white/[0.1]" aria-labelledby="home-hero-title">
         <div className="nr-home-hero-image" aria-hidden="true" />
         <div className="nr-home-hero-scan" aria-hidden="true" />
         <div className="relative z-[2] grid min-h-[260px] grid-cols-1 items-end gap-4 p-5 sm:min-h-[280px] sm:gap-6 sm:p-8 lg:grid-cols-[1.35fr_0.75fr] lg:gap-10">
           <div>
-          <motion.div
-            className="flex items-center gap-2 mb-4"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, ease }}
-          >
-            <span className="nr-pulse" />
-            <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>営業日 {businessDateLabel} · 最終集計 {meta.generatedAtLabel}（日本時間）</span>
-          </motion.div>
-          <h1 className="nr-heading text-[30px] sm:text-[42px] leading-[1.12]" style={{ color: 'var(--nr-text-hi)' }}>
-            <WordReveal text="今日の行き先を、" />
-            <br />
-            <span style={{ color: 'var(--nr-accent-soft)' }}><WordReveal text="投稿数で見極める。" delay={0.35} /></span>
-          </h1>
-          <motion.p
-            className="mt-4 hidden max-w-[60ch] text-[14px] leading-[1.7] sm:block"
-            style={{ color: 'var(--nr-text-mid)' }}
-            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.7 }}
-          >
-            当営業日の来店分として判定できた顧客投稿を集計し、店側の投稿と時刻を判定できないデータは順位から外しています。
-          </motion.p>
-          </div>
-          <motion.div
-          className="nr-hero-signal-panel flex flex-col items-start gap-2 rounded-2xl p-3 sm:p-4 lg:items-end"
-          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.5 }}
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日顧客投稿 1位</span>
-            {topHeatLabel && (
-              <span
-                className="nr-heat-label"
-                data-level={topHeatLabel.key}
-                title={topHeatLabel.description}
-              >
-                <span aria-hidden="true">{topHeatLabel.emoji}</span>{topHeatLabel.label}
+            <div className="mb-4 flex items-center gap-2">
+              <span className="nr-pulse" aria-hidden="true" />
+              <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>
+                営業日 {businessDateLabel} · 最終集計 {meta.generatedAtLabel}（日本時間）
               </span>
-            )}
-          </div>
-          <div className="nr-heading max-w-full text-[24px] leading-tight sm:text-[28px] lg:text-right" style={{ color: 'var(--nr-text-hi)' }}>
-            {topBar?.name ?? '集計中'}
-          </div>
-          <div className="grid w-full grid-cols-3 gap-2 pt-2 text-left">
-            <div><span>当日投稿</span><strong>{topBar?.postCount ?? 0}件</strong></div>
-            <div><span>直近3時間</span><strong>{topBar?.recentThreeHourCount ?? 0}件</strong></div>
-            <div><span>{topBar ? `男女判定 ${topBar.genderSampleCount}件` : '女性判定'}</span><strong>{topBar ? `女性 ${femaleMetricLabel(topBar)}` : '確認中'}</strong></div>
-          </div>
-          <button
-            className="nr-accent-btn mt-2 flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px]"
-            onClick={() => bars[0] && onOpen(bars[0].id)}
-            disabled={!bars.length}
-          >
-            1位の集計を見る <ArrowUpRight size={14} />
-          </button>
-          <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{activeRecentStores}店で直近3時間に投稿あり</span>
-          </motion.div>
-        </div>
-      </motion.section>
-
-      {/* KPI row */}
-      <Stagger delay={0.9} gap={0.08}>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            { label: '当日顧客投稿', value: meta.postCount, suffix: '件', hint: '店側投稿を除外' },
-            { label: '直近3時間', value: meta.recentThreeHourCount, suffix: '件', hint: 'BBS投稿' },
-            { label: '女性書き込み', value: totalFemale, suffix: '件', hint: `男女判定 ${totalGenderSamples}件・カップル除外` },
-            { label: '今日の予定', value: meta.todayEventCount, suffix: '件', hint: `${meta.eventCoverageStoreCount}店舗を確認` },
-          ].map((k, i) => (
-            <StaggerItem key={i}>
-              <GlassCard className="p-4 flex flex-col gap-1.5 nr-focus nr-hairline">
-                <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>{k.label}</span>
-                <span className="nr-heading text-[28px]" style={{ color: 'var(--nr-text-hi)' }}>
-                  <DigitRoll value={`${k.value}${k.suffix ?? ''}`} />
-                </span>
-                <span className="text-[11px]" style={{ color: 'var(--nr-text-low)' }}>{k.hint}</span>
-              </GlassCard>
-            </StaggerItem>
-          ))}
-        </div>
-      </Stagger>
-
-      {/* Filter chips */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <span className="nr-mono text-[11px] mr-1" style={{ color: 'var(--nr-text-mid)' }}>絞り込み</span>
-        {FILTERS.map((item) => (
-          <button key={item} type="button" className="nr-chip" data-active={filter === item} aria-pressed={filter === item} onClick={() => setFilter(item)}>{item}</button>
-        ))}
-      </div>
-
-      {/* Bar cards */}
-      <Stagger delay={0.2} gap={0.09}>
-        <div className="flex flex-col gap-3">
-          {visibleBars.slice(0, 3).map((b) => {
-            const heatLabel = heatLabelForRank(b.rank);
-            return (
-              <StaggerItem key={b.id}>
-              <GlassCard interactive onClick={() => onOpen(b.id)} className="nr-rank-card nr-focus nr-hairline nr-sheen p-4 sm:p-5" data-rank={b.rank}>
-                  <div className="grid grid-cols-1 items-center gap-5 sm:grid-cols-2 xl:grid-cols-[64px_minmax(220px,1.35fr)_minmax(92px,0.72fr)_minmax(230px,1.55fr)_minmax(170px,0.95fr)] xl:gap-4">
-                    <div className="nr-rank-medal sm:col-span-2 xl:col-span-1">
-                      <span>{b.rank}</span>
-                      <small>RANK</small>
-                    </div>
-                    <div className="flex flex-col gap-1.5 sm:col-span-2 xl:col-span-1">
-                      <div className="flex items-center gap-2">
-                        <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日投稿 {b.rank}位</span>
-                        {heatLabel && (
-                          <span
-                            className="nr-heat-label"
-                            data-level={heatLabel.key}
-                            title={heatLabel.description}
-                          >
-                            <span aria-hidden="true">{heatLabel.emoji}</span>{heatLabel.label}
-                          </span>
-                        )}
-                        <span className="nr-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,106,91,0.10)', color: 'var(--nr-accent-soft)' }}>
-                          {b.businessStatusLabel}
-                        </span>
-                        <span className="nr-mono ml-auto px-1.5 py-0.5 rounded-full text-[10px] flex items-center gap-1 nr-delta-up">
-                          <Sparkles size={10} />順位根拠 {b.postCount}件
-                        </span>
-                      </div>
-                      <h3 className="nr-heading text-[26px] leading-[1.05]" style={{ color: 'var(--nr-text-hi)' }}>{b.name}</h3>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>
-                        <span className="flex items-center gap-1"><MapPin size={10} /> {b.area}</span>
-                        <span className="flex items-center gap-1 nr-mono"><Clock size={10} /> {b.businessWindowLabel}</span>
-                        <span className="flex items-center gap-1 nr-mono"><Users size={10} /> 投稿者 {b.uniqueAuthorCount}名・来店予告 {b.estimatedVisitIntentCount}件{b.repeatPostCount ? `・予告の再投稿 ${b.repeatPostCount}件` : ''}</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        {b.tags.slice(0, 3).map(t => <span key={t} className="text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{t}</span>)}
-                      </div>
-                    </div>
-                    <MetricRing value={b.postCount} max={postMax} label="当日総書き込み" valueSuffix="件" color="var(--nr-accent)" />
-                    <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-white/[0.08] bg-black/15 p-2 sm:col-span-2 xl:col-span-1" aria-label="当日投稿の区分">
-                      {[
-                        ['男性', b.maleCount],
-                        ['女性', b.femaleCount],
-                        ['カップル', b.coupleCount],
-                        ['未判定', b.genderUnknownCount],
-                      ].map(([label, value]) => (
-                        <div key={String(label)} className="min-w-0 rounded-lg border border-white/[0.07] bg-white/[0.025] px-1.5 py-2 text-center">
-                          <span className="block truncate text-[9px]" style={{ color: 'var(--nr-text-low)' }}>{label}</span>
-                          <strong className="nr-mono mt-1 block text-[15px]" style={{ color: 'var(--nr-text-hi)' }}>{value}<small className="ml-0.5 text-[8px]">件</small></strong>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex flex-col gap-2 items-start sm:items-end sm:col-span-2 xl:col-span-1">
-                      <div className="flex items-center gap-1.5 nr-mono text-[10px]" style={{ color: 'var(--nr-text-mid)' }}>
-                        <TrendingUp size={10} color="var(--nr-accent)" /> 当日顧客投稿の推移
-                      </div>
-                      <Sparkline data={b.trend} w={190} h={44} color="var(--nr-accent)" />
-                      <div className="flex items-start gap-1.5 max-w-[240px] mt-1">
-                        <Sparkles size={11} color="var(--nr-accent)" className="mt-0.5 shrink-0" />
-                        <p className="text-[12px] sm:text-right leading-relaxed" style={{ color: 'var(--nr-text-mid)' }}>{b.reason}</p>
-                      </div>
-                      <span className="nr-mono text-[10px] sm:text-right" style={{ color: 'var(--nr-text-low)' }}>{genderEvidenceLabel(b)}</span>
-                    </div>
-                  </div>
-                </GlassCard>
-              </StaggerItem>
-            );
-          })}
-          {visibleBars.length === 0 && (
-            <GlassCard className="p-6 nr-hairline">
-              <p className="text-[13px]" style={{ color: 'var(--nr-text-mid)' }}>この条件に一致する店舗はありません。絞り込みを外して確認してください。</p>
-            </GlassCard>
-          )}
-        </div>
-      </Stagger>
-
-      {/* Week-over-week momentum */}
-      <section className="nr-weekly-momentum" aria-labelledby="weekly-momentum-title">
-        <div className="nr-weekly-heading">
-          <div>
-            <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>7日前との投稿比較</span>
-            <h2 id="weekly-momentum-title" className="nr-heading mt-1 text-[22px] sm:text-[26px]" style={{ color: 'var(--nr-text-hi)' }}>
-              7日前より投稿が増えた店舗
-            </h2>
-            <p className="mt-1 max-w-[72ch] text-[12px] leading-relaxed" style={{ color: 'var(--nr-text-mid)' }}>
-              日本時間6:00を営業日の区切りにして、本日とちょうど7日前の同じ経過時刻までに書き込まれた顧客投稿を直接比較します。
+            </div>
+            <h1 id="home-hero-title" className="nr-heading text-[30px] leading-[1.12] sm:text-[42px]" style={{ color: 'var(--nr-text-hi)' }}>
+              今日の行き先を、<br />
+              <span style={{ color: 'var(--nr-accent-soft)' }}>投稿数で見極める。</span>
+            </h1>
+            <p className="mt-4 hidden max-w-[60ch] text-[14px] leading-[1.7] sm:block" style={{ color: 'var(--nr-text-mid)' }}>
+              当営業日の顧客投稿を集計し、店側の投稿と時刻を判定できないデータは順位から外しています。
             </p>
           </div>
-          <div className="nr-weekly-periods" aria-label="比較期間">
-            <span><small>本日</small>{weeklyMomentum.currentPeriodLabel}</span>
-            <span><small>7日前</small>{weeklyMomentum.previousPeriodLabel}</span>
-          </div>
-        </div>
 
-        {weeklyTop.length > 0 ? (
-          <div className="nr-weekly-list">
-            {weeklyTop.map((item) => {
-              const direction = item.postDelta > 0 ? 'up' : item.postDelta < 0 ? 'down' : 'flat';
+          <aside className="nr-hero-signal-panel flex flex-col items-start gap-2 rounded-2xl p-3 sm:p-4 lg:items-end" aria-label="当日顧客投稿1位">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日顧客投稿 1位</span>
+              {topBar ? <HeatBadge rank={topBar.rank} /> : null}
+            </div>
+            <h2 className="nr-heading max-w-full text-[24px] leading-tight sm:text-[28px] lg:text-right" style={{ color: 'var(--nr-text-hi)' }}>
+              {topBar?.name ?? '集計中'}
+            </h2>
+            <div className="grid w-full grid-cols-3 gap-2 pt-2 text-left">
+              <div><span>当日投稿</span><strong>{topBar?.postCount ?? 0}件</strong></div>
+              <div><span>直近3時間</span><strong>{topBar?.recentThreeHourCount ?? 0}件</strong></div>
+              <div><span>女性書き込み</span><strong>{topBar?.femaleCount ?? 0}件</strong></div>
+            </div>
+            <button
+              type="button"
+              className="nr-accent-btn mt-2 flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px]"
+              onClick={() => topBar && onOpen(topBar.id)}
+              disabled={!topBar}
+            >
+              1位の集計を見る <ArrowUpRight size={14} aria-hidden="true" />
+            </button>
+            <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>
+              {topBar ? `${topBar.freshnessLabel} · ${topBar.dataConfidenceLabel}` : 'データを取得中'}
+            </span>
+          </aside>
+        </div>
+      </section>
+
+      <section className="nr-decision-board" aria-labelledby="today-decision-title">
+        <header className="nr-decision-board-header">
+          <div>
+            <span className="nr-decision-kicker">営業日 {businessDateLabel} · 最終集計 {meta.generatedAtLabel}</span>
+            <h2 id="today-decision-title">今日の候補を、3店までに絞る</h2>
+            <p>当日顧客投稿を基準に、直近3時間と今日の予定を添えて比較します。</p>
+          </div>
+          <div className="nr-source-status" aria-label={`取得状態: ${meta.sourceCount}店舗中${meta.freshCount}店舗が新鮮`}>
+            <span><i aria-hidden="true" />取得状態</span>
+            <strong>{meta.freshCount}<small> / {meta.sourceCount}店舗</small></strong>
+            <em>新しいデータ</em>
+          </div>
+        </header>
+
+        {candidates.length > 0 ? (
+          <div className="nr-decision-grid">
+            {candidates.map((bar, index) => (
+              <CandidateCard key={bar.id} bar={bar} index={index} onOpen={onOpen} />
+            ))}
+          </div>
+        ) : (
+          <GlassCard className="nr-decision-empty p-6">
+            <strong>この条件に合う店舗はありません</strong>
+            <span>条件を外すか、詳しい条件から探してください。</span>
+            <button type="button" className="nr-secondary-btn" onClick={() => setFilter(null)}>条件を外す</button>
+          </GlassCard>
+        )}
+
+        <div className="nr-decision-basis">
+          <strong>順位の基準</strong>
+          <span>当日顧客投稿</span>
+          <span>店側投稿は除外</span>
+          <span>時刻を判定できる投稿のみ</span>
+        </div>
+      </section>
+
+      <section className="nr-quick-filter" aria-labelledby="quick-filter-title">
+        <div>
+          <span className="nr-mono">条件を変える</span>
+          <h2 id="quick-filter-title">今夜の優先条件</h2>
+          <p>{activeFilter ? `「${activeFilter.label}」に合う上位3店を表示中です。` : '条件を1つ選ぶと、候補3店だけが入れ替わります。'}</p>
+        </div>
+        <div className="nr-quick-filter-actions">
+          <div className="nr-quick-filter-chips" aria-label="簡易条件">
+            {QUICK_FILTERS.map((item) => {
+              const Icon = item.icon;
+              const active = filter === item.key;
               return (
                 <button
-                  key={item.storeId}
+                  key={item.key}
                   type="button"
-                  className="nr-weekly-row"
-                  data-direction={direction}
-                  onClick={() => onOpen(item.storeId)}
+                  className="nr-quick-filter-chip"
+                  data-active={active}
+                  aria-pressed={active}
+                  onClick={() => setFilter(active ? null : item.key)}
                 >
-                  <span className="nr-weekly-rank"><strong>{item.rank}</strong><small>位</small></span>
-                  <span className="nr-weekly-store">
-                    <strong>{item.storeName}</strong>
-                    <small>同じ営業日・同じ経過時間で比較</small>
-                  </span>
-                  <span className="nr-weekly-bars" aria-label={`本日${item.currentPostCount}件、7日前${item.previousPostCount}件`}>
-                    <span className="nr-weekly-bar-row">
-                      <small>本日</small>
-                      <i><b style={{ width: `${Math.max(5, (item.currentPostCount / weeklyCountMax) * 100)}%` }} /></i>
-                      <strong>{item.currentPostCount}件</strong>
-                    </span>
-                    <span className="nr-weekly-bar-row" data-period="previous">
-                      <small>7日前</small>
-                      <i><b style={{ width: `${Math.max(5, (item.previousPostCount / weeklyCountMax) * 100)}%` }} /></i>
-                      <strong>{item.previousPostCount}件</strong>
-                    </span>
-                  </span>
-                  <span className="nr-weekly-change">
-                    <small>増加数</small>
-                    <strong>+{item.postDelta}件</strong>
-                    <em>7日前の {formatComparisonRatio(item.weekOverWeekRatio)}</em>
-                  </span>
-                  <ArrowUpRight size={16} className="nr-weekly-arrow" aria-hidden="true" />
+                  <Icon size={14} aria-hidden="true" />{item.label}
                 </button>
               );
             })}
           </div>
-        ) : (
-          <div className="nr-weekly-empty">
-            <strong>{weeklyMomentum.measuredStoreCount > 0 ? '7日前を上回る店舗はありません' : '比較できる投稿数がまだありません'}</strong>
-            <span>
-              {weeklyMomentum.measuredStoreCount > 0
-                ? '本日の同じ経過時間では、比較可能な店舗の投稿数が7日前以下です。'
-                : `本日と7日前の両方で${weeklyMomentum.minimumComparisonCount}件以上集まると、増加数を表示します。`}
-            </span>
-          </div>
-        )}
-
-        <div className="nr-weekly-footnote">
-          <span>比較可能 {weeklyMomentum.measuredStoreCount}店</span>
-          <span>最低基準 各日{weeklyMomentum.minimumComparisonCount}件</span>
-          <span>日本時間6:00区切り・同じ経過時間</span>
-          <span>順位は投稿の増加件数順</span>
-          {weeklyMomentum.newActivityStoreCount > 0 && (
-            <span>本日の投稿が増えた{weeklyMomentum.newActivityStoreCount}店は、7日前の母数が少ないため順位から除外</span>
-          )}
+          <button type="button" className="nr-secondary-btn nr-advanced-search" onClick={() => onNavigate('search')}>
+            <SlidersHorizontal size={14} aria-hidden="true" />詳しい条件から探す
+          </button>
         </div>
       </section>
-
-      <div className="nr-divider" />
-
-      {/* Sub CTA row */}
-      <div>
-        <div className="flex items-baseline gap-3 mb-4">
-          <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>次に確認する</span>
-          <h2 className="nr-heading text-[22px]" style={{ color: 'var(--nr-text-hi)' }}>条件・予定・取得状態を確認</h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {[
-            { icon: TrendingUp, title: '条件から探す', sub: '女性書き込み・直近更新・予定で絞る', meta: `${bars.length}店から検索`, tab: 'search' as const },
-            { icon: Clock, title: '予定を確認する', sub: '日付と時間帯から公式予定を見る', meta: `今日 ${meta.todayEventCount}件 / 今月 ${currentMonthEventCount}件`, tab: 'schedule' as const },
-            { icon: Users, title: '取得状態を見る', sub: '鮮度・投稿者名・性別・正規化率を確認', meta: `信頼度80%以上 ${meta.highConfidenceCount}店`, tab: 'account' as const },
-          ].map((c, i) => (
-            <GlassCard key={i} interactive onClick={() => onNavigate(c.tab)} className="p-5 flex items-center gap-3 nr-focus nr-hairline">
-              <div className="w-10 h-10 rounded-xl grid place-items-center" style={{ background: 'rgba(255,106,91,0.10)', border: '1px solid rgba(255,106,91,0.22)' }}>
-                <c.icon size={16} color="var(--nr-accent)" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[13px]" style={{ color: 'var(--nr-text-hi)' }}>{c.title}</span>
-                <span className="text-[11px]" style={{ color: 'var(--nr-text-low)' }}>{c.sub}</span>
-                <span className="nr-mono text-[10px] mt-0.5" style={{ color: 'var(--nr-accent-soft)' }}>{c.meta}</span>
-              </div>
-              <ArrowUpRight size={14} className="ml-auto" color="var(--nr-text-mid)" />
-            </GlassCard>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

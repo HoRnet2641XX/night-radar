@@ -1,17 +1,19 @@
 import { motion, useReducedMotion } from 'motion/react';
-import { MapPin, Clock, Users, ArrowUpRight, Sparkles, Info, CalendarDays, ChevronsUpDown, X, Phone, WalletCards, Navigation, BookmarkCheck, BookmarkPlus, RefreshCw } from 'lucide-react';
+import { MapPin, Clock, Users, ArrowUpRight, Sparkles, Info, CalendarDays, ChevronsUpDown, X, Phone, WalletCards, Navigation, BookmarkCheck, BookmarkPlus, RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { GlassCard } from '../ui-nr/GlassCard';
 import { RadarChart } from '../ui-nr/RadarChart';
 import { Sparkline } from '../ui-nr/Sparkline';
 import { DigitRoll } from '../ui-nr/DigitRoll';
 import { WordReveal, Stagger, StaggerItem } from '../ui-nr/Reveal';
-import { RADAR_KEYS, type Bar } from '../data/mock';
+import { RADAR_KEYS, type Bar, type WeeklyMomentumItem } from '../data/mock';
 import { useNightRadarData } from '../data/runtime';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocalPreferences } from '../data/local-preferences';
 import type { FemaleRetentionDataset } from '@/lib/female-retention';
 import { StorePostSearchPanel } from '../search/StorePostSearchPanel';
+import { AudienceSignals } from '../ui-nr/AudienceSignals';
+import { HeatBadge } from '../ui-nr/HeatBadge';
 
 const ease = [0.22, 1, 0.36, 1] as const;
 type BarMetricKey = Extract<keyof Bar, 'vibe' | 'drinks' | 'service' | 'music' | 'crowd'>;
@@ -41,38 +43,98 @@ function genderEvidenceLabel(bar: Bar) {
 }
 
 function AudienceBreakdown({ bar }: { bar: Bar }) {
-  const items = [
-    { label: '男性', value: bar.maleCount },
-    { label: '女性', value: bar.femaleCount },
-    { label: 'カップル', value: bar.coupleCount },
-    { label: '未判定', value: bar.genderUnknownCount },
-  ];
-
   return (
-    <GlassCard className="nr-hairline p-5">
+    <GlassCard className="nr-audience-panel nr-hairline p-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日顧客投稿の内訳</div>
-          <h2 className="nr-heading mt-1 text-[20px]" style={{ color: 'var(--nr-text-hi)' }}>男性・女性・カップル</h2>
+          <h2 className="nr-heading mt-1 text-[20px]" style={{ color: 'var(--nr-text-hi)' }}>誰からの書き込みがあるか</h2>
         </div>
         <span className="text-[10px]" style={{ color: 'var(--nr-text-low)' }}>投稿者欄に明記された区分だけを集計し、推測では補完しません。</span>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {items.map((item) => (
-          <div key={item.label} className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
-            <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{item.label}</span>
-            <strong className="nr-heading mt-1 block text-[24px]" style={{ color: 'var(--nr-text-hi)' }}>{item.value}<small className="ml-1 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>件</small></strong>
-          </div>
-        ))}
-      </div>
-      <div className="mt-3 rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[12px] font-semibold" style={{ color: 'var(--nr-text-hi)' }}>来店を明言した投稿</span>
-          <strong className="nr-heading text-[20px]" style={{ color: 'var(--nr-accent)' }}>{bar.estimatedVisitIntentCount}件</strong>
+      <div className="nr-audience-panel-grid">
+        <div>
+          <span className="nr-audience-panel-label">当日顧客投稿</span>
+          <AudienceSignals
+            counts={{ male: bar.maleCount, female: bar.femaleCount, couple: bar.coupleCount, unknown: bar.genderUnknownCount }}
+            includeUnknown
+            label={`${bar.name}の当日顧客投稿の区分`}
+          />
         </div>
-        <p className="mt-1 text-[10px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>
-          男性 {bar.maleVisitIntentCount}件 / 女性 {bar.femaleVisitIntentCount}件 / カップル {bar.coupleVisitIntentCount}件 / 未判定 {bar.unknownVisitIntentCount}件。曖昧な「行けたら」「行くかも」は含めません。
-        </p>
+        <div>
+          <div className="nr-audience-panel-label-row">
+            <span className="nr-audience-panel-label">来店を明言した投稿</span>
+            <strong>{bar.estimatedVisitIntentCount}<small>件</small></strong>
+          </div>
+          <AudienceSignals
+            counts={{
+              male: bar.maleVisitIntentCount,
+              female: bar.femaleVisitIntentCount,
+              couple: bar.coupleVisitIntentCount,
+              unknown: bar.unknownVisitIntentCount,
+            }}
+            includeUnknown
+            compact
+            label={`${bar.name}の来店を明言した投稿の区分`}
+          />
+          <p className="nr-audience-panel-note">曖昧な「行けたら」「行くかも」は含めません。</p>
+        </div>
+      </div>
+    </GlassCard>
+  );
+}
+
+function StoreWeeklyComparison({
+  item,
+  currentPeriodLabel,
+  previousPeriodLabel,
+}: {
+  item?: WeeklyMomentumItem;
+  currentPeriodLabel: string;
+  previousPeriodLabel: string;
+}) {
+  if (!item) {
+    return (
+      <GlassCard className="nr-store-weekly nr-hairline p-5">
+        <div>
+          <span className="nr-mono">7日前との投稿比較</span>
+          <h2>同じ曜日・同じ経過時間で確認</h2>
+        </div>
+        <p className="nr-store-weekly-empty">比較に必要な投稿数がまだありません。データが揃うと、この店舗の増減だけを表示します。</p>
+      </GlassCard>
+    );
+  }
+
+  const maxCount = Math.max(1, item.currentPostCount, item.previousPostCount);
+  const direction = item.postDelta > 0 ? 'up' : item.postDelta < 0 ? 'down' : 'flat';
+  const DirectionIcon = direction === 'up' ? TrendingUp : direction === 'down' ? TrendingDown : Minus;
+  const ratio = item.previousPostCount > 0 ? item.currentPostCount / item.previousPostCount : null;
+
+  return (
+    <GlassCard className="nr-store-weekly nr-hairline p-5" data-direction={direction}>
+      <div className="nr-store-weekly-heading">
+        <div>
+          <span className="nr-mono">7日前との投稿比較</span>
+          <h2>この店舗の投稿はどう変わったか</h2>
+          <p>日本時間6:00を区切りに、同じ曜日・同じ経過時間で比較します。</p>
+        </div>
+        <div className="nr-store-weekly-delta">
+          <DirectionIcon size={16} aria-hidden="true" />
+          <span>{item.postDelta > 0 ? '+' : ''}{item.postDelta}<small>件</small></span>
+          <em>{ratio === null ? '7日前は0件' : `${ratio.toFixed(ratio >= 10 ? 0 : 1).replace(/\.0$/, '')}倍`}</em>
+        </div>
+      </div>
+      <div className="nr-store-weekly-bars">
+        <div>
+          <span><small>本日</small>{currentPeriodLabel}</span>
+          <i><b style={{ width: `${Math.max(4, (item.currentPostCount / maxCount) * 100)}%` }} /></i>
+          <strong>{item.currentPostCount}<small>件</small></strong>
+        </div>
+        <div data-period="previous">
+          <span><small>7日前</small>{previousPeriodLabel}</span>
+          <i><b style={{ width: `${Math.max(4, (item.previousPostCount / maxCount) * 100)}%` }} /></i>
+          <strong>{item.previousPostCount}<small>件</small></strong>
+        </div>
       </div>
     </GlassCard>
   );
@@ -299,7 +361,7 @@ function DailyStoreComparisonIndex({ bars, activeId, onOpen }: { bars: Bar[]; ac
 }
 
 export function DetailPage({ id, onOpen, onSearchAll }: { id: string; onOpen: (id: string) => void; onSearchAll: () => void }) {
-  const { bars, events, meta } = useNightRadarData();
+  const { bars, events, meta, weeklyMomentum } = useNightRadarData();
   const { candidateStoreIds, toggleCandidateStore } = useLocalPreferences();
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const bar = bars.find(b => b.id === id) ?? bars[0];
@@ -337,16 +399,18 @@ export function DetailPage({ id, onOpen, onSearchAll }: { id: string; onOpen: (i
       ? 'BBSを開く'
       : '地図を開く';
   const isCandidate = candidateStoreIds.includes(bar.id);
+  const storeWeeklyMomentum = weeklyMomentum.ranking.find((item) => item.storeId === bar.id);
 
   return (
     <div className="flex flex-col gap-8">
       {/* Hero */}
       <div className="nr-detail-hero grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-6 lg:gap-8 items-end pt-4">
         <div>
-          <motion.div className="flex items-center gap-2 mb-4"
+          <motion.div className="flex flex-wrap items-center gap-2 mb-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, ease }}>
             <span className="nr-pulse" />
             <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>店舗詳細 · 当日投稿 {bar.rank}位</span>
+            <HeatBadge rank={bar.rank} large />
           </motion.div>
           <h1 className="nr-heading text-[34px] sm:text-[40px] leading-[1.15]" style={{ color: 'var(--nr-text-hi)' }}>
             <WordReveal text={bar.name} />
@@ -357,8 +421,7 @@ export function DetailPage({ id, onOpen, onSearchAll }: { id: string; onOpen: (i
           >
             <span className="flex items-center gap-1"><MapPin size={11} /> {bar.area}</span>
             <span className="flex items-center gap-1 nr-mono"><Clock size={11} /> {bar.businessWindowLabel} · 最多 {bar.peakHour}</span>
-            <span className="flex items-center gap-1 nr-mono"><Users size={11} /> 投稿者 {bar.uniqueAuthorCount}名 · 来店予告 {bar.estimatedVisitIntentCount}件 · 予告の再投稿 {bar.repeatPostCount}件 · 総投稿 {bar.postCount}件 · 3h {bar.recentThreeHourCount}件</span>
-            <span className="flex items-center gap-1 nr-mono"><Users size={11} /> {genderEvidenceLabel(bar)}</span>
+            <span className="flex items-center gap-1 nr-mono"><Users size={11} /> 投稿者 {bar.uniqueAuthorCount}名 · 来店予告 {bar.estimatedVisitIntentCount}件 · 直近3時間 {bar.recentThreeHourCount}件</span>
           </motion.div>
           <motion.div className="flex flex-wrap gap-1.5 mt-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }}
@@ -414,6 +477,12 @@ export function DetailPage({ id, onOpen, onSearchAll }: { id: string; onOpen: (i
       </motion.div>
 
       <AudienceBreakdown bar={bar} />
+
+      <StoreWeeklyComparison
+        item={storeWeeklyMomentum}
+        currentPeriodLabel={weeklyMomentum.currentPeriodLabel}
+        previousPeriodLabel={weeklyMomentum.previousPeriodLabel}
+      />
 
       <StorePostSearchPanel key={`store-search-${bar.id}`} bar={bar} onSearchAll={onSearchAll} />
 
