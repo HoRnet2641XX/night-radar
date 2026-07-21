@@ -24,16 +24,15 @@ const detailMetrics: Array<{
   hint: string;
 }> = [
   { k: 'vibe', label: '当日顧客投稿', color: 'var(--nr-accent-2)', hint: '今日の来店日として判定した顧客投稿' },
-  { k: 'drinks', label: '女性書き込み', color: 'var(--nr-accent)', hint: '男女判定できた投稿から集計。カップルは比率から除外' },
+  { k: 'drinks', label: '女性率', color: 'var(--nr-accent)', hint: '当日顧客投稿の総数に占める、女性と明記された投稿の割合' },
   { k: 'service', label: '集計信頼度', color: 'var(--nr-accent-soft)', hint: '取得鮮度・正規化・投稿時刻・件数から算出' },
   { k: 'music', label: '今日の予定', color: 'var(--nr-accent-deep)', hint: '当日の登録イベント' },
   { k: 'crowd', label: '直近3時間', color: 'var(--nr-accent)', hint: '現在時刻から3時間以内の投稿' },
 ];
 
 function femaleMetricLabel(bar: Bar) {
-  if (bar.genderStatus === 'unavailable') return '判定不可';
-  if (bar.genderStatus === 'partial') return `${bar.femaleCount}件・参考`;
-  return `${bar.femaleCount}件`;
+  if (bar.postCount === 0) return '0%';
+  return `${Math.min(100, Math.round((bar.femaleCount / bar.postCount) * 100))}%`;
 }
 
 function genderEvidenceLabel(bar: Bar) {
@@ -58,6 +57,8 @@ function AudienceBreakdown({ bar }: { bar: Bar }) {
           <AudienceSignals
             counts={{ male: bar.maleCount, female: bar.femaleCount, couple: bar.coupleCount, unknown: bar.genderUnknownCount }}
             includeUnknown
+            total={bar.postCount}
+            showFemaleRate
             label={`${bar.name}の当日顧客投稿の区分`}
           />
         </div>
@@ -542,7 +543,7 @@ export function DetailPage({ id, onOpen, onSearchAll }: { id: string; onOpen: (i
                 <span className="flex items-center gap-1.5" style={{ color: 'var(--nr-text-mid)' }}><i className="h-0.5 w-5" style={{ background: 'var(--nr-accent)' }} />{bar.name}</span>
               </div>
               <p className="mt-4 max-w-[360px] text-center text-[11px] leading-relaxed" style={{ color: 'var(--nr-text-low)' }}>
-                投稿・直近3時間・予定は当日の最大店舗を100として換算。女性率は男女判定済み投稿（カップル除外）内の実測値、集計信頼度も実測値です。件数そのものに上限はありません。
+                投稿・直近3時間・予定は当日の最大店舗を100として換算。女性率は当日顧客投稿の総数に占める女性明記投稿の実測値です。件数そのものに上限はありません。
               </p>
             </GlassCard>
 

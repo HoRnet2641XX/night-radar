@@ -5,6 +5,7 @@ import type { PublicDirectoryState } from '@/lib/public-directory'
 import { normalizedBbsPostsToPostRecords } from '@/lib/scoring'
 import type { BbsNormalizedPost, DashboardState, EventInput, StoreProfile } from '@/lib/types'
 import { adaptDashboardToBars, adaptPublicDirectoryToBars } from './adapter'
+import { summarizeAudience } from './audience'
 
 const store: StoreProfile = {
   id: 'store-1',
@@ -157,6 +158,7 @@ test('adapter maps current decision-date data without reservation placeholders',
   assert.equal(bar.timestampCoverage, 100)
   assert.equal(bar.authorCoverage, 100)
   assert.equal(bar.genderCoverage, 100)
+  assert.equal(bar.genderUnknownCount, 0)
   assert.ok(bar.dataConfidence >= 75)
   assert.equal(bar.firstVisitCount, 1)
   assert.equal(bar.groupCount, 1)
@@ -176,6 +178,16 @@ test('adapter maps current decision-date data without reservation placeholders',
   assert.equal(result.posts.filter((post) => post.isCurrentBusinessDay).length, 2)
   assert.match(bar.mapUrl ?? '', /google\.com\/maps\/search/)
   assert.equal(bar.officialUrl, 'https://example.com/')
+})
+
+test('audience summary reconciles categories to the same-day total and uses total posts for female rate', () => {
+  const summary = summarizeAudience({ male: 5, female: 16, couple: 0 }, 88)
+
+  assert.equal(summary.classified, 21)
+  assert.equal(summary.counts.unknown, 67)
+  assert.equal(summary.total, 88)
+  assert.equal(summary.femaleRate, 18)
+  assert.equal(summary.isConsistent, true)
 })
 
 test('adapter labels the event total as the current month only', () => {

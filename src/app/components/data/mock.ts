@@ -240,7 +240,7 @@ export const EMPTY_WEEKLY_MOMENTUM: WeeklyMomentumView = {
 
 export const RADAR_KEYS = [
   { key: 'vibe', label: '当日投稿量' },
-  { key: 'drinks', label: '女性率（男女判定内）' },
+  { key: 'drinks', label: '女性率（全投稿）' },
   { key: 'service', label: '集計信頼度' },
   { key: 'music', label: '予定件数' },
   { key: 'crowd', label: '直近投稿' },

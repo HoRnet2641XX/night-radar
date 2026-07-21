@@ -107,6 +107,7 @@ function toBar(
         ? 'unverified'
         : 'none'
   const postCount = storeActivity.recentPostCount
+  const femaleShareOfTotal = postCount > 0 ? Math.round((femaleCount / postCount) * 100) : 0
   const hourly = {
     hourly: insight.hourlyCounts,
     hourLabels: insight.hourLabels,
@@ -161,7 +162,7 @@ function toBar(
     crowd: relativeScale(storeActivity.recentThreeHourCount, scales.recent),
     music: relativeScale(eventCount, scales.events),
     service: dataConfidence,
-    drinks: femaleRatio ?? 0,
+    drinks: femaleShareOfTotal,
     score: clamp(point.score),
     trend: hourly.hourly,
     hourly: hourly.hourly,

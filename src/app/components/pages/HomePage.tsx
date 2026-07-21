@@ -37,6 +37,10 @@ function eventMetricLabel(bar: Bar) {
   return `${bar.eventCount}件`;
 }
 
+function femaleShareOfTotal(bar: Bar) {
+  return bar.postCount > 0 ? Math.min(100, Math.round((bar.femaleCount / bar.postCount) * 100)) : 0;
+}
+
 function decisionReason(bar: Bar) {
   if (bar.recentThreeHourCount > 0 && bar.eventCount > 0) {
     return `直近3時間に${bar.recentThreeHourCount}件、今日の予定も確認済み`;
@@ -90,7 +94,10 @@ function CandidateCard({
 
       <AudienceSignals
         compact
-        counts={{ male: bar.maleCount, female: bar.femaleCount, couple: bar.coupleCount }}
+        counts={{ male: bar.maleCount, female: bar.femaleCount, couple: bar.coupleCount, unknown: bar.genderUnknownCount }}
+        includeUnknown
+        total={bar.postCount}
+        showFemaleRate
         label={`${bar.name}の当日顧客投稿の区分`}
       />
 
@@ -143,7 +150,7 @@ export function HomePage({
             </p>
           </div>
 
-          <aside className="nr-hero-signal-panel flex flex-col items-start gap-2 rounded-2xl p-3 sm:p-4 lg:items-end" aria-label="当日顧客投稿1位">
+          <aside data-tour="today-hero" className="nr-hero-signal-panel flex flex-col items-start gap-2 rounded-2xl p-3 sm:p-4 lg:items-end" aria-label="当日顧客投稿1位">
             <div className="flex flex-wrap items-center gap-2">
               <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日顧客投稿 1位</span>
               {topBar ? <HeatBadge rank={topBar.rank} /> : null}
@@ -154,7 +161,11 @@ export function HomePage({
             <div className="grid w-full grid-cols-3 gap-2 pt-2 text-left">
               <div><span>当日投稿</span><strong>{topBar?.postCount ?? 0}件</strong></div>
               <div><span>直近3時間</span><strong>{topBar?.recentThreeHourCount ?? 0}件</strong></div>
-              <div><span>女性書き込み</span><strong>{topBar?.femaleCount ?? 0}件</strong></div>
+              <div>
+                <span>💗 女性率</span>
+                <strong>{topBar ? femaleShareOfTotal(topBar) : 0}%</strong>
+                <small className="nr-hero-metric-note">女性 {topBar?.femaleCount ?? 0} / 全 {topBar?.postCount ?? 0}</small>
+              </div>
             </div>
             <button
               type="button"
@@ -171,7 +182,7 @@ export function HomePage({
         </div>
       </section>
 
-      <section className="nr-decision-board" aria-labelledby="today-decision-title">
+      <section data-tour="top-candidates" className="nr-decision-board" aria-labelledby="today-decision-title">
         <header className="nr-decision-board-header">
           <div>
             <span className="nr-decision-kicker">営業日 {businessDateLabel} · 最終集計 {meta.generatedAtLabel}</span>
@@ -207,7 +218,7 @@ export function HomePage({
         </div>
       </section>
 
-      <section className="nr-quick-filter" aria-labelledby="quick-filter-title">
+      <section data-tour="quick-filters" className="nr-quick-filter" aria-labelledby="quick-filter-title">
         <div>
           <span className="nr-mono">条件を変える</span>
           <h2 id="quick-filter-title">今夜の優先条件</h2>

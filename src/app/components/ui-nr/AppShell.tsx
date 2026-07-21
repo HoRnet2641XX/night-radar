@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Home, Search, CalendarDays, Radar, User, X, Activity, type LucideIcon } from 'lucide-react';
+import { Home, Search, CalendarDays, Radar, User, X, Activity, CircleHelp, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { usePwaInstall } from '@/hooks/use-pwa-install';
 
@@ -15,7 +15,17 @@ const TABS: { key: TabKey; label: string; icon: LucideIcon }[] = [
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
-export function AppShell({ tab, onTab, children }: { tab: TabKey; onTab: (t: TabKey) => void; children: ReactNode }) {
+export function AppShell({
+  tab,
+  onTab,
+  onTourOpen,
+  children,
+}: {
+  tab: TabKey;
+  onTab: (t: TabKey) => void;
+  onTourOpen: () => void;
+  children: ReactNode;
+}) {
   const { canInstall, dismiss: dismissInstall, install: installApp, showGuide, showReminder } = usePwaInstall();
 
   return (
@@ -34,6 +44,7 @@ export function AppShell({ tab, onTab, children }: { tab: TabKey; onTab: (t: Tab
             <span className="text-[11px]" style={{ color: 'var(--nr-text-low)' }}>直近のBBSと今日の予定を比較</span>
           </div>
           <div className="flex items-center gap-2">
+            <button type="button" className="nr-chip flex items-center gap-1.5" onClick={onTourOpen}><CircleHelp size={12} /> 使い方</button>
             <button type="button" className="nr-chip flex items-center gap-1.5" onClick={() => onTab('search')}><Radar size={12} /> 投稿を探す</button>
             <button type="button" className="nr-chip flex items-center gap-1.5" onClick={() => onTab('account')}><Activity size={12} /> データ状態</button>
           </div>
@@ -84,7 +95,7 @@ export function AppShell({ tab, onTab, children }: { tab: TabKey; onTab: (t: Tab
       </div>
 
       {/* Bottom tab bar */}
-      <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1rem)] sm:w-auto">
+      <div data-tour="bottom-navigation" className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1rem)] sm:w-auto">
         <div className="nr-glass rounded-full px-1.5 sm:px-2 py-2 flex items-center justify-between sm:justify-start gap-0.5 sm:gap-1" style={{ backdropFilter: 'blur(24px)' }}>
           {TABS.map(t => {
             const active = tab === t.key;
