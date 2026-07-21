@@ -92,7 +92,7 @@ test('X auto-post configuration never treats partial credentials as ready', () =
     enabled: true,
     credentialsConfigured: false,
     includeUrl: true,
-    targetUrl: 'https://night-radar.vercel.app/app',
+    targetUrl: 'https://night-radar.vercel.app/share',
     minimumDataConfidence: 60,
   })
 })
@@ -140,6 +140,9 @@ test('midday post uses rank labels, is aggregate-only, and stays within the X li
   assert.match(plan.text, /🔥盛り上がり/)
   assert.match(plan.text, /🥇FILT SHIBUYA 予告57/)
   assert.match(plan.text, /👀比較で見つけた穴場/)
+  assert.match(plan.text, /確認|候補|チェック|注目/)
+  assert.match(plan.text, /https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-15-midday/)
+  assert.doesNotMatch(plan.text, /絶対|満員確定|必ず盛り上がる/)
   assert.equal(plan.hiddenGemCandidates.length, 3)
   assert.deepEqual(plan.hiddenGemCandidates.map((item) => item.storeId), ['hidden-a', 'hidden-b', 'hidden-c'])
   assert.equal(new Set([...plan.candidates, ...plan.hiddenGemCandidates].map((item) => item.storeId)).size, 6)
@@ -240,7 +243,21 @@ test('tomorrow post falls back to a shorter complete format when live names are 
   assert.match(plan.text, /🥈/)
   assert.match(plan.text, /🥉/)
   assert.match(plan.text, /比較で見つけた穴場/)
-  assert.match(plan.text, /https:\/\/night-radar\.vercel\.app\/app/)
+  assert.match(plan.text, /https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-16-tomorrow/)
+})
+
+test('scheduled copy variation is deterministic for retries in the same slot', () => {
+  const currentState = state([
+    summary({ id: 'filt', name: 'FILT SHIBUYA', postCount: 57 }),
+    summary({ id: 'agreeable', name: 'AgreeAble', postCount: 33 }),
+    summary({ id: 'face', name: 'BAR FACE', postCount: 20 }),
+    ...hiddenSummaries(),
+  ])
+  const first = prepareXDailyPost(currentState)
+  const retry = prepareXDailyPost(currentState)
+
+  assert.equal(first.text, retry.text)
+  assert.equal(first.contentHash, retry.contentHash)
 })
 
 test('daily post is skipped unless three trustworthy stores are available', () => {

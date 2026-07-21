@@ -6,8 +6,13 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
+        userAgent: 'Twitterbot',
+        allow: ['/app', '/share', '/social/'],
+        disallow: ['/api/', '/auth/'],
+      },
+      {
         userAgent: '*',
-        allow: '/',
+        allow: ['/', '/share', '/social/'],
         disallow: ['/api/', '/app', '/auth/'],
       },
     ],

@@ -5,11 +5,68 @@ import { formatPublicStoreName, type PublicDirectoryState, type PublicStoreSumma
 import { isExplicitVisitIntentBody, isRankableCustomerNormalizedPost, postDecisionDateKeyForStore } from '@/lib/scoring'
 import type { PostRecord } from '@/lib/types'
 
-const DEFAULT_TARGET_URL = 'https://night-radar.vercel.app/app'
+const DEFAULT_TARGET_URL = 'https://night-radar.vercel.app/share'
 const X_MAX_WEIGHTED_LENGTH = 280
 const X_SAFE_WEIGHTED_LENGTH = 275
 const X_TRANSFORMED_URL_LENGTH = 23
 const medalByRank = ['🥇', '🥈', '🥉'] as const
+
+type XPostVoiceLength = 'standard' | 'compact' | 'short'
+type XPostVoice = Record<XPostVoiceLength, (storeName: string) => string>
+
+const postVoicesBySlot: Record<XAutoPostSlot, readonly XPostVoice[]> = {
+  midday: [
+    {
+      standard: (storeName) => `今夜どこへ行くか迷っているなら、まず${storeName}の最新BBSを確認してみてください。`,
+      compact: (storeName) => `今夜迷ったら、まず${storeName}を確認してみてください。`,
+      short: (storeName) => `今夜は${storeName}を要チェック。`,
+    },
+    {
+      standard: (storeName) => `これから店を選ぶ方へ。いま反応が集まる${storeName}は候補に入れておきたいところです。`,
+      compact: (storeName) => `今夜の候補なら、${storeName}の動きに注目です。`,
+      short: (storeName) => `${storeName}、今夜の候補です。`,
+    },
+    {
+      standard: (storeName) => `今夜の行き先を絞るなら、動きが出ている${storeName}から見てみるのがおすすめです。`,
+      compact: (storeName) => `これから選ぶなら、${storeName}を先にチェック。`,
+      short: (storeName) => `迷ったら${storeName}を確認。`,
+    },
+  ],
+  evening: [
+    {
+      standard: (storeName) => `今夜まだ迷っているなら、7日前より反応が伸びている${storeName}を先に確認してみてください。`,
+      compact: (storeName) => `今夜迷ったら、伸びている${storeName}を確認してみてください。`,
+      short: (storeName) => `今夜は${storeName}の伸びに注目。`,
+    },
+    {
+      standard: (storeName) => `7日前の同時刻と比べると、${storeName}の動きが目立っています。今夜の候補にどうぞ。`,
+      compact: (storeName) => `7日前より動く${storeName}、今夜の候補です。`,
+      short: (storeName) => `${storeName}、今夜は上向きです。`,
+    },
+    {
+      standard: (storeName) => `このあとの行き先を探すなら、投稿が伸びている${storeName}から最新状況を見てみるのがおすすめです。`,
+      compact: (storeName) => `このあとなら、${storeName}の最新状況をチェック。`,
+      short: (storeName) => `このあとは${storeName}を確認。`,
+    },
+  ],
+  tomorrow: [
+    {
+      standard: (storeName) => `明日の予定を決めるなら、来店予告とイベントの動きがある${storeName}から確認してみてください。`,
+      compact: (storeName) => `明日の候補なら、まず${storeName}を確認してみてください。`,
+      short: (storeName) => `明日は${storeName}を要チェック。`,
+    },
+    {
+      standard: (storeName) => `明日の行き先を先に決めたい方へ。${storeName}は今のうちに見ておきたい候補です。`,
+      compact: (storeName) => `${storeName}、明日の候補に入れておきたい店です。`,
+      short: (storeName) => `${storeName}、明日の候補です。`,
+    },
+    {
+      standard: (storeName) => `明日の動きを先読みするなら、${storeName}の予定と最新BBSをチェックしてみてください。`,
+      compact: (storeName) => `明日の予定なら、${storeName}を先にチェック。`,
+      short: (storeName) => `明日は${storeName}に注目。`,
+    },
+  ],
+}
 
 export const xAutoPostSlots = ['midday', 'evening', 'tomorrow'] as const
 export type XAutoPostSlot = (typeof xAutoPostSlots)[number]
@@ -454,6 +511,43 @@ function compactMetric(value: string) {
     .replace(/件$/u, '')
 }
 
+function deterministicIndex(seed: string, length: number) {
+  if (length <= 1) return 0
+  return createHash('sha256').update(seed).digest().readUInt32BE(0) % length
+}
+
+function postLead(input: {
+  slot: XAutoPostSlot
+  targetDateKey: string
+  candidates: XDailyCandidate[]
+  storeNameLength: number
+  voiceLength: XPostVoiceLength
+}) {
+  const spotlight = input.candidates[
+    deterministicIndex(`${input.slot}:${input.targetDateKey}:spotlight`, input.candidates.length)
+  ] ?? input.candidates[0]
+  const voices = postVoicesBySlot[input.slot]
+  const voice = voices[deterministicIndex(`${input.slot}:${input.targetDateKey}:voice`, voices.length)] ?? voices[0]
+  return voice[input.voiceLength](truncateCodePoints(spotlight.storeName, input.storeNameLength))
+}
+
+export function buildXShareTargetUrl(targetUrl: string, targetDateKey: string, slot: XAutoPostSlot) {
+  try {
+    const url = new URL(targetUrl)
+    if (url.hostname === 'night-radar.vercel.app' && (url.pathname === '/' || url.pathname === '/app')) {
+      url.pathname = '/share'
+    }
+    url.searchParams.set('report', `${targetDateKey}-${slot}`)
+    url.searchParams.set('utm_source', 'x')
+    url.searchParams.set('utm_medium', 'social')
+    url.searchParams.set('utm_campaign', 'auto_post')
+    url.searchParams.set('card', 'v2')
+    return url.toString()
+  } catch {
+    return targetUrl
+  }
+}
+
 function buildScheduledText(input: {
   slot: XAutoPostSlot
   generatedAt: string
@@ -466,12 +560,9 @@ function buildScheduledText(input: {
   detailLength: number
   includeHeatLabels: boolean
   compact: boolean
+  voiceLength: XPostVoiceLength
 }) {
-  const headline = input.slot === 'tomorrow'
-    ? '【明日予想】注目3＋穴場3🍸'
-    : input.slot === 'evening'
-      ? '【7日前比】伸び3＋穴場3🍸'
-      : '【速報】盛り上がり3＋穴場3🍸'
+  const lead = postLead(input)
   const primaryHeader = input.compact
     ? input.slot === 'midday' ? '🔥盛り上がり' : input.slot === 'evening' ? '🔥伸び' : '🔥明日注目'
     : input.slot === 'midday'
@@ -505,7 +596,7 @@ function buildScheduledText(input: {
       : '公開BBSの来店予告・女性投稿・直近動向から算出'
 
   return [
-    headline,
+    lead,
     primaryHeader,
     ...primaryLines,
     input.compact ? '👀比較で見つけた穴場' : '👀 比較で見つけた穴場',
@@ -569,7 +660,7 @@ export function prepareXScheduledPost(
   }
 
   const includeUrl = options.includeUrl ?? config.includeUrl
-  const targetUrl = options.targetUrl ?? config.targetUrl
+  const targetUrl = buildXShareTargetUrl(options.targetUrl ?? config.targetUrl, targetDateKey, slot)
   const textCandidates = [
     buildScheduledText({
       slot,
@@ -583,6 +674,7 @@ export function prepareXScheduledPost(
       detailLength: 9,
       includeHeatLabels: true,
       compact: false,
+      voiceLength: 'standard',
     }),
     buildScheduledText({
       slot,
@@ -596,6 +688,7 @@ export function prepareXScheduledPost(
       detailLength: 7,
       includeHeatLabels: false,
       compact: true,
+      voiceLength: 'compact',
     }),
     buildScheduledText({
       slot,
@@ -609,6 +702,7 @@ export function prepareXScheduledPost(
       detailLength: 7,
       includeHeatLabels: false,
       compact: true,
+      voiceLength: 'compact',
     }),
     buildScheduledText({
       slot,
@@ -622,6 +716,7 @@ export function prepareXScheduledPost(
       detailLength: 7,
       includeHeatLabels: false,
       compact: true,
+      voiceLength: 'short',
     }),
     buildScheduledText({
       slot,
@@ -635,6 +730,7 @@ export function prepareXScheduledPost(
       detailLength: 7,
       includeHeatLabels: false,
       compact: true,
+      voiceLength: 'short',
     }),
     buildScheduledText({
       slot,
@@ -648,6 +744,7 @@ export function prepareXScheduledPost(
       detailLength: 6,
       includeHeatLabels: false,
       compact: true,
+      voiceLength: 'short',
     }),
     buildScheduledText({
       slot,
@@ -661,6 +758,7 @@ export function prepareXScheduledPost(
       detailLength: 4,
       includeHeatLabels: false,
       compact: true,
+      voiceLength: 'short',
     }),
   ]
   const text = textCandidates.find((candidateText) => xWeightedLength(candidateText) <= X_SAFE_WEIGHTED_LENGTH)
