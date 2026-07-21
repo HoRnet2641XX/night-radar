@@ -45,8 +45,11 @@ function publicPlan(plan: ReturnType<typeof prepareXScheduledPost>) {
     text: plan.text,
     weightedLength: plan.weightedLength,
     candidates: plan.candidates,
+    weeklyCandidates: plan.weeklyCandidates,
     hiddenGemCandidates: plan.hiddenGemCandidates,
+    eventHighlights: plan.eventHighlights,
     eligibleStoreCount: plan.eligibleStoreCount,
+    weeklyEligibleStoreCount: plan.weeklyEligibleStoreCount,
     hiddenGemEligibleStoreCount: plan.hiddenGemEligibleStoreCount,
   }
 }
@@ -156,8 +159,11 @@ export async function GET(request: Request) {
         source_generated_at: plan.sourceGeneratedAt,
         metrics: {
           candidates: plan.candidates,
+          weeklyCandidates: plan.weeklyCandidates,
           hiddenGemCandidates: plan.hiddenGemCandidates,
+          eventHighlights: plan.eventHighlights,
           eligibleStoreCount: plan.eligibleStoreCount,
+          weeklyEligibleStoreCount: plan.weeklyEligibleStoreCount,
           hiddenGemEligibleStoreCount: plan.hiddenGemEligibleStoreCount,
           weightedLength: plan.weightedLength,
         },

@@ -58,6 +58,24 @@ function state(
   mode: PublicDirectoryState['mode'] = 'database',
   overrides: Partial<PublicDirectoryState> = {},
 ) {
+  const measuredStores = summaries
+    .filter((item) => item.recentPostCount > 0)
+    .toSorted((left, right) => right.recentPostCount - left.recentPostCount)
+    .map((item, index) => {
+      const postDelta = Math.max(1, Math.floor(item.recentPostCount / 2))
+      const previousPostCount = Math.max(0, item.recentPostCount - postDelta)
+      return {
+        storeId: item.store.id,
+        currentPostCount: item.recentPostCount,
+        previousPostCount,
+        postDelta,
+        momentumPercent: 60,
+        weekOverWeekRatio: previousPostCount ? Math.round((item.recentPostCount / previousPostCount) * 100) : null,
+        changePercent: previousPostCount ? Math.round((postDelta / previousPostCount) * 100) : null,
+        status: 'measured' as const,
+        rank: index + 1,
+      }
+    })
   return {
     mode,
     stores: summaries.map((item) => item.store),
@@ -71,9 +89,9 @@ function state(
       previousEndsAt: '',
       comparisonDayCount: 1,
       minimumComparisonCount: 0,
-      measuredStoreCount: 0,
+      measuredStoreCount: measuredStores.length,
       newActivityStoreCount: 0,
-      stores: [],
+      stores: measuredStores,
     },
     dailyInsights: [],
     summaries,
@@ -123,8 +141,8 @@ test('daily candidates use only fresh, successful, sufficiently reliable store a
     summary({ id: 'i', name: 'I', postCount: 20, intentCount: 0 }),
   ], 60)
 
-  assert.equal(result.eligibleStoreCount, 4)
-  assert.deepEqual(result.candidates.map((candidate) => candidate.storeId), ['e', 'a', 'g'])
+  assert.equal(result.eligibleStoreCount, 5)
+  assert.deepEqual(result.candidates.map((candidate) => candidate.storeId), ['i', 'e', 'a'])
 })
 
 test('midday post uses rank labels, is aggregate-only, and stays within the X limit', () => {
@@ -137,14 +155,18 @@ test('midday post uses rank labels, is aggregate-only, and stays within the X li
 
   assert.equal(plan.idempotencyKey, 'today_ranking:2026-07-15')
   assert.equal(plan.scheduledFor, '2026-07-15T03:00:00.000Z')
-  assert.match(plan.text, /来店予告(?:が多い|の上位)/)
-  assert.match(plan.text, /🥇FILT SHIBUYA 予告57/)
-  assert.match(plan.text, /穴場は/)
-  assert.match(plan.text, /HIDDEN A.*HIDDEN B.*HIDDEN C/s)
-  assert.match(plan.text, /最新BBS/)
-  assert.match(plan.text, /確認|候補|チェック|注目/)
+  assert.match(plan.text, /🔥投稿件数順/)
+  assert.match(plan.text, /🥇FILT 57/)
+  assert.match(plan.text, /📈7日前比順/)
+  assert.match(plan.text, /💎穴場順/)
+  assert.match(plan.text, /🥇HIDDEN A.*🥈HIDDEN B.*🥉HIDDEN C/s)
+  assert.match(plan.text, /7\/15 18:00時点での各店の動向をチェック‼️/)
+  assert.match(plan.text, /#NightRadar #ハプバー/)
   assert.match(plan.text, /https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-15-midday/)
   assert.doesNotMatch(plan.text, /絶対|満員確定|必ず盛り上がる/)
+  assert.doesNotMatch(plan.text, /。/)
+  assert.equal(plan.weeklyCandidates.length, 3)
+  assert.equal(plan.eventHighlights.length, 2)
   assert.equal(plan.hiddenGemCandidates.length, 3)
   assert.deepEqual(plan.hiddenGemCandidates.map((item) => item.storeId), ['hidden-a', 'hidden-b', 'hidden-c'])
   assert.equal(new Set([...plan.candidates, ...plan.hiddenGemCandidates].map((item) => item.storeId)).size, 6)
@@ -193,13 +215,14 @@ test('evening post ranks only stores with a measured positive change from exactl
 
   assert.equal(plan.kind, 'weekly_momentum')
   assert.equal(plan.candidates.length, 3)
-  assert.match(plan.text, /RETREAT BAR \+4件/)
-  assert.match(plan.text, /7日前(?:の同時刻|より)/)
-  assert.match(plan.text, /穴場は/)
+  assert.equal(plan.weeklyCandidates.length, 3)
+  assert.match(plan.text, /🥉RETREAT \+4/)
+  assert.match(plan.text, /📈7日前比順/)
+  assert.match(plan.text, /💎穴場順/)
   assert.ok(plan.weightedLength <= 280)
 })
 
-test('tomorrow post uses only tomorrow events or visit-intent data', () => {
+test('tomorrow post keeps current rankings and highlights tomorrow events for the top two stores', () => {
   const summaries = [
     summary({ id: 'a', name: 'A', postCount: 8 }),
     summary({ id: 'b', name: 'B', postCount: 7 }),
@@ -217,9 +240,12 @@ test('tomorrow post uses only tomorrow events or visit-intent data', () => {
   assert.equal(plan.kind, 'tomorrow_forecast')
   assert.equal(plan.targetDateKey, '2026-07-16')
   assert.equal(plan.scheduledFor, '2026-07-15T14:00:00.000Z')
-  assert.match(plan.text, /BINGO/)
-  assert.match(plan.text, /7\/16\(木\)予想/)
-  assert.match(plan.text, /穴場は/)
+  assert.match(plan.text, /🎪明日のイベント/)
+  assert.match(plan.text, /A：BINGO/)
+  assert.match(plan.text, /B：昼イベント/)
+  assert.doesNotMatch(plan.text, /スタッフ誕生日/)
+  assert.match(plan.text, /7\/15 18:00時点での各店の動向をチェック‼️/)
+  assert.match(plan.text, /💎穴場順/)
   assert.ok(plan.weightedLength <= 280)
 })
 
@@ -244,7 +270,11 @@ test('tomorrow post falls back to a shorter complete format when live names are 
   assert.match(plan.text, /🥇/)
   assert.match(plan.text, /🥈/)
   assert.match(plan.text, /🥉/)
-  assert.match(plan.text, /穴場は/)
+  assert.match(plan.text, /🔥投稿件数順/)
+  assert.match(plan.text, /📈7日前比順/)
+  assert.match(plan.text, /💎穴場順/)
+  assert.match(plan.text, /🎪/)
+  assert.match(plan.text, /#NightRadar #ハプバー/)
   assert.match(plan.text, /https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-16-tomorrow/)
 })
 
