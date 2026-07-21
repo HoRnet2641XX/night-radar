@@ -198,7 +198,9 @@ function sanitizeSingleLine(value: string) {
 }
 
 function xStoreName(summary: PublicStoreSummary) {
-  return sanitizeSingleLine(formatPublicStoreName(summary.store)).replace(/^bar\s+/i, '')
+  return sanitizeSingleLine(formatPublicStoreName(summary.store))
+    .replace(/^bar\s+/i, '')
+    .replace(/^communication\s*bar\s+/i, '')
 }
 
 function truncateCodePoints(value: string, maximum: number) {
@@ -531,6 +533,57 @@ function postLead(input: {
   return voice[input.voiceLength](truncateCodePoints(spotlight.storeName, input.storeNameLength))
 }
 
+function postSummary(slot: XAutoPostSlot, voiceLength: XPostVoiceLength) {
+  const summaries: Record<XAutoPostSlot, Record<XPostVoiceLength, string>> = {
+    midday: {
+      standard: '公開BBSの来店予告が多い3店はこちらです。',
+      compact: '来店予告が多い3店です。',
+      short: '来店予告の上位3店です。',
+    },
+    evening: {
+      standard: '7日前の同じ時刻と比べ、投稿が伸びた3店はこちらです。',
+      compact: '7日前の同時刻より伸びた3店です。',
+      short: '7日前より伸びた3店です。',
+    },
+    tomorrow: {
+      standard: '明日のイベントと来店予告から、注目したい3店を選びました。',
+      compact: '明日の予定から選んだ3店です。',
+      short: '明日の注目3店です。',
+    },
+  }
+  return summaries[slot][voiceLength]
+}
+
+function postClosing(slot: XAutoPostSlot, voiceLength: XPostVoiceLength) {
+  const closings: Record<XAutoPostSlot, Record<XPostVoiceLength, string>> = {
+    midday: {
+      standard: '気になる店があれば、出発前に最新BBSも見てみてください。',
+      compact: '行く前に最新BBSも見てみてください。',
+      short: '出発前に最新BBSもどうぞ。',
+    },
+    evening: {
+      standard: 'このあと動く方は、出発前に最新BBSも確認してみてください。',
+      compact: '行く前に最新BBSも見てみてください。',
+      short: '出発前に最新BBSもどうぞ。',
+    },
+    tomorrow: {
+      standard: '予定を決める前に、各店の最新BBSも確認してみてください。',
+      compact: '予定を決める前に最新BBSもどうぞ。',
+      short: '最新BBSもあわせてどうぞ。',
+    },
+  }
+  return closings[slot][voiceLength]
+}
+
+function humanRankMetric(candidateItem: XDailyCandidate, slot: XAutoPostSlot, compact: boolean) {
+  const detail = scheduledCandidateDetail(candidateItem, slot)
+  if (slot === 'evening') {
+    const increase = detail.match(/\+(\d+)件/u)?.[1]
+    return increase ? `+${increase}件` : compactMetric(detail)
+  }
+  return compact ? detail.replace(/来店予告\s*/u, '予告') : detail
+}
+
 export function buildXShareTargetUrl(targetUrl: string, targetDateKey: string, slot: XAutoPostSlot) {
   try {
     const url = new URL(targetUrl)
@@ -563,29 +616,20 @@ function buildScheduledText(input: {
   voiceLength: XPostVoiceLength
 }) {
   const lead = postLead(input)
-  const primaryHeader = input.compact
-    ? input.slot === 'midday' ? '🔥盛り上がり' : input.slot === 'evening' ? '🔥伸び' : '🔥明日注目'
-    : input.slot === 'midday'
-      ? '🔥 盛り上がり｜来店予告順'
-      : input.slot === 'evening'
-        ? '🔥 盛り上がり｜7日前比'
-        : '🔥 盛り上がり｜明日予想'
   const primaryLines = input.candidates.map((item, index) => {
     const medal = medalByRank[index] ?? `${index + 1}位`
     const storeName = truncateCodePoints(item.storeName, input.storeNameLength)
-    const sourceDetail = scheduledCandidateDetail(item, input.slot)
-    const detail = truncateCodePoints(input.compact ? compactMetric(sourceDetail) : sourceDetail, input.detailLength)
+    const detail = truncateCodePoints(humanRankMetric(item, input.slot, input.compact), input.detailLength)
     return input.compact
       ? `${medal}${storeName} ${detail}`
       : `${medal}${storeName}｜${input.includeHeatLabels ? `${item.heatLabel} ` : ''}${detail}`
   })
-  const hiddenLines = input.hiddenGemCandidates.map((item, index) => {
-    const rank = ['①', '②', '③'][index] ?? `${index + 1}`
-    const detail = input.compact ? compactMetric(item.detail) : item.detail
-    return input.compact
-      ? `${rank}${truncateCodePoints(item.storeName, input.storeNameLength)} ${truncateCodePoints(detail, input.detailLength)}`
-      : `${rank}${truncateCodePoints(item.storeName, input.storeNameLength)}｜${truncateCodePoints(detail, input.detailLength)}`
-  })
+  const hiddenNames = input.hiddenGemCandidates
+    .map((item) => truncateCodePoints(item.storeName, input.storeNameLength))
+    .join(' / ')
+  const hiddenSummary = input.compact
+    ? `穴場は${hiddenNames}。`
+    : `ちなみに、比較で見つけた穴場は${hiddenNames}です。`
   const context = input.slot === 'tomorrow'
     ? `${displayDate(`${input.targetDateKey}T12:00:00+09:00`)}予想`
     : input.compact ? displayCompactCurrentTime(input.generatedAt) : displayCurrentTime(input.generatedAt)
@@ -597,12 +641,15 @@ function buildScheduledText(input: {
 
   return [
     lead,
-    primaryHeader,
+    postSummary(input.slot, input.voiceLength),
+    '',
     ...primaryLines,
-    input.compact ? '👀比較で見つけた穴場' : '👀 比較で見つけた穴場',
-    ...hiddenLines,
+    '',
+    hiddenSummary,
+    postClosing(input.slot, input.voiceLength),
     context,
     ...(input.compact ? [] : [evidence]),
+    '',
     ...(input.includeUrl ? [input.targetUrl] : []),
     '#NightRadar',
   ].join('\n')

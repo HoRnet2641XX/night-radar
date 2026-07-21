@@ -137,9 +137,11 @@ test('midday post uses rank labels, is aggregate-only, and stays within the X li
 
   assert.equal(plan.idempotencyKey, 'today_ranking:2026-07-15')
   assert.equal(plan.scheduledFor, '2026-07-15T03:00:00.000Z')
-  assert.match(plan.text, /🔥盛り上がり/)
+  assert.match(plan.text, /来店予告(?:が多い|の上位)/)
   assert.match(plan.text, /🥇FILT SHIBUYA 予告57/)
-  assert.match(plan.text, /👀比較で見つけた穴場/)
+  assert.match(plan.text, /穴場は/)
+  assert.match(plan.text, /HIDDEN A.*HIDDEN B.*HIDDEN C/s)
+  assert.match(plan.text, /最新BBS/)
   assert.match(plan.text, /確認|候補|チェック|注目/)
   assert.match(plan.text, /https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-15-midday/)
   assert.doesNotMatch(plan.text, /絶対|満員確定|必ず盛り上がる/)
@@ -191,9 +193,9 @@ test('evening post ranks only stores with a measured positive change from exactl
 
   assert.equal(plan.kind, 'weekly_momentum')
   assert.equal(plan.candidates.length, 3)
-  assert.match(plan.text, /7日前\+4/)
-  assert.match(plan.text, /🔥伸び/)
-  assert.match(plan.text, /比較で見つけた穴場/)
+  assert.match(plan.text, /RETREAT BAR \+4件/)
+  assert.match(plan.text, /7日前(?:の同時刻|より)/)
+  assert.match(plan.text, /穴場は/)
   assert.ok(plan.weightedLength <= 280)
 })
 
@@ -217,7 +219,7 @@ test('tomorrow post uses only tomorrow events or visit-intent data', () => {
   assert.equal(plan.scheduledFor, '2026-07-15T14:00:00.000Z')
   assert.match(plan.text, /BINGO/)
   assert.match(plan.text, /7\/16\(木\)予想/)
-  assert.match(plan.text, /比較で見つけた穴場/)
+  assert.match(plan.text, /穴場は/)
   assert.ok(plan.weightedLength <= 280)
 })
 
@@ -242,7 +244,7 @@ test('tomorrow post falls back to a shorter complete format when live names are 
   assert.match(plan.text, /🥇/)
   assert.match(plan.text, /🥈/)
   assert.match(plan.text, /🥉/)
-  assert.match(plan.text, /比較で見つけた穴場/)
+  assert.match(plan.text, /穴場は/)
   assert.match(plan.text, /https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-16-tomorrow/)
 })
 
