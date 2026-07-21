@@ -42,7 +42,7 @@ export default function App() {
   return (
     <AppShell tab={tab} onTab={setTab}>
       {tab === 'home' && <HomePage onOpen={openDetail} onNavigate={setTab} />}
-      {tab === 'detail' && <DetailPage id={detailId} onOpen={openDetail} />}
+      {tab === 'detail' && <DetailPage id={detailId} onOpen={openDetail} onSearchAll={() => setTab('search')} />}
       {tab === 'search' && <SearchPage onOpen={openDetail} />}
       {tab === 'schedule' && <SchedulePage />}
       {tab === 'account' && <AccountPage />}

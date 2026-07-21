@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocalPreferences } from '../data/local-preferences';
 import type { FemaleRetentionDataset } from '@/lib/female-retention';
+import { StorePostSearchPanel } from '../search/StorePostSearchPanel';
 
 const ease = [0.22, 1, 0.36, 1] as const;
 type BarMetricKey = Extract<keyof Bar, 'vibe' | 'drinks' | 'service' | 'music' | 'crowd'>;
@@ -297,7 +298,7 @@ function DailyStoreComparisonIndex({ bars, activeId, onOpen }: { bars: Bar[]; ac
   );
 }
 
-export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) => void }) {
+export function DetailPage({ id, onOpen, onSearchAll }: { id: string; onOpen: (id: string) => void; onSearchAll: () => void }) {
   const { bars, events, meta } = useNightRadarData();
   const { candidateStoreIds, toggleCandidateStore } = useLocalPreferences();
   const [compareModalOpen, setCompareModalOpen] = useState(false);
@@ -413,6 +414,8 @@ export function DetailPage({ id, onOpen }: { id: string; onOpen: (id: string) =>
       </motion.div>
 
       <AudienceBreakdown bar={bar} />
+
+      <StorePostSearchPanel key={`store-search-${bar.id}`} bar={bar} onSearchAll={onSearchAll} />
 
       <FemaleRetentionPanel key={bar.id} storeId={bar.id} />
 
