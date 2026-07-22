@@ -141,7 +141,7 @@ export function HomePage({
                 営業日 {businessDateLabel} · 最終集計 {meta.generatedAtLabel}（日本時間）
               </span>
             </div>
-            <h1 id="home-hero-title" className="nr-heading text-[30px] leading-[1.12] sm:text-[42px]" style={{ color: 'var(--nr-text-hi)' }}>
+            <h1 id="home-hero-title" className="nr-heading text-[28px] leading-[1.18] sm:text-[36px]" style={{ color: 'var(--nr-text-hi)' }}>
               今日の行き先を、<br />
               <span style={{ color: 'var(--nr-accent-soft)' }}>投稿数で見極める。</span>
             </h1>
@@ -155,14 +155,14 @@ export function HomePage({
               <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-accent-soft)' }}>当日顧客投稿 1位</span>
               {topBar ? <HeatBadge rank={topBar.rank} /> : null}
             </div>
-            <h2 className="nr-heading max-w-full text-[24px] leading-tight sm:text-[28px] lg:text-right" style={{ color: 'var(--nr-text-hi)' }}>
+            <h2 className="nr-heading max-w-full text-[22px] leading-[1.25] sm:text-[26px] lg:text-right" style={{ color: 'var(--nr-text-hi)' }}>
               {topBar?.name ?? '集計中'}
             </h2>
             <div className="grid w-full grid-cols-3 gap-2 pt-2 text-left">
-              <div><span>当日投稿</span><strong>{topBar?.postCount ?? 0}件</strong></div>
-              <div><span>直近3時間</span><strong>{topBar?.recentThreeHourCount ?? 0}件</strong></div>
+              <div><span className="nr-hero-metric-label">当日投稿</span><strong>{topBar?.postCount ?? 0}件</strong></div>
+              <div><span className="nr-hero-metric-label">直近3時間</span><strong>{topBar?.recentThreeHourCount ?? 0}件</strong></div>
               <div>
-                <span>💗 女性率</span>
+                <span className="nr-hero-metric-label"><i aria-hidden="true">💗</i>女性率</span>
                 <strong>{topBar ? femaleShareOfTotal(topBar) : 0}%</strong>
                 <small className="nr-hero-metric-note">女性 {topBar?.femaleCount ?? 0} / 全 {topBar?.postCount ?? 0}</small>
               </div>

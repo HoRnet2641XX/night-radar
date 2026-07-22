@@ -41,18 +41,23 @@ export function AudienceSignals({
       data-consistent={summary.isConsistent}
       aria-label={`${label}: ${items.map((item) => `${item.label}${item.value}件`).join('、')}${ariaSummary}`}
     >
-      {items.map((item) => {
-        const Icon = item.icon;
-        return (
-          <div key={item.key} className="nr-audience-signal" data-tone={item.key}>
-            <span className="nr-audience-signal-label">
-              <i aria-hidden="true"><Icon size={compact ? 12 : 14} strokeWidth={2.2} /></i>
-              {item.label}
-            </span>
-            <strong>{item.value}<small>件</small></strong>
-          </div>
-        );
-      })}
+      <div className="nr-audience-signal-list">
+        {items.map((item) => {
+          const Icon = item.icon;
+          return (
+            <div key={item.key} className="nr-audience-signal" data-tone={item.key}>
+              <span className="nr-audience-signal-label">
+                <i aria-hidden="true"><Icon size={compact ? 12 : 14} strokeWidth={2.2} /></i>
+                {item.label}
+              </span>
+              <span className="nr-audience-signal-value">
+                <strong>{item.value}</strong>
+                <small>件</small>
+              </span>
+            </div>
+          );
+        })}
+      </div>
       {total !== undefined && (
         <div className="nr-audience-summary">
           <span>

@@ -150,7 +150,7 @@ export function SearchPage({ onOpen }: { onOpen: (id: string) => void }) {
           <span className="nr-pulse" />
           <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>探す</span>
         </motion.div>
-        <h1 className="nr-heading text-[34px] leading-[1.15] sm:text-[40px]" style={{ color: 'var(--nr-text-hi)' }}>
+        <h1 className="nr-heading text-[28px] leading-[1.2] sm:text-[34px]" style={{ color: 'var(--nr-text-hi)' }}>
           <WordReveal text="店舗と書き込みを、" />
           <br />
           <WordReveal text="同じ画面で確認する。" delay={0.3} />

@@ -96,7 +96,7 @@ export function SchedulePage() {
             <span className="nr-pulse" />
             <span className="nr-mono text-[11px]" style={{ color: 'var(--nr-text-mid)' }}>月間予定 · {monthLabel}</span>
           </motion.div>
-          <h1 className="nr-heading text-[34px] sm:text-[40px] leading-[1.15]" style={{ color: 'var(--nr-text-hi)' }}>
+          <h1 className="nr-heading text-[28px] sm:text-[34px] leading-[1.2]" style={{ color: 'var(--nr-text-hi)' }}>
             <WordReveal text="朝・昼・夜の予定を" />
             <br />
             <WordReveal text="日付から確認する。" delay={0.35} />
@@ -130,7 +130,7 @@ export function SchedulePage() {
             <StaggerItem key={i}>
               <GlassCard className="p-4 nr-focus nr-hairline">
                 <span className="nr-mono text-[10px]" style={{ color: 'var(--nr-text-low)' }}>{item.l}</span>
-                <div className="nr-heading text-[30px] mt-1" style={{ color: 'var(--nr-text-hi)' }}>
+                <div className="nr-heading text-[26px] mt-1" style={{ color: 'var(--nr-text-hi)' }}>
                   <DigitRoll value={`${item.v}${item.s}`} />
                 </div>
                 <div className="text-[11px] mt-0.5" style={{ color: 'var(--nr-text-low)' }}>{item.sub}</div>
@@ -243,7 +243,7 @@ export function SchedulePage() {
                 initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.5, ease }}
               >
-                <div className="nr-heading text-[36px]" style={{ color: 'var(--nr-text-hi)' }}>{monthLabel}.{String(selected ?? 0).padStart(2, '0')}</div>
+                <div className="nr-heading text-[30px]" style={{ color: 'var(--nr-text-hi)' }}>{monthLabel}.{String(selected ?? 0).padStart(2, '0')}</div>
               </motion.div>
             </AnimatePresence>
             {selectedEvents.length ? (

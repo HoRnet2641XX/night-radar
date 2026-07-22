@@ -55,7 +55,7 @@ export function AccountPage() {
           <span className="nr-pulse" />
           <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>設定</span>
         </motion.div>
-        <h1 className="nr-heading text-[34px] sm:text-[40px]" style={{ color: 'var(--nr-text-hi)' }}>
+        <h1 className="nr-heading text-[28px] leading-[1.2] sm:text-[34px]" style={{ color: 'var(--nr-text-hi)' }}>
           <WordReveal text="データ状態と利用設定" />
         </h1>
         <motion.p className="text-[14px] mt-4 max-w-[60ch] leading-[1.7]" style={{ color: 'var(--nr-text-mid)' }}

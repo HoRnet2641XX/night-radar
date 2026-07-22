@@ -423,7 +423,7 @@ export function DetailPage({
             <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>店舗詳細 · 当日投稿 {bar.rank}位</span>
             <HeatBadge rank={bar.rank} large />
           </motion.div>
-          <h1 className="nr-heading text-[34px] sm:text-[40px] leading-[1.15]" style={{ color: 'var(--nr-text-hi)' }}>
+          <h1 className="nr-heading text-[30px] sm:text-[36px] leading-[1.2]" style={{ color: 'var(--nr-text-hi)' }}>
             <WordReveal text={bar.name} />
           </h1>
           <motion.div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 text-[11px]"
@@ -445,7 +445,7 @@ export function DetailPage({
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.4 }}
         >
           <span className="nr-mono text-[12px]" style={{ color: 'var(--nr-text-mid)' }}>当日顧客投稿</span>
-          <div className="nr-heading text-[56px] sm:text-[64px] leading-none" style={{ color: 'var(--nr-accent)' }}>
+          <div className="nr-heading text-[44px] sm:text-[52px] leading-none" style={{ color: 'var(--nr-accent)' }}>
             <DigitRoll value={`${bar.postCount}件`} delay={0.55} />
           </div>
           <span className="nr-mono px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1 nr-delta-up">

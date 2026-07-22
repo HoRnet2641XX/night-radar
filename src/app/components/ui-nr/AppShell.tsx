@@ -29,7 +29,7 @@ export function AppShell({
   const { canInstall, dismiss: dismissInstall, install: installApp, showGuide, showReminder } = usePwaInstall();
 
   return (
-    <div className="relative min-h-screen w-full flex justify-center" style={{ zIndex: 1 }}>
+    <div className="nr-app-shell relative min-h-screen w-full flex justify-center" style={{ zIndex: 1 }}>
       <div className="w-full max-w-[1120px] px-4 sm:px-6 pt-4 sm:pt-6 pb-32 relative" style={{ zIndex: 1 }}>
         {/* Header — flat editorial */}
         <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
