@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AppShell, type TabKey } from './ui-nr/AppShell';
 import { HomePage } from './pages/HomePage';
 import { DetailPage } from './pages/DetailPage';
@@ -6,13 +6,14 @@ import { SearchPage } from './pages/SearchPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { AccountPage } from './pages/AccountPage';
 import { useNightRadarData } from './data/runtime';
-import { APP_TOUR_STORAGE_KEY, AppTour } from './ui-nr/AppTour';
+import { APP_TOUR_STORAGE_KEY, AppTour, type AppTourDestination } from './ui-nr/AppTour';
 
 export default function App() {
   const { bars } = useNightRadarData();
   const [tab, setTab] = useState<TabKey>('home');
   const [detailId, setDetailId] = useState<string>(() => bars[0]?.id ?? '');
   const [tourOpen, setTourOpen] = useState(false);
+  const [tourDestination, setTourDestination] = useState<AppTourDestination>('home');
 
   const openDetail = (id: string) => {
     setDetailId(id);
@@ -57,19 +58,37 @@ export default function App() {
 
   const openTour = () => {
     setTab('home');
+    setTourDestination('home');
     setTourOpen(true);
   };
+
+  const handleTourDestination = useCallback((destination: AppTourDestination) => {
+    setTourDestination(destination);
+    setTab(destination === 'home' ? 'home' : 'detail');
+  }, []);
+
+  const handleTourOpenChange = useCallback((open: boolean) => {
+    setTourOpen(open);
+    if (!open) setTourDestination('home');
+  }, []);
 
   return (
     <>
       <AppShell tab={tab} onTab={setTab} onTourOpen={openTour}>
         {tab === 'home' && <HomePage onOpen={openDetail} onNavigate={setTab} />}
-        {tab === 'detail' && <DetailPage id={detailId} onOpen={openDetail} onSearchAll={() => setTab('search')} />}
+        {tab === 'detail' && (
+          <DetailPage
+            id={detailId}
+            onOpen={openDetail}
+            onSearchAll={() => setTab('search')}
+            tourNameSearch={tourOpen && tourDestination === 'detail-name-search'}
+          />
+        )}
         {tab === 'search' && <SearchPage onOpen={openDetail} />}
         {tab === 'schedule' && <SchedulePage />}
         {tab === 'account' && <AccountPage />}
       </AppShell>
-      <AppTour open={tourOpen} onOpenChange={setTourOpen} />
+      <AppTour open={tourOpen} onOpenChange={handleTourOpenChange} onDestinationChange={handleTourDestination} />
     </>
   );
 }

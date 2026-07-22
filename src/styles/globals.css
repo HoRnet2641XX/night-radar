@@ -1172,6 +1172,7 @@ body::before {
 }
 
 .nr-tour-dialog[data-step-target='quick-filters'],
+.nr-tour-dialog[data-step-target='name-search'],
 .nr-tour-dialog[data-step-target='bottom-navigation'] {
   top: max(20px, env(safe-area-inset-top));
   bottom: auto;
@@ -2468,7 +2469,8 @@ body::before {
     bottom: auto;
   }
   .nr-tour-dialog[data-step-target='today-hero'],
-  .nr-tour-dialog[data-step-target='quick-filters'] {
+  .nr-tour-dialog[data-step-target='quick-filters'],
+  .nr-tour-dialog[data-step-target='name-search'] {
     top: max(12px, env(safe-area-inset-top));
     right: 12px;
     bottom: auto;

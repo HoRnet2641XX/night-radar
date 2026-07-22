@@ -69,15 +69,23 @@ function StorePostResult({ post }: { post: RadarPost }) {
   );
 }
 
-export function StorePostSearchPanel({ bar, onSearchAll }: { bar: Bar; onSearchAll: () => void }) {
+export function StorePostSearchPanel({
+  bar,
+  onSearchAll,
+  tourNameSearch = false,
+}: {
+  bar: Bar;
+  onSearchAll: () => void;
+  tourNameSearch?: boolean;
+}) {
   const { posts: initialPosts } = useNightRadarData();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(tourNameSearch);
   const [posts, setPosts] = useState<RadarPost[]>(() => initialPosts.filter((post) => post.storeId === bar.id));
-  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>(posts.length ? 'ready' : 'idle');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>(posts.length ? 'ready' : tourNameSearch ? 'loading' : 'idle');
   const [loadedStoreId, setLoadedStoreId] = useState(posts.length ? bar.id : '');
   const [requestKey, setRequestKey] = useState(0);
   const [query, setQuery] = useState('');
-  const [scope, setScope] = useState<PostScope>('all');
+  const [scope, setScope] = useState<PostScope>(tourNameSearch ? 'name' : 'all');
   const [gender, setGender] = useState<'all' | RadarPostGender>('all');
   const [window, setWindow] = useState<PostWindow>('today');
   const [visibleCount, setVisibleCount] = useState(8);
@@ -163,53 +171,55 @@ export function StorePostSearchPanel({ bar, onSearchAll }: { bar: Bar; onSearchA
 
       {open && (
         <div id="store-post-search-content" className="border-t border-white/[0.08] p-4 sm:p-5">
-          <div className="flex items-center gap-3 rounded-xl border border-white/[0.1] bg-black/20 px-4">
-            <Search size={16} color="var(--nr-text-mid)" aria-hidden="true" />
-            <input
-              value={query}
-              onChange={(event) => { setQuery(event.target.value); setVisibleCount(8); }}
-              name={`store-post-search-${bar.id}`}
-              aria-label={`${bar.name}の書き込みを検索`}
-              autoComplete="off"
-              placeholder="名前・書き込み内容・絵文字で検索…"
-              className="min-w-0 flex-1 bg-transparent py-3 text-[14px] focus-visible:outline-none"
-              style={{ color: 'var(--nr-text-hi)' }}
-            />
-            {query && (
-              <button type="button" aria-label="検索語を消す" onClick={() => setQuery('')} className="nr-chip grid !p-2 place-items-center">
-                <X size={14} aria-hidden="true" />
-              </button>
-            )}
-          </div>
+          <div data-tour="name-search">
+            <div className="flex items-center gap-3 rounded-xl border border-white/[0.1] bg-black/20 px-4">
+              <Search size={16} color="var(--nr-text-mid)" aria-hidden="true" />
+              <input
+                value={query}
+                onChange={(event) => { setQuery(event.target.value); setVisibleCount(8); }}
+                name={`store-post-search-${bar.id}`}
+                aria-label={`${bar.name}の書き込みを検索`}
+                autoComplete="off"
+                placeholder={scope === 'name' ? '投稿者名を入力…' : '名前・書き込み内容・絵文字で検索…'}
+                className="min-w-0 flex-1 bg-transparent py-3 text-[14px] focus-visible:outline-none"
+                style={{ color: 'var(--nr-text-hi)' }}
+              />
+              {query && (
+                <button type="button" aria-label="検索語を消す" onClick={() => setQuery('')} className="nr-chip grid !p-2 place-items-center">
+                  <X size={14} aria-hidden="true" />
+                </button>
+              )}
+            </div>
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-[auto_1fr_1fr]">
-            <fieldset>
-              <legend className="nr-mono mb-2 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>取得期間</legend>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className="nr-chip" data-active={window === 'today'} aria-pressed={window === 'today'} onClick={() => setWindow('today')}>当営業日</button>
-                <button type="button" className="nr-chip" data-active={window === 'recent'} aria-pressed={window === 'recent'} onClick={() => setWindow('recent')}>直近48時間</button>
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend className="nr-mono mb-2 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>検索対象</legend>
-              <div className="flex flex-wrap gap-2">
-                {POST_SCOPES.map((item) => (
-                  <button key={item.key} type="button" className="nr-chip" data-active={scope === item.key} aria-pressed={scope === item.key} onClick={() => setScope(item.key)}>
-                    {item.key === 'name' && <UserRound size={11} aria-hidden="true" />}
-                    {item.key === 'emoji' && <Smile size={11} aria-hidden="true" />}
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend className="nr-mono mb-2 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>性別</legend>
-              <div className="flex flex-wrap gap-2">
-                {POST_GENDERS.map((item) => (
-                  <button key={item.key} type="button" className="nr-chip" data-active={gender === item.key} aria-pressed={gender === item.key} onClick={() => setGender(item.key)}>{item.label}</button>
-                ))}
-              </div>
-            </fieldset>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[auto_1fr_1fr]">
+              <fieldset>
+                <legend className="nr-mono mb-2 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>取得期間</legend>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="nr-chip" data-active={window === 'today'} aria-pressed={window === 'today'} onClick={() => setWindow('today')}>当営業日</button>
+                  <button type="button" className="nr-chip" data-active={window === 'recent'} aria-pressed={window === 'recent'} onClick={() => setWindow('recent')}>直近48時間</button>
+                </div>
+              </fieldset>
+              <fieldset>
+                <legend className="nr-mono mb-2 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>検索対象</legend>
+                <div className="flex flex-wrap gap-2">
+                  {POST_SCOPES.map((item) => (
+                    <button key={item.key} type="button" className="nr-chip" data-active={scope === item.key} aria-pressed={scope === item.key} onClick={() => setScope(item.key)}>
+                      {item.key === 'name' && <UserRound size={11} aria-hidden="true" />}
+                      {item.key === 'emoji' && <Smile size={11} aria-hidden="true" />}
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset>
+                <legend className="nr-mono mb-2 text-[10px]" style={{ color: 'var(--nr-text-low)' }}>性別</legend>
+                <div className="flex flex-wrap gap-2">
+                  {POST_GENDERS.map((item) => (
+                    <button key={item.key} type="button" className="nr-chip" data-active={gender === item.key} aria-pressed={gender === item.key} onClick={() => setGender(item.key)}>{item.label}</button>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
           </div>
 
           <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-t border-white/[0.08] pt-4">

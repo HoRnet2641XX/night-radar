@@ -361,7 +361,17 @@ function DailyStoreComparisonIndex({ bars, activeId, onOpen }: { bars: Bar[]; ac
   );
 }
 
-export function DetailPage({ id, onOpen, onSearchAll }: { id: string; onOpen: (id: string) => void; onSearchAll: () => void }) {
+export function DetailPage({
+  id,
+  onOpen,
+  onSearchAll,
+  tourNameSearch = false,
+}: {
+  id: string;
+  onOpen: (id: string) => void;
+  onSearchAll: () => void;
+  tourNameSearch?: boolean;
+}) {
   const { bars, events, meta, weeklyMomentum } = useNightRadarData();
   const { candidateStoreIds, toggleCandidateStore } = useLocalPreferences();
   const [compareModalOpen, setCompareModalOpen] = useState(false);
@@ -406,7 +416,7 @@ export function DetailPage({ id, onOpen, onSearchAll }: { id: string; onOpen: (i
     <div className="flex flex-col gap-8">
       {/* Hero */}
       <div className="nr-detail-hero grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-6 lg:gap-8 items-end pt-4">
-        <div>
+        <div data-tour="store-detail">
           <motion.div className="flex flex-wrap items-center gap-2 mb-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, ease }}>
             <span className="nr-pulse" />
@@ -485,7 +495,12 @@ export function DetailPage({ id, onOpen, onSearchAll }: { id: string; onOpen: (i
         previousPeriodLabel={weeklyMomentum.previousPeriodLabel}
       />
 
-      <StorePostSearchPanel key={`store-search-${bar.id}`} bar={bar} onSearchAll={onSearchAll} />
+      <StorePostSearchPanel
+        key={`store-search-${bar.id}-${tourNameSearch ? 'tour' : 'default'}`}
+        bar={bar}
+        onSearchAll={onSearchAll}
+        tourNameSearch={tourNameSearch}
+      />
 
       <FemaleRetentionPanel key={bar.id} storeId={bar.id} />
 

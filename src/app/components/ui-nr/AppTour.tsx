@@ -8,6 +8,8 @@ import {
   Navigation,
   Radar,
   SlidersHorizontal,
+  Store,
+  UserRound,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -20,20 +22,26 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 
-export const APP_TOUR_STORAGE_KEY = 'night-radar:guided-tour:v1';
+export const APP_TOUR_STORAGE_KEY = 'night-radar:guided-tour:v2';
+
+export type AppTourDestination = 'home' | 'detail' | 'detail-name-search';
 
 type TourStep = {
   target: string;
+  destination: AppTourDestination;
   eyebrow: string;
   title: string;
   description: string;
   icon: LucideIcon;
   skipScroll?: boolean;
+  scrollBlock?: ScrollLogicalPosition;
+  mobileScrollOffset?: number;
 };
 
 const TOUR_STEPS: TourStep[] = [
   {
     target: 'today-hero',
+    destination: 'home',
     eyebrow: '最初に確認',
     title: '今日の1位と、女性率を見る',
     description: '当日顧客投稿が最も多い店舗です。投稿総数・直近3時間・全投稿に占める女性率を、同じ基準で確認できます。',
@@ -41,6 +49,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   {
     target: 'top-candidates',
+    destination: 'home',
     eyebrow: '次に比較',
     title: '候補は上位3店だけを比べる',
     description: '店側の告知を除いた当日投稿を基準に、今日の予定と投稿者区分を添えて比較します。',
@@ -48,13 +57,33 @@ const TOUR_STEPS: TourStep[] = [
   },
   {
     target: 'quick-filters',
+    destination: 'home',
     eyebrow: '条件を調整',
     title: '優先したい条件を1つ選ぶ',
     description: '営業中・女性投稿あり・予定あり・初めて向けから選ぶと、条件に合う上位3店へすぐ絞れます。',
     icon: SlidersHorizontal,
   },
   {
+    target: 'store-detail',
+    destination: 'detail',
+    eyebrow: '店舗を確認',
+    title: '1店を開いて、判断の根拠を見る',
+    description: '店舗詳細では、当日順位・エリア・営業時間・投稿者数・来店予告をまとめて確認できます。候補に保存したり、公式情報へ進むこともできます。',
+    icon: Store,
+    scrollBlock: 'start',
+  },
+  {
+    target: 'name-search',
+    destination: 'detail-name-search',
+    eyebrow: '名前を確認',
+    title: '気になる投稿者名から探せる',
+    description: '検索対象を「名前」にした状態で、取得済み投稿の投稿者名を絞り込めます。この店舗内だけでなく「全店舗から探す」へ切り替えることもできます。',
+    icon: UserRound,
+    mobileScrollOffset: -24,
+  },
+  {
     target: 'bottom-navigation',
+    destination: 'detail',
     eyebrow: '詳しく確認',
     title: '根拠や投稿は下部メニューから',
     description: '店舗詳細、投稿検索、予定、データ状態へ移動できます。迷ったらホームへ戻れば、今日の結論を確認できます。',
@@ -79,7 +108,15 @@ function rememberTour() {
   }
 }
 
-export function AppTour({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function AppTour({
+  open,
+  onOpenChange,
+  onDestinationChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onDestinationChange: (destination: AppTourDestination) => void;
+}) {
   const [stepIndex, setStepIndex] = useState(0);
   const [spotlight, setSpotlight] = useState<SpotlightBox | null>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -117,6 +154,12 @@ export function AppTour({ open, onOpenChange }: { open: boolean; onOpenChange: (
     });
     return target;
   }, [step.target]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    onDestinationChange(step.destination);
+  }, [onDestinationChange, open, step.destination]);
 
   useEffect(() => {
     if (!open) return;
@@ -161,42 +204,66 @@ export function AppTour({ open, onOpenChange }: { open: boolean; onOpenChange: (
     if (!open) return;
 
     let animationFrame = 0;
-    let settleTimer = 0;
+    const settleTimers: number[] = [];
     let observer: ResizeObserver | null = null;
-    const target = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
-
-    if (target && !step.skipScroll) {
-      const bodyOverflow = document.body.style.overflow;
-      const htmlOverflow = document.documentElement.style.overflow;
-      document.body.style.overflow = 'auto';
-      document.documentElement.style.overflow = 'auto';
-      target.scrollIntoView({ block: 'center', behavior: 'auto' });
-      document.body.style.overflow = bodyOverflow;
-      document.documentElement.style.overflow = htmlOverflow;
-    }
+    let observedTarget: HTMLElement | null = null;
+    let hasScrolled = false;
 
     const update = () => {
       window.cancelAnimationFrame(animationFrame);
       animationFrame = window.requestAnimationFrame(() => void measureTarget());
     };
 
-    update();
-    settleTimer = window.setTimeout(update, 160);
-    window.addEventListener('resize', update);
-    window.addEventListener('scroll', update, true);
-    if (target && 'ResizeObserver' in window) {
-      observer = new ResizeObserver(update);
-      observer.observe(target);
+    const prepareTarget = () => {
+      const target = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
+      if (!target) {
+        setSpotlight(null);
+        return;
+      }
+
+      if (!hasScrolled && !step.skipScroll) {
+        const bodyOverflow = document.body.style.overflow;
+        const htmlOverflow = document.documentElement.style.overflow;
+        document.body.style.overflow = 'auto';
+        document.documentElement.style.overflow = 'auto';
+        target.scrollIntoView({ block: step.scrollBlock ?? 'center', behavior: 'auto' });
+        if (window.innerWidth < 640 && step.mobileScrollOffset) {
+          window.scrollBy({ top: step.mobileScrollOffset, behavior: 'auto' });
+        }
+        document.body.style.overflow = bodyOverflow;
+        document.documentElement.style.overflow = htmlOverflow;
+        hasScrolled = true;
+      }
+
+      if (target !== observedTarget && 'ResizeObserver' in window) {
+        observer?.disconnect();
+        observer = new ResizeObserver(update);
+        observer.observe(target);
+        observedTarget = target;
+      }
+      update();
+    };
+
+    const handleResize = () => {
+      hasScrolled = false;
+      prepareTarget();
+    };
+
+    prepareTarget();
+    for (const delay of [80, 200, 420, 720]) {
+      settleTimers.push(window.setTimeout(prepareTarget, delay));
     }
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('scroll', update, true);
 
     return () => {
-      window.clearTimeout(settleTimer);
+      settleTimers.forEach((timer) => window.clearTimeout(timer));
       window.cancelAnimationFrame(animationFrame);
-      window.removeEventListener('resize', update);
+      window.removeEventListener('resize', handleResize);
       window.removeEventListener('scroll', update, true);
       observer?.disconnect();
     };
-  }, [measureTarget, open, step.skipScroll, step.target]);
+  }, [measureTarget, open, step.mobileScrollOffset, step.scrollBlock, step.skipScroll, step.target]);
 
   if (!open || typeof document === 'undefined') return null;
 
