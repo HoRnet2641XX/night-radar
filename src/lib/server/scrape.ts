@@ -24,9 +24,24 @@ const blockedHostPatterns = [
 const defaultUserAgent =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
 
+export type ScrapePublicPageOptions = {
+  deadlineAt?: number
+}
+
 function readPositiveIntEnv(name: string, fallback: number) {
   const value = Number(process.env[name])
   return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+function operationTimeoutMs(requestedMs: number, options: ScrapePublicPageOptions) {
+  if (!options.deadlineAt) return requestedMs
+  const remainingMs = options.deadlineAt - Date.now()
+  if (remainingMs <= 250) return 0
+  return Math.max(250, Math.min(requestedMs, remainingMs))
+}
+
+function deadlineReached(options: ScrapePublicPageOptions) {
+  return Boolean(options.deadlineAt && Date.now() >= options.deadlineAt)
 }
 
 function getFetchTimeoutMs(url: URL) {
@@ -68,11 +83,16 @@ function readerUrlFor(url: URL) {
   return `https://r.jina.ai/http://${url.toString()}`
 }
 
-async function scrapeReadableTextViaReader(url: URL): Promise<ScrapeResult | null> {
+async function scrapeReadableTextViaReader(
+  url: URL,
+  options: ScrapePublicPageOptions = {},
+): Promise<ScrapeResult | null> {
+  const timeoutMs = operationTimeoutMs(readPositiveIntEnv('SCRAPE_READER_TIMEOUT_MS', 6_000), options)
+  if (!timeoutMs) return null
   try {
     const response = await fetch(readerUrlFor(url), {
       redirect: 'follow',
-      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_READER_TIMEOUT_MS', 6_000)),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         Accept: 'text/plain, text/markdown;q=0.9, */*;q=0.8',
         'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
@@ -107,9 +127,14 @@ async function scrapeReadableTextViaReader(url: URL): Promise<ScrapeResult | nul
   }
 }
 
-async function scrapeRenderedHtmlViaBrowserless(url: URL): Promise<ScrapeResult | null> {
+async function scrapeRenderedHtmlViaBrowserless(
+  url: URL,
+  options: ScrapePublicPageOptions = {},
+): Promise<ScrapeResult | null> {
   const token = process.env.BROWSERLESS_API_TOKEN?.trim()
   if (!token) return null
+  const timeoutMs = operationTimeoutMs(readPositiveIntEnv('SCRAPE_BROWSERLESS_TIMEOUT_MS', 12_000), options)
+  if (!timeoutMs) return null
 
   try {
     const endpoint = new URL(
@@ -118,7 +143,7 @@ async function scrapeRenderedHtmlViaBrowserless(url: URL): Promise<ScrapeResult 
     endpoint.searchParams.set('token', token)
     const response = await fetch(endpoint, {
       method: 'POST',
-      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_BROWSERLESS_TIMEOUT_MS', 12_000)),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         'Cache-Control': 'no-cache',
         'Content-Type': 'application/json',
@@ -185,9 +210,15 @@ function japanDateLabel(date = new Date()) {
   return `${part('year')}-${part('month')}-${part('day')}`
 }
 
-async function fetchHarnesCurrentPosts(url: URL, html: string) {
+async function fetchHarnesCurrentPosts(
+  url: URL,
+  html: string,
+  options: ScrapePublicPageOptions = {},
+) {
   const postId = extractHarnesCurrentCalendarPostId(html)
   if (!postId) return ''
+  const timeoutMs = operationTimeoutMs(readPositiveIntEnv('SCRAPE_HARNES_POPUP_TIMEOUT_MS', 8_000), options)
+  if (!timeoutMs) return ''
 
   try {
     const endpoint = new URL('/wp-admin/admin-ajax.php', url)
@@ -206,7 +237,7 @@ async function fetchHarnesCurrentPosts(url: URL, html: string) {
     const response = await fetch(endpoint, {
       method: 'POST',
       body,
-      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_HARNES_POPUP_TIMEOUT_MS', 8_000)),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
@@ -222,15 +253,21 @@ async function fetchHarnesCurrentPosts(url: URL, html: string) {
   }
 }
 
-async function fetchKnownHostPosts(url: URL, html: string) {
-  if (/(^|\.)harnes\.tokyo$/i.test(url.hostname)) return fetchHarnesCurrentPosts(url, html)
+async function fetchKnownHostPosts(
+  url: URL,
+  html: string,
+  options: ScrapePublicPageOptions = {},
+) {
+  if (/(^|\.)harnes\.tokyo$/i.test(url.hostname)) return fetchHarnesCurrentPosts(url, html, options)
   if (!/(^|\.)scarlet\.tokyo$/i.test(url.hostname)) return ''
+  const timeoutMs = operationTimeoutMs(readPositiveIntEnv('SCRAPE_SUPPLEMENTAL_TIMEOUT_MS', 5_000), options)
+  if (!timeoutMs) return ''
 
   try {
     const endpoint = new URL('/api/comments', url)
     endpoint.searchParams.set('date', japanDateLabel())
     const response = await fetch(endpoint, {
-      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_SUPPLEMENTAL_TIMEOUT_MS', 5_000)),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         Accept: 'application/json',
         'User-Agent': process.env.SCRAPE_USER_AGENT || defaultUserAgent,
@@ -243,13 +280,18 @@ async function fetchKnownHostPosts(url: URL, html: string) {
   }
 }
 
-async function fetchSupplementalText(urlValue: string) {
+async function fetchSupplementalText(
+  urlValue: string,
+  options: ScrapePublicPageOptions = {},
+) {
   try {
     const url = new URL(urlValue)
     if (!['http:', 'https:'].includes(url.protocol) || !isAllowedHost(url.hostname)) return ''
+    const timeoutMs = operationTimeoutMs(readPositiveIntEnv('SCRAPE_SUPPLEMENTAL_TIMEOUT_MS', 5_000), options)
+    if (!timeoutMs) return ''
     const response = await fetch(url, {
       redirect: 'follow',
-      signal: AbortSignal.timeout(readPositiveIntEnv('SCRAPE_SUPPLEMENTAL_TIMEOUT_MS', 5_000)),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         'User-Agent': process.env.SCRAPE_USER_AGENT || defaultUserAgent,
         Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
@@ -265,7 +307,10 @@ async function fetchSupplementalText(urlValue: string) {
   }
 }
 
-export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> {
+export async function scrapePublicPage(
+  urlValue: string,
+  options: ScrapePublicPageOptions = {},
+): Promise<ScrapeResult> {
   let url: URL
   try {
     url = new URL(urlValue)
@@ -292,7 +337,7 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
   }
 
   if (shouldUseReaderFirst(url)) {
-    const readerResult = await scrapeReadableTextViaReader(url)
+    const readerResult = await scrapeReadableTextViaReader(url, options)
     if (readerResult) return readerResult
   }
 
@@ -301,12 +346,18 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
   let lastFailureStatus: ScrapeResult['status'] = 'failed'
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const timeoutMs = operationTimeoutMs(getFetchTimeoutMs(url), options)
+    if (!timeoutMs) {
+      lastErrorMessage = '巡回処理の時間枠を超えました。'
+      lastFailureStatus = 'blocked'
+      break
+    }
     try {
       const requestUrl = new URL(url)
       if (attempt > 1) requestUrl.searchParams.set('nr_retry', `${Date.now()}`)
       const response = await fetch(requestUrl, {
         redirect: 'follow',
-        signal: AbortSignal.timeout(getFetchTimeoutMs(url)),
+        signal: AbortSignal.timeout(timeoutMs),
         headers: {
           'User-Agent': process.env.SCRAPE_USER_AGENT || defaultUserAgent,
           Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -333,8 +384,8 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
       const html = storageSafeText(await readHtmlResponse(response), 500_000)
       const page = extractBbsPageContent(html, response.url || url.toString())
       const [knownHostPosts, supplementalTexts] = await Promise.all([
-        fetchKnownHostPosts(url, html),
-        Promise.all(page.supplementalUrls.map(fetchSupplementalText)),
+        fetchKnownHostPosts(url, html, options),
+        Promise.all(page.supplementalUrls.map((supplementalUrl) => fetchSupplementalText(supplementalUrl, options))),
       ])
       const extractedText = storageSafeText(
         [knownHostPosts, ...supplementalTexts, page.extractedText]
@@ -363,8 +414,8 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
   }
 
   const [browserlessResult, readerResult] = await Promise.all([
-    scrapeRenderedHtmlViaBrowserless(url),
-    scrapeReadableTextViaReader(url),
+    scrapeRenderedHtmlViaBrowserless(url, options),
+    scrapeReadableTextViaReader(url, options),
   ])
   const fallbackResult = browserlessResult ?? readerResult
   if (fallbackResult) {
@@ -380,7 +431,12 @@ export async function scrapePublicPage(urlValue: string): Promise<ScrapeResult> 
     extractedText: '',
     fetchedAt: new Date().toISOString(),
     status: lastFailureStatus,
-    message: lastFailureStatus === 'blocked' ? `取得が拒否されたか、タイムアウトしました。${lastErrorMessage ? ` ${lastErrorMessage}` : ''}` : lastErrorMessage,
+    message:
+      lastFailureStatus === 'blocked'
+        ? deadlineReached(options)
+          ? '巡回処理の時間枠を超えたため、次回の定期巡回で再試行します。'
+          : `取得が拒否されたか、タイムアウトしました。${lastErrorMessage ? ` ${lastErrorMessage}` : ''}`
+        : lastErrorMessage,
   }
 }
 

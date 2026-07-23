@@ -10,6 +10,12 @@ export const maxDuration = 30
 
 type CronCrawlResult = Awaited<ReturnType<typeof crawlDueBbsSourcesForCron>>
 
+function cronRouteBudgetMs() {
+  const configured = Number(process.env.CRON_ROUTE_BUDGET_MS)
+  if (!Number.isFinite(configured) || configured <= 0) return 20_000
+  return Math.max(10_000, Math.min(24_000, Math.floor(configured)))
+}
+
 function getCronCrawlOptions(request: Request): CronCrawlOptions {
   const url = new URL(request.url)
   const batchSizeValue = Number(url.searchParams.get('batchSize') ?? url.searchParams.get('size') ?? 0)
@@ -116,15 +122,18 @@ export async function GET(request: Request) {
 
   try {
     const startedAt = Date.now()
-    const result = await crawlDueBbsSourcesForCron(getCronCrawlOptions(request))
+    const options = getCronCrawlOptions(request)
+    options.concurrency ??= 30
+    options.deadlineAt = startedAt + cronRouteBudgetMs()
+    const result = await crawlDueBbsSourcesForCron(options)
     if (result.crawled > 0) revalidateTag(PUBLIC_DIRECTORY_CACHE_TAG, { expire: 0 })
     const response = compactCronCrawlResult(result, Date.now() - startedAt)
     return Response.json(response, { status: cronCrawlHttpStatus(response.failureCount, response.crawled) })
   } catch (error) {
-    if (error instanceof RepositoryError && error.status === 503) {
-      return jsonError(error.message, 503)
+    if (error instanceof RepositoryError) {
+      const status = error.status === 404 ? 404 : error.status >= 500 ? error.status : 503
+      return jsonError(error.message, status)
     }
-    if (error instanceof RepositoryError) return jsonError(error.message, error.status)
-    return jsonError(error instanceof Error ? error.message : 'BBS巡回に失敗しました。', 400)
+    return jsonError(error instanceof Error ? error.message : 'BBS巡回に失敗しました。', 500)
   }
 }

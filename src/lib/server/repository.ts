@@ -1589,10 +1589,11 @@ async function crawlSourceRow(
   options: {
     browserSession?: BrowserSnapshotSession | null
     captureBrowserScreenshot?: boolean
+    deadlineAt?: number
   } = {},
 ): Promise<CrawlSourceResult> {
   const source = toBbsSource(row)
-  const result = await scrapePublicPage(source.url)
+  const result = await scrapePublicPage(source.url, { deadlineAt: options.deadlineAt })
   const candidatePost = scrapeResultToPost(result, source.storeId)
   const post = candidatePost ? await savePostRow(supabase, candidatePost) : null
   const snapshot = result.status === 'ok' ? await buildBbsSnapshot(source, result, options.browserSession, options) : null
@@ -1759,6 +1760,7 @@ async function crawlSourceRowSafely(
   options: {
     browserSession?: BrowserSnapshotSession | null
     captureBrowserScreenshot?: boolean
+    deadlineAt?: number
   } = {},
 ) {
   const configuredRetries = Number(process.env.CRAWL_RETRY_COUNT)
@@ -1777,6 +1779,7 @@ async function crawlSourceRowSafely(
       lastError = error
       if (attempt === retryCount) break
     }
+    if (options.deadlineAt && Date.now() + retryDelayMs >= options.deadlineAt) break
     if (retryDelayMs) await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
   }
 
@@ -1804,6 +1807,7 @@ export type CronCrawlOptions = {
   batchSize?: number
   captureBrowserScreenshots?: boolean
   concurrency?: number
+  deadlineAt?: number
   excludeSourceIds?: string[]
   force?: boolean
   maxCrawls?: number
@@ -2059,8 +2063,8 @@ function normalizeCronMaxCrawls(options: CronCrawlOptions) {
 
 function normalizeCronConcurrency(options: CronCrawlOptions) {
   const configured = options.concurrency ?? Number(process.env.CRON_CRAWL_CONCURRENCY)
-  if (Number.isFinite(configured) && configured > 0) return Math.max(1, Math.min(12, Math.floor(configured)))
-  return 8
+  if (Number.isFinite(configured) && configured > 0) return Math.max(1, Math.min(30, Math.floor(configured)))
+  return 30
 }
 
 function screenshotSourceIds(rows: DbRow[], options: CronCrawlOptions) {
@@ -2119,6 +2123,7 @@ export async function crawlDueBbsSourcesForCron(options: CronCrawlOptions = {}) 
         return crawlSourceRowSafely(supabase, row, {
           browserSession,
           captureBrowserScreenshot,
+          deadlineAt: options.deadlineAt,
         })
       },
     )
