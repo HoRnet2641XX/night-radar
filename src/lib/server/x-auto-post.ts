@@ -501,13 +501,33 @@ type ScheduledCopyDensity = {
   eventNameMode: 'store' | 'rank'
   eventTitleLimit: number
   hiddenCount: boolean
-  layout: 'section' | 'compact'
+  layout: 'stacked' | 'section' | 'compact'
   primaryStoreNameLimit: number
   separator: string
   storeNameLimit: number
 }
 
 const scheduledCopyDensities: readonly ScheduledCopyDensity[] = [
+  {
+    countSuffix: false,
+    eventNameMode: 'rank',
+    eventTitleLimit: 8,
+    hiddenCount: false,
+    layout: 'stacked',
+    primaryStoreNameLimit: 32,
+    separator: '━━',
+    storeNameLimit: 32,
+  },
+  {
+    countSuffix: false,
+    eventNameMode: 'rank',
+    eventTitleLimit: 6,
+    hiddenCount: false,
+    layout: 'stacked',
+    primaryStoreNameLimit: 22,
+    separator: '━━',
+    storeNameLimit: 18,
+  },
   {
     countSuffix: true,
     eventNameMode: 'store',
@@ -576,20 +596,18 @@ function compactStoreName(value: string, maximum: number) {
   return `bar ${truncateCodePoints(body, Math.max(3, maximum - 4))}`
 }
 
-function compactRankedLine(
+function compactRankedItems(
   candidates: XDailyCandidate[],
   storeNameLimit: number,
   valueForCandidate: (candidate: XDailyCandidate) => string,
 ) {
-  return candidates
-    .map((item, index) => {
-      const medal = medalByRank[index] ?? `${index + 1}位`
-      return [
-        `${medal}${compactStoreName(item.storeName, storeNameLimit)}`,
-        valueForCandidate(item),
-      ].filter(Boolean).join(' ')
-    })
-    .join('｜')
+  return candidates.map((item, index) => {
+    const medal = medalByRank[index] ?? `${index + 1}位`
+    return [
+      `${medal}${compactStoreName(item.storeName, storeNameLimit)}`,
+      valueForCandidate(item),
+    ].filter(Boolean).join(' ')
+  })
 }
 
 function compactEventLine(
@@ -624,16 +642,38 @@ function renderScheduledMain(
   const eventLine = compactEventLine(input.eventHighlights, density)
   const eventHeading = input.slot === 'tomorrow' ? '━ 明日予定 ━' : '━ イベント ━'
   const countSuffix = density.countSuffix ? '件' : ''
-  const dailyLine = compactRankedLine(input.candidates, density.primaryStoreNameLimit, (item) => `${item.postCount}${countSuffix}`)
-  const weeklyLine = compactRankedLine(input.weeklyCandidates, density.storeNameLimit, (item) => `+${weeklyIncrease(item)}${countSuffix}`)
-  const hiddenLine = compactRankedLine(
+  const dailyItems = compactRankedItems(input.candidates, density.primaryStoreNameLimit, (item) => `${item.postCount}${countSuffix}`)
+  const weeklyItems = compactRankedItems(input.weeklyCandidates, density.storeNameLimit, (item) => `+${weeklyIncrease(item)}${countSuffix}`)
+  const hiddenItems = compactRankedItems(
     input.hiddenGemCandidates,
     density.storeNameLimit,
     (item) => density.hiddenCount ? `${item.postCount}${countSuffix}` : '',
   )
+  const dailyLine = dailyItems.join('｜')
+  const weeklyLine = weeklyItems.join('｜')
+  const hiddenLine = hiddenItems.join('｜')
   const title = `${memoTitle(input.slot, dateKey(input.generatedAt))}｜${displayTrendTime(input.generatedAt)}`
-  const lines = density.layout === 'section'
+  const lines = density.layout === 'stacked'
     ? [
+        title,
+        '🔥投稿数',
+        ...dailyItems,
+        density.separator,
+        '📈7日前比',
+        ...weeklyItems,
+        density.separator,
+        '💎穴場',
+        ...hiddenItems,
+        ...(eventLine
+          ? [
+              density.separator,
+              `${input.slot === 'tomorrow' ? '🔮明日予定' : '🎪イベント'}｜${eventLine}`,
+            ]
+          : []),
+        '#ハプバー',
+      ]
+    : density.layout === 'section'
+      ? [
         title,
         '━ 投稿数 ━',
         dailyLine,
@@ -644,16 +684,16 @@ function renderScheduledMain(
         ...(eventLine ? [eventHeading, eventLine] : []),
         '#ハプバー',
       ]
-    : [
-        title,
-        `投稿｜${dailyLine}`,
-        density.separator,
-        `7日前比｜${weeklyLine}`,
-        density.separator,
-        `穴場｜${hiddenLine}`,
-        ...(eventLine ? [density.separator, `${input.slot === 'tomorrow' ? '明日予定' : 'イベント'}｜${eventLine}`] : []),
-        '#ハプバー',
-      ]
+      : [
+          title,
+          `投稿｜${dailyLine}`,
+          density.separator,
+          `7日前比｜${weeklyLine}`,
+          density.separator,
+          `穴場｜${hiddenLine}`,
+          ...(eventLine ? [density.separator, `${input.slot === 'tomorrow' ? '明日予定' : 'イベント'}｜${eventLine}`] : []),
+          '#ハプバー',
+        ]
   return lines
     .map((line) => line.trimEnd())
     .join('\n')
