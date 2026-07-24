@@ -8,7 +8,8 @@ import { WordReveal, Stagger, StaggerItem } from '../ui-nr/Reveal';
 import { useEffect, useMemo, useState } from 'react';
 
 const DAYS = ['日', '月', '火', '水', '木', '金', '土'];
-const FILTERS = ['すべて', '朝・昼', '夜', 'BINGO', '月1', '誕生日'];
+const FEATURED_EVENT_TAGS = new Set(['BINGO', '月1', '誕生日', '抽選']);
+const FILTERS = ['すべて', '朝・昼', '夜', ...FEATURED_EVENT_TAGS];
 const ease = [0.22, 1, 0.36, 1] as const;
 
 function shiftMonth(monthKey: string, delta: number) {
@@ -20,7 +21,7 @@ function shiftMonth(monthKey: string, delta: number) {
 function matchesFilter(event: CalendarEventItem, filter: string) {
   if (filter === '朝・昼') return event.session === 'day';
   if (filter === '夜') return event.session === 'night';
-  if (filter === 'BINGO' || filter === '月1' || filter === '誕生日') return event.tag === filter;
+  if (FEATURED_EVENT_TAGS.has(filter)) return event.tag === filter;
   return true;
 }
 
@@ -53,7 +54,7 @@ export function SchedulePage() {
   const selectedEvents = filteredEvents.filter((event) => event.day === selected);
   const dayCount = monthEvents.filter((event) => event.session === 'day').length;
   const nightCount = monthEvents.filter((event) => event.session === 'night').length;
-  const featuredCount = monthEvents.filter((event) => ['BINGO', '月1', '誕生日'].includes(event.tag)).length;
+  const featuredCount = monthEvents.filter((event) => FEATURED_EVENT_TAGS.has(event.tag)).length;
   const sourcedCount = monthEvents.filter((event) => event.sourceUrl).length;
   const coveredStoreCount = new Set(monthEvents.map((event) => event.storeId)).size;
 
@@ -105,7 +106,7 @@ export function SchedulePage() {
             style={{ color: 'var(--nr-text-mid)' }}
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease, delay: 0.7 }}
           >
-            公式予定を確認できた{coveredStoreCount}店舗分を、朝・昼・夜、BINGO、月1、誕生日で絞り込めます。未登録店舗は「予定なし」ではなく未確認です。
+            公式予定を確認できた{coveredStoreCount}店舗分を、朝・昼・夜、BINGO、月1、誕生日、抽選で絞り込めます。未登録店舗は「予定なし」ではなく未確認です。
           </motion.p>
         </div>
         <motion.div className="flex items-center gap-2 justify-start lg:justify-end"
@@ -125,7 +126,7 @@ export function SchedulePage() {
             { l: '月間予定', v: monthEvents.length, s: '件' , sub: '登録済み' },
             { l: '朝・昼', v: dayCount, s: '件', sub: '昼営業を含む' },
             { l: '夜', v: nightCount, s: '件', sub: '夜営業' },
-            { l: '指定イベント', v: featuredCount, s: '件', sub: 'BINGO・月1・誕生日' },
+            { l: '注目トピック', v: featuredCount, s: '件', sub: 'BINGO・月1・誕生日・抽選' },
           ].map((item, i) => (
             <StaggerItem key={i}>
               <GlassCard className="p-4 nr-focus nr-hairline">

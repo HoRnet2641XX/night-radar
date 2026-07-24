@@ -180,6 +180,21 @@ test('adapter maps current decision-date data without reservation placeholders',
   assert.equal(bar.officialUrl, 'https://example.com/')
 })
 
+test('adapter classifies lottery keywords in event details as a featured topic', () => {
+  const lotteryEvent: EventInput = {
+    ...event,
+    id: 'event-lottery',
+    category: 'イベント',
+    title: '夏フェス',
+    details: '23時から大抽選会を開催します。',
+  }
+  const input = withDailyInsights({ ...state, events: [lotteryEvent] }, [lotteryEvent])
+  const result = adaptDashboardToBars(input, [lotteryEvent])
+
+  assert.equal(result.events[0].tag, '抽選')
+  assert.equal(result.events[0].color, '#F2B85B')
+})
+
 test('audience summary reconciles categories to the same-day total and uses total posts for female rate', () => {
   const summary = summarizeAudience({ male: 5, female: 16, couple: 0 }, 88)
 

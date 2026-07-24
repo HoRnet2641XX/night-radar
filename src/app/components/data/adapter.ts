@@ -232,15 +232,12 @@ function toBar(
 
 function toCalendarEvent(event: EventInput, stores: StoreProfile[]): CalendarEventItem {
   const store = stores.find((item) => item.id === event.storeId)
-  const tag = /BINGO|ビンゴ/i.test(event.title)
-    ? 'BINGO'
-    : /月1|月一|monthly/i.test(event.title)
-      ? '月1'
-      : /誕生日|birthday|おめでとう/i.test(`${event.title} ${event.details ?? ''}`)
-        ? '誕生日'
-        : event.session === 'day'
-          ? '朝・昼'
-          : '夜'
+  const eventText = `${event.title} ${event.details ?? ''}`
+  let tag = event.session === 'day' ? '朝・昼' : '夜'
+  if (/誕生日|birthday|おめでとう/i.test(eventText)) tag = '誕生日'
+  if (/月1|月一|monthly/i.test(eventText)) tag = '月1'
+  if (/抽選/u.test(eventText)) tag = '抽選'
+  if (/BINGO|ビンゴ/i.test(eventText)) tag = 'BINGO'
 
   return {
     id: event.id,
@@ -250,7 +247,14 @@ function toCalendarEvent(event: EventInput, stores: StoreProfile[]): CalendarEve
     title: event.title,
     storeName: formatBarName(store?.name ?? '店舗名未確認'),
     tag,
-    color: tag === 'BINGO' || tag === '夜' ? '#FF6A5B' : tag === '誕生日' || tag === '月1' ? '#E24A3A' : '#FFB8A8',
+    color:
+      tag === '抽選'
+        ? '#F2B85B'
+        : tag === 'BINGO' || tag === '夜'
+          ? '#FF6A5B'
+          : tag === '誕生日' || tag === '月1'
+            ? '#E24A3A'
+            : '#FFB8A8',
     session: event.session,
     sourceUrl: event.sourceUrl,
     startsAt: event.startsAt,
