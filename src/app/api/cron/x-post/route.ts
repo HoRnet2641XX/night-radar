@@ -61,6 +61,7 @@ function publicPlan(plan: ReturnType<typeof prepareXScheduledPost>) {
     weeklyCandidates: plan.weeklyCandidates,
     hiddenGemCandidates: plan.hiddenGemCandidates,
     eventHighlights: plan.eventHighlights,
+    spotlightEvent: plan.spotlightEvent,
     eligibleStoreCount: plan.eligibleStoreCount,
     weeklyEligibleStoreCount: plan.weeklyEligibleStoreCount,
     hiddenGemEligibleStoreCount: plan.hiddenGemEligibleStoreCount,
@@ -77,6 +78,7 @@ function planMetrics(
     weeklyCandidates: plan.weeklyCandidates,
     hiddenGemCandidates: plan.hiddenGemCandidates,
     eventHighlights: plan.eventHighlights,
+    spotlightEvent: plan.spotlightEvent,
     eligibleStoreCount: plan.eligibleStoreCount,
     weeklyEligibleStoreCount: plan.weeklyEligibleStoreCount,
     hiddenGemEligibleStoreCount: plan.hiddenGemEligibleStoreCount,
@@ -147,6 +149,7 @@ export async function GET(request: Request) {
       includeUrl: config.includeUrl,
       targetUrl: config.targetUrl,
       minimumDataConfidence: config.minimumDataConfidence,
+      referenceTime: new Date(),
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'X投稿候補を作成できませんでした。'

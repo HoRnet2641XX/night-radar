@@ -165,16 +165,17 @@ test('midday post uses rank labels, is aggregate-only, and stays within the X li
   assert.equal(plan.idempotencyKey, 'today_ranking:2026-07-15')
   assert.equal(plan.scheduledFor, '2026-07-15T03:00:00.000Z')
   const thread = plan.threadTexts.join('\n')
+  const ogpReply = plan.threadTexts.at(-1) ?? ''
   assert.match(plan.text, /今夜|昼|店選び/)
-  assert.match(plan.text, /🔥投稿数|━ 投稿数 ━|投稿｜/)
-  assert.match(plan.text, /🥇bar FILT SHIBUYA 57(?:件)?/)
-  assert.match(plan.text, /📈7日前比|━ 7日前比 ━|7日前比｜/)
-  assert.match(plan.text, /💎穴場|━ 穴場 ━|穴場｜/)
-  assert.match(plan.text, /🥇bar HIDDEN A(?: 5件)?.*🥈bar HIDDEN B(?: 4件)?.*🥉bar HIDDEN C(?: 3件)?/s)
-  assert.match(plan.text, /7\/15 18:00/)
-  assert.match(plan.text, /#ハプバー/)
+  assert.match(thread, /本日の投稿数が多い店舗|現在、投稿が集まっている店舗|当日投稿の動きが大きい店舗/)
+  assert.match(thread, /🥇\s+bar FILT SHIBUYA｜57件/)
+  assert.match(thread, /7日前の同時刻より投稿が増えている店舗|先週の同時刻と比べて伸びている店舗|7日前比で動きが上向いている店舗/)
+  assert.match(thread, /上位以外で確認しておきたい穴場店舗|比較候補として見ておきたい店舗|投稿内容から浮かんだ穴場店舗/)
+  assert.match(thread, /🥇\s+bar HIDDEN A｜5件.*🥈\s+bar HIDDEN B｜4件.*🥉\s+bar HIDDEN C｜3件/s)
+  assert.match(thread, /7\/15 18:00時点の各店の動向です/)
+  assert.match(thread, /#ハプバー/)
   assert.doesNotMatch(plan.text, /https?:\/\//)
-  assert.match(plan.replyTexts[0] ?? '', /^https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-15-midday/)
+  assert.match(ogpReply, /^https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-15-midday/)
   assert.doesNotMatch(thread, /絶対|満員確定|必ず盛り上がる/)
   assert.doesNotMatch(thread, /。/)
   assert.equal(plan.weeklyCandidates.length, 3)
@@ -185,14 +186,15 @@ test('midday post uses rank labels, is aggregate-only, and stays within the X li
   assert.doesNotMatch(thread, /投稿者|本文|author|body/)
   assert.equal(plan.text, plan.threadTexts[0])
   assert.deepEqual(plan.replyTexts, plan.threadTexts.slice(1))
-  assert.equal(plan.threadTexts.length, 2)
-  assert.equal(plan.replyTexts.length, 1)
-  assert.equal(plan.replyTexts[0], plan.threadTexts[1])
-  assert.match(plan.replyTexts[0] ?? '', /^https?:\/\/\S+$/)
+  assert.ok(plan.threadTexts.length >= 3)
+  assert.equal(plan.replyTexts.length, plan.threadTexts.length - 1)
+  assert.equal(plan.replyTexts.at(-1), ogpReply)
+  assert.match(ogpReply, /^https?:\/\/\S+$/)
+  plan.threadTexts.slice(0, -1).forEach((post) => assert.doesNotMatch(post, /https?:\/\//))
   assert.ok(plan.weightedLengths.every((length) => length <= 280))
   assert.ok(plan.candidates.every((item) => item.storeName.startsWith('bar ')))
-  assert.match(plan.text, /\n━━\n/)
-  assert.match(plan.text, /🔥投稿数\n🥇[^\n]+\n🥈[^\n]+\n🥉[^\n]+/)
+  assert.match(thread, /\n━━━━━━━━\n/)
+  assert.match(thread, /本日の詳しいランキングは、次の投稿からご確認いただけます👇/)
 })
 
 test('hidden gems stay outside the headline top three and prefer lower-volume stores with evidence', () => {
@@ -237,11 +239,12 @@ test('evening post ranks only stores with a measured positive change from exactl
   assert.equal(plan.kind, 'weekly_momentum')
   assert.equal(plan.candidates.length, 3)
   assert.equal(plan.weeklyCandidates.length, 3)
-  assert.match(plan.text, /🥉bar RETREAT BAR \+4(?:件)?/)
-  assert.match(plan.text, /📈7日前比|━ 7日前比 ━|7日前比｜/)
-  assert.match(plan.text, /💎穴場|━ 穴場 ━|穴場｜/)
-  assert.equal(plan.threadTexts.length, 2)
-  assert.match(plan.replyTexts[0] ?? '', /^https?:\/\/\S+$/)
+  const thread = plan.threadTexts.join('\n')
+  assert.match(thread, /🥉\s+bar RETREAT BAR｜\+4件/)
+  assert.match(thread, /7日前の同時刻より投稿が増えている店舗|先週の同時刻と比べて伸びている店舗|7日前比で動きが上向いている店舗/)
+  assert.match(thread, /上位以外で確認しておきたい穴場店舗|比較候補として見ておきたい店舗|投稿内容から浮かんだ穴場店舗/)
+  assert.ok(plan.threadTexts.length >= 3)
+  assert.match(plan.threadTexts.at(-1) ?? '', /^https?:\/\/\S+$/)
   assert.ok(plan.weightedLengths.every((length) => length <= 280))
 })
 
@@ -264,14 +267,16 @@ test('tomorrow post keeps current rankings and highlights tomorrow events for th
   assert.equal(plan.targetDateKey, '2026-07-16')
   assert.equal(plan.scheduledFor, '2026-07-15T14:00:00.000Z')
   const thread = plan.threadTexts.join('\n')
-  assert.match(plan.text, /🔮明日予定|━ 明日予定 ━|明日予定｜/)
-  assert.match(plan.text, /(bar A|🥇).*BINGO/)
-  assert.match(plan.text, /(bar B|🥈).*スーツ割引DAY/)
+  assert.match(thread, /明日のイベント情報|明日の注目イベント|明日のイベント予定/)
+  assert.match(thread, /bar A.*BINGO/)
+  assert.match(thread, /bar B.*スーツ割引DAY/)
   assert.doesNotMatch(thread, /スタッフ誕生日/)
-  assert.match(plan.text, /7\/15 18:00/)
-  assert.match(plan.text, /💎穴場|━ 穴場 ━|穴場｜/)
-  assert.equal(plan.threadTexts.length, 2)
-  assert.match(plan.replyTexts[0] ?? '', /^https?:\/\/\S+$/)
+  assert.match(thread, /7\/15 18:00時点の各店の動向です/)
+  assert.match(thread, /上位以外で確認しておきたい穴場店舗|比較候補として見ておきたい店舗|投稿内容から浮かんだ穴場店舗/)
+  assert.equal(plan.spotlightEvent?.storeId, 'a')
+  assert.match(thread, /明日の注目トピック/)
+  assert.ok(plan.threadTexts.length >= 3)
+  assert.match(plan.threadTexts.at(-1) ?? '', /^https?:\/\/\S+$/)
   assert.ok(plan.weightedLengths.every((length) => length <= 280))
 })
 
@@ -297,18 +302,49 @@ test('tomorrow post falls back to a shorter complete format when live names are 
   assert.match(thread, /🥇/)
   assert.match(thread, /🥈/)
   assert.match(thread, /🥉/)
-  assert.match(plan.text, /bar Commun/)
-  assert.match(plan.text, /bar 荻窪/)
-  assert.match(plan.text, /bar CLUB/)
-  assert.match(plan.text, /🔥投稿数|━ 投稿数 ━|投稿｜/)
-  assert.match(plan.text, /📈7日前比|━ 7日前比 ━|7日前比｜/)
-  assert.match(plan.text, /💎穴場|━ 穴場 ━|穴場｜/)
-  assert.match(plan.text, /スペ|BINGO/)
-  assert.match(plan.text, /スタ|誕生日/)
-  assert.match(plan.text, /#ハプバー/)
-  assert.equal(plan.threadTexts.length, 2)
-  assert.match(plan.replyTexts[0] ?? '', /^https?:\/\/\S+$/)
+  assert.match(thread, /bar Communicationbar 珊瑚 東京本店/)
+  assert.match(thread, /bar 荻窪秘密倶楽部スペシャルラウンジ/)
+  assert.match(thread, /bar CLUB SCARLET TOKYO ANNEX/)
+  assert.match(thread, /本日の投稿数が多い店舗|現在、投稿が集まっている店舗|当日投稿の動きが大きい店舗/)
+  assert.match(thread, /7日前の同時刻より投稿が増えている店舗|先週の同時刻と比べて伸びている店舗|7日前比で動きが上向いている店舗/)
+  assert.match(thread, /上位以外で確認しておきたい穴場店舗|比較候補として見ておきたい店舗|投稿内容から浮かんだ穴場店舗/)
+  assert.match(thread, /スペシャルBINGOナイト/)
+  assert.match(thread, /スタッフ合同誕生日イベント/)
+  assert.match(thread, /#ハプバー/)
+  assert.ok(plan.threadTexts.length >= 3)
+  assert.match(plan.threadTexts.at(-1) ?? '', /^https?:\/\/\S+$/)
   assert.match(thread, /https:\/\/night-radar\.vercel\.app\/share\?[^\s]*report=2026-07-16-tomorrow/)
+})
+
+test('tomorrow post spotlights the official RETREAT BAR summer festival before the OGP reply', () => {
+  const summaries = [
+    summary({ id: 'filt', name: 'FILT SHIBUYA', postCount: 18 }),
+    summary({ id: 'canelo', name: 'BAR CANELO', postCount: 14 }),
+    summary({ id: 'agreeable', name: 'AgreeAble', postCount: 12 }),
+    summary({ id: 'retreat-bar', name: 'RETREAT BAR', postCount: 8 }),
+    ...hiddenSummaries(),
+  ]
+  const plan = prepareXScheduledPost(state(summaries, 'database', {
+    generatedAt: '2026-07-23T14:52:00.000Z',
+    events: [
+      { id: 'filt-event', storeId: 'filt', date: '2026-07-25', weekday: '土曜', startsAt: '19:00', session: 'night', category: 'event', title: '週末イベント' },
+      { id: 'canelo-event', storeId: 'canelo', date: '2026-07-25', weekday: '土曜', startsAt: '19:00', session: 'night', category: 'event', title: '週末イベント' },
+      { id: 'retreat-event', storeId: 'retreat-bar', date: '2026-07-25', weekday: '土曜', startsAt: '19:00', session: 'night', category: 'event', title: '2026.夏のBIGイベント！「夏フェス！！」開催' },
+    ],
+  }), 'tomorrow', { referenceTime: '2026-07-24T06:00:00.000Z' })
+
+  const thread = plan.threadTexts.join('\n')
+  const ogpReply = plan.threadTexts.at(-1) ?? ''
+  assert.equal(plan.targetDateKey, '2026-07-25')
+  assert.equal(plan.sourceGeneratedAt, '2026-07-23T14:52:00.000Z')
+  assert.equal(plan.spotlightEvent?.storeId, 'retreat-bar')
+  assert.match(thread, /🔎明日の注目トピック/)
+  assert.match(thread, /bar RETREAT BAR/)
+  assert.match(thread, /夏フェス/)
+  assert.match(thread, /23時から大抽選会/)
+  assert.equal(plan.replyTexts.at(-1), ogpReply)
+  assert.match(ogpReply, /^https?:\/\/\S+$/)
+  assert.ok(plan.weightedLengths.every((length) => length <= 280))
 })
 
 test('scheduled copy variation is deterministic for retries in the same slot', () => {
